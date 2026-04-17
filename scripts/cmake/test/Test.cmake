@@ -53,6 +53,12 @@ option(
     OFF
 )
 
+option(
+    OGS_ENABLE_PETSC_NP4_VARIANTS
+    "Register np=4 PETSc/MPI test variants for tests that explicitly use mpirun -np 1."
+    OFF
+)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/AddTest.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/OgsTest.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/NotebookTest.cmake)
