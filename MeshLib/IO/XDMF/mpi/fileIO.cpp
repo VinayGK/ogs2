@@ -29,12 +29,14 @@ hid_t createFile(std::filesystem::path const& filepath,
                  unsigned int const n_files)
 {
     auto const communicator = getCommunicator(n_files);
-    MPI_Comm const comm = communicator.mpi_communicator;
-    MPI_Info const info = MPI_INFO_NULL;
     hid_t const plist_id = H5Pcreate(H5P_FILE_ACCESS);
 
+#if defined(H5_HAVE_PARALLEL)
+    MPI_Comm const comm = communicator.mpi_communicator;
+    MPI_Info const info = MPI_INFO_NULL;
     H5Pset_fapl_mpio(plist_id, comm, info);
     H5Pset_coll_metadata_write(plist_id, true);
+#endif
 
     std::filesystem::path const partition_filename =
         partitionFilename(filepath, communicator.color);
@@ -48,10 +50,12 @@ hid_t createFile(std::filesystem::path const& filepath,
 hid_t openHDF5File(std::filesystem::path const& filepath,
                    unsigned int const n_files)
 {
-    MPI_Comm const comm = getCommunicator(n_files).mpi_communicator;
-    MPI_Info info = MPI_INFO_NULL;
     hid_t const plist_id = H5Pcreate(H5P_FILE_ACCESS);
+#if defined(H5_HAVE_PARALLEL)
+    MPI_Comm const comm = getCommunicator(n_files).mpi_communicator;
+    MPI_Info const info = MPI_INFO_NULL;
     H5Pset_fapl_mpio(plist_id, comm, info);
+#endif
     hid_t file = H5Fopen(filepath.string().c_str(), H5F_ACC_RDWR, plist_id);
     H5Pclose(plist_id);
     return file;
@@ -60,8 +64,10 @@ hid_t openHDF5File(std::filesystem::path const& filepath,
 hid_t createHDF5TransferPolicy()
 {
     // property list for collective dataset write
-    hid_t io_transfer_property = H5Pcreate(H5P_DATASET_XFER);
+    hid_t const io_transfer_property = H5Pcreate(H5P_DATASET_XFER);
+#if defined(H5_HAVE_PARALLEL)
     H5Pset_dxpl_mpio(io_transfer_property, H5FD_MPIO_COLLECTIVE);
+#endif
     return io_transfer_property;
 }
 

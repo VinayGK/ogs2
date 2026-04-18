@@ -8,7 +8,25 @@ if(NOT CPM_SOURCE_CACHE)
 endif()
 
 if(OGS_BUILD_TESTING)
-    if(GUIX_BUILD)
+    find_package(GTest QUIET)
+    if(GTest_FOUND)
+        add_library(gtest ALIAS GTest::gtest)
+        add_library(gmock ALIAS GTest::gmock)
+
+        CPMAddPackage(
+            NAME autocheck
+            GITHUB_REPOSITORY ufz/autocheck
+            GIT_TAG e388ecbb31c49fc2724c8d0436da313b6edca7fd
+            DOWNLOAD_ONLY YES
+            SYSTEM TRUE
+        )
+        if(autocheck_ADDED)
+            add_library(autocheck INTERFACE IMPORTED)
+            target_include_directories(
+                autocheck SYSTEM INTERFACE ${autocheck_SOURCE_DIR}/include
+            )
+        endif()
+    elseif(GUIX_BUILD)
         find_package(GTest REQUIRED)
         add_library(gtest ALIAS GTest::gtest)
         add_library(gmock ALIAS GTest::gmock)
@@ -213,6 +231,11 @@ if(OGS_USE_MFRONT)
             EXCLUDE_FROM_ALL YES SYSTEM TRUE ${_mgis_patch_args}
         )
         list(APPEND DISABLE_WARNINGS_TARGETS MFrontGenericInterface TFELMaterial TFELMaterialInterface TFELUtilities TFELException)
+    endif()
+
+    if(NOT COMMAND mfront_behaviours_check_library AND DEFINED MGIS_SOURCE_DIR
+       AND EXISTS "${MGIS_SOURCE_DIR}/cmake/modules/behaviours.cmake")
+        include("${MGIS_SOURCE_DIR}/cmake/modules/behaviours.cmake")
     endif()
 endif()
 
@@ -422,8 +445,8 @@ if(OGS_USE_PETSC)
     unset(CMAKE_REQUIRED_INCLUDES)
     unset(CMAKE_REQUIRED_LIBRARIES)
     if(NOT HAVE_H5Pset_fapl_mpio)
-        message(FATAL_ERROR "HDF5 was not build with MPI support! "
-                            "(Enable with HDF5_ENABLE_PARALLEL)"
+        message(WARNING "HDF5 was not built with MPI support. "
+                        "Proceeding with serial HDF5 I/O fallback for PETSc builds."
         )
     endif()
 endif()
