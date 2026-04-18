@@ -199,7 +199,10 @@ macro(_ogs_add_np4_test_variant BASE_TEST_NAME)
     endforeach()
 
     set(OgsTest_WRAPPER ${_np4_wrapper})
-    list(APPEND labels petsc_np4_variant)
+    set(_np4_labels ${labels})
+    list(REMOVE_ITEM _np4_labels petsc_np1_source)
+    list(APPEND _np4_labels petsc_np4_variant)
+    set(labels ${_np4_labels})
     _ogs_add_test(${BASE_TEST_NAME}-np4)
 
     if("${BASE_TEST_NAME}" MATCHES "-omp$")

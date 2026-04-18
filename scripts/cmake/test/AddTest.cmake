@@ -440,7 +440,10 @@ macro(_add_np4_test_variant BASE_TEST_NAME)
 
     set(AddTest_WRAPPER_ARGS ${_np4_wrapper_args})
     set(MPI_PROCESSORS 4)
-    list(APPEND labels petsc_np4_variant)
+    set(_np4_labels ${labels})
+    list(REMOVE_ITEM _np4_labels petsc_np1_source)
+    list(APPEND _np4_labels petsc_np4_variant)
+    set(labels ${_np4_labels})
     _add_test(${BASE_TEST_NAME}-np4)
 
     if("${BASE_TEST_NAME}" MATCHES "-omp$")
@@ -480,6 +483,9 @@ macro(_add_test_tester TEST_NAME)
     set(_binary_path ${AddTest_BINARY_PATH})
     if("${TEST_NAME}" MATCHES "-omp")
         set(_binary_path ${_binary_path}-omp)
+    endif()
+    if("${TEST_NAME}" MATCHES "-np4")
+        set(_binary_path ${_binary_path}-np4)
     endif()
 
     set(TESTER_NAME "${TEST_NAME}-${AddTest_TESTER}")
@@ -720,9 +726,15 @@ Use six arguments version of AddTest with absolute and relative tolerances"
             --debug-output
         WORKING_DIRECTORY ${AddTest_SOURCE_PATH}
     )
+    set(_tester_labels ${labels})
+    if("${TEST_NAME}" MATCHES "-np4")
+        list(REMOVE_ITEM _tester_labels petsc_np1_source)
+        list(APPEND _tester_labels petsc_np4_variant)
+    endif()
     set_tests_properties(
         ${TESTER_NAME} PROPERTIES DEPENDS ${TEST_NAME} DISABLED
-                                  ${AddTest_DISABLED} LABELS "tester;${labels}"
+                                  ${AddTest_DISABLED} LABELS
+                                  "tester;${_tester_labels}"
     )
 endmacro()
 
