@@ -1,0 +1,151 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+
+\title{OGS PETSc + OpenMP + MFront Build\\
+np=1 \texorpdfstring{$\rightarrow$}{->} np=4 CTest Comparison Report}
+\author{Automated run on \texttt{petsc-local-ki-test}}
+\date{2026-04-18}
+
+\begin{document}
+\maketitle
+
+\section*{Scope}
+This report documents the requested workflow:
+\begin{itemize}
+\item Build OGS in Release with PETSc, OpenMP, and MFront enabled.
+\item Auto-generate \texttt{-np4} variants from existing \texttt{mpirun -np 1} tests.
+\item Execute baseline (\texttt{petsc\_np1\_source}) and generated (\texttt{petsc\_np4\_variant}) test slices.
+\item Compare outcomes pairwise and record reproducibility/revert notes.
+\end{itemize}
+
+\section*{Step Log (Reversible Logical Steps)}
+\subsection*{Step 1: Preflight environment}
+\begin{itemize}
+\item Tools found on path: \texttt{/opt/anaconda3/bin/mpicc}, \texttt{mpic++}, \texttt{mpirun}, \texttt{pkg-config}, \texttt{python3}.
+\item Python: \texttt{3.13.12}.
+\item MPI launcher: MPICH Hydra \texttt{4.3.2}.
+\item Important environment quirk: \texttt{mpicc} wrapper compiler name was invalid; all configure/build calls required
+\texttt{MPICH\_CC='xcrun clang'} and \texttt{MPICH\_CXX='xcrun clang++'}.
+\end{itemize}
+
+\subsection*{Step 2: Checkpoint A feature state}
+Checkpoint A (already present at start of this continuation) was \texttt{5324bca7bb}, adding:
+\begin{itemize}
+\item \texttt{OGS\_ENABLE\_PETSC\_NP4\_VARIANTS} option (default OFF).
+\item Initial np1\textrightarrow{}np4 auto-clone logic and labels.
+\end{itemize}
+
+During this execution, label and tester wiring were corrected in:
+\begin{itemize}
+\item \texttt{scripts/cmake/test/AddTest.cmake}
+\item \texttt{scripts/cmake/test/OgsTest.cmake}
+\end{itemize}
+Fixes applied:
+\begin{itemize}
+\item \texttt{petsc\_np1\_source} and \texttt{petsc\_np4\_variant} are now mutually exclusive.
+\item np4 tester variants now use \texttt{-np4} output directories and carry \texttt{petsc\_np4\_variant}.
+\end{itemize}
+
+\subsection*{Step 3: Configure/build (Release PETSc + OpenMP + MFront)}
+Configured with PETSc+MFront+OpenMP and np4 variants enabled, including PETSc batch mode:
+\begin{verbatim}
+MPICH_CC='xcrun clang' MPICH_CXX='xcrun clang++' /opt/anaconda3/bin/cmake \
+  --preset release-petsc \
+  -DOGS_ENABLE_PETSC_NP4_VARIANTS=ON
+\end{verbatim}
+
+Build strategy (to avoid unrelated unit-test blockage):
+\begin{itemize}
+\item Built runtime target: \texttt{cmake --build --preset release-petsc --target ogs}
+\item Built tester tool: \texttt{cmake --build --preset release-petsc --target vtkdiff}
+\end{itemize}
+
+Execution-time build enablers applied in code:
+\begin{itemize}
+\item Serial-HDF5 fallback enabled for PETSc builds when \texttt{H5Pset\_fapl\_mpio} is unavailable.
+\item XDMF MPI file I/O calls guarded by \texttt{H5\_HAVE\_PARALLEL} to keep non-parallel HDF5 paths buildable.
+\item MGIS MFront behaviour CMake module included explicitly when command registration is missing.
+\item System GTest preference added (with \texttt{autocheck} include setup) to avoid conda-header conflicts in this environment.
+\end{itemize}
+
+\subsection*{Step 4: Registration validation}
+Validated labels and 1:1 mapping:
+\begin{verbatim}
+np1=94 np4=94 both=0
+\end{verbatim}
+
+\subsection*{Step 5: Execution passes}
+Because MPICH teardown hung on this host without launcher overrides, ctest runs used:
+\begin{verbatim}
+HYDRA_LAUNCHER=fork HYDRA_IFACE=lo0
+\end{verbatim}
+
+Executed commands:
+\begin{verbatim}
+ctest -L petsc_np1_source --output-on-failure --progress \
+      --output-junit /tmp/petsc_np1_source.junit.xml
+
+ctest -L petsc_np4_variant --output-on-failure --progress \
+      --output-junit /tmp/petsc_np4_variant.junit.xml
+\end{verbatim}
+
+Outcomes:
+\begin{itemize}
+\item Baseline (\texttt{petsc\_np1\_source}): 94/94 passed.
+\item np4 variants (\texttt{petsc\_np4\_variant}): 0/94 passed, 94/94 failed.
+\item Pair summary: 94 PASS\textrightarrow{}FAIL transitions.
+\end{itemize}
+
+Primary np4 failure cause: missing partitioned mesh binaries
+(\texttt{*\_partitioned\_msh\_cfg4.bin}) required by MPI read paths. Tester
+failures then cascade when np4 output files are absent.
+
+\subsection*{Step 6: Reporting artefacts}
+Generated:
+\begin{itemize}
+\item \texttt{Documentation/petsc\_np4\_comparison.csv}
+\item \texttt{Documentation/petsc\_np4\_comparison\_rows.tex}
+\item \texttt{Documentation/petsc\_np4\_summary.json}
+\item this report: \texttt{Documentation/petsc\_np4\_report.tex}
+\end{itemize}
+
+\section*{Pairwise Comparison Table}
+\footnotesize
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\begin{longtable}{p{0.36\linewidth} l r l r r r p{0.18\linewidth}}
+\toprule
+Baseline test & B status & B time [s] & np4 status & np4 time [s] & $\Delta$ [s] & ratio & np4 reason \\
+\midrule
+\endfirsthead
+\toprule
+Baseline test & B status & B time [s] & np4 status & np4 time [s] & $\Delta$ [s] & ratio & np4 reason \\
+\midrule
+\endhead
+\input{petsc_np4_comparison_rows.tex}
+\bottomrule
+\end{longtable}
+\normalsize
+
+\section*{Reproducibility and Revert Notes}
+\begin{itemize}
+\item Rebuild/retest from this state by re-running the commands in Step 5.
+\item Revert this report tooling/checkpoint-B changes with:
+\begin{verbatim}
+git restore --source=HEAD~1 -- Documentation/petsc_np4_report.tex \
+  Documentation/petsc_np4_comparison.csv \
+  Documentation/petsc_np4_comparison_rows.tex \
+  Documentation/petsc_np4_summary.json \
+  scripts/test/generate_petsc_np4_report.py \
+  scripts/cmake/test/AddTest.cmake \
+  scripts/cmake/test/OgsTest.cmake
+\end{verbatim}
+\item The runtime workaround \texttt{HYDRA\_LAUNCHER=fork HYDRA\_IFACE=lo0} is host-specific and was only used for test execution.
+\end{itemize}
+
+\end{document}

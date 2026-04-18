@@ -1,0 +1,14 @@
+{
+  "baseline_fail": 0,
+  "baseline_only_count": 0,
+  "baseline_pass": 94,
+  "baseline_total": 94,
+  "np4_fail": 94,
+  "np4_pass": 0,
+  "np4_total": 94,
+  "np4_unmatched_count": 0,
+  "pair_fail_fail": 0,
+  "pair_pass_fail": 94,
+  "pair_pass_pass": 0,
+  "paired_total": 94
+}
