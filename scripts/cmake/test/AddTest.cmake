@@ -268,6 +268,27 @@ function(AddTest)
                    AddTest_EXECUTABLE_ARGS "${AddTest_EXECUTABLE_ARGS}"
     )
 
+    set(_enable_petsc_np4_pair FALSE)
+    if(_is_petsc_np1_source AND "${AddTest_EXECUTABLE}" STREQUAL "ogs")
+        set(_enable_petsc_np4_pair TRUE)
+        _ogs_find_project_file_from_args(
+            _petsc_np4_project_file "${AddTest_SOURCE_PATH}" ${AddTest_EXECUTABLE_ARGS}
+        )
+        if(NOT _petsc_np4_project_file STREQUAL "")
+            _ogs_project_supports_partitions("${_petsc_np4_project_file}" 4
+                                             _supports_np4_partitions
+                                             _supports_np4_reason
+            )
+            if(NOT _supports_np4_partitions)
+                set(_enable_petsc_np4_pair FALSE)
+                message(
+                    STATUS
+                        "Skipping PETSc np4 pairing for ${TEST_NAME}: ${_supports_np4_reason}."
+                )
+            endif()
+        endif()
+    endif()
+
     current_dir_as_list(ProcessLib labels)
     if(DEFINED AddTest_LABELS)
         list(APPEND labels ${AddTest_LABELS})
@@ -279,7 +300,7 @@ function(AddTest)
     else()
         list(APPEND labels large)
     endif()
-    if(_is_petsc_np1_source)
+    if(_enable_petsc_np4_pair)
         list(APPEND labels petsc_np1_source)
     endif()
 
@@ -298,7 +319,7 @@ function(AddTest)
 
     if(_add_non_omp_variant)
         _add_test(${TEST_NAME})
-        if(_is_petsc_np1_source)
+        if(_enable_petsc_np4_pair)
             _add_np4_test_variant(${TEST_NAME})
         endif()
     endif()
@@ -306,7 +327,7 @@ function(AddTest)
     if(_has_omp_variant)
         _add_test(${TEST_NAME}-omp)
         _set_omp_test_properties_for(${TEST_NAME}-omp)
-        if(_is_petsc_np1_source)
+        if(_enable_petsc_np4_pair)
             _add_np4_test_variant(${TEST_NAME}-omp)
         endif()
     endif()
@@ -318,12 +339,12 @@ function(AddTest)
     # Run the tester
     if(_add_non_omp_variant)
         _add_test_tester(${TEST_NAME})
-        if(_is_petsc_np1_source)
+        if(_enable_petsc_np4_pair AND OGS_PETSC_NP4_INCLUDE_TESTER_VARIANTS)
             _add_test_tester(${TEST_NAME}-np4)
         endif()
     elseif(_has_omp_variant)
         _add_test_tester(${TEST_NAME}-omp)
-        if(_is_petsc_np1_source)
+        if(_enable_petsc_np4_pair AND OGS_PETSC_NP4_INCLUDE_TESTER_VARIANTS)
             _add_test_tester(${TEST_NAME}-omp-np4)
         endif()
     endif()
@@ -373,27 +394,51 @@ function(_ogs_find_project_file_from_args OUT_PROJECT_FILE BASE_DIR)
             continue()
         endif()
 
-        _ogs_resolve_project_file("${_candidate}" _resolved_candidate)
-        if(_project_file STREQUAL "")
-            set(_project_file "${_resolved_candidate}")
-        endif()
-
-        get_filename_component(_resolved_ext "${_resolved_candidate}" EXT)
-        if(_resolved_ext STREQUAL ".prj")
-            set(_project_file "${_resolved_candidate}")
-            break()
-        endif()
+        set(_project_file "${_candidate}")
+        break()
     endforeach()
     set(${OUT_PROJECT_FILE} "${_project_file}" PARENT_SCOPE)
 endfunction()
 
+function(_ogs_collect_projectdiff_mesh_replacements PROJECT_FILE OUT_MESHES)
+    file(READ "${PROJECT_FILE}" _project_xml)
+    string(REGEX MATCHALL
+                 "<replace[^>]*sel=\"[^\"]*mesh[^\"\n]*text\\(\\)[^\"]*\"[^>]*>[^<]+</replace>"
+                 _replace_matches "${_project_xml}"
+    )
+    set(_meshes "")
+    foreach(_match IN LISTS _replace_matches)
+        string(REGEX REPLACE ".*>([^<]+)</replace>.*" "\\1" _mesh "${_match}")
+        string(STRIP "${_mesh}" _mesh)
+        if(NOT _mesh STREQUAL "")
+            list(APPEND _meshes "${_mesh}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _meshes)
+    set(${OUT_MESHES} "${_meshes}" PARENT_SCOPE)
+endfunction()
+
 function(_ogs_collect_project_meshes PROJECT_FILE OUT_MESHES)
+    set(_meshes "")
+    if(EXISTS "${PROJECT_FILE}")
+        file(READ "${PROJECT_FILE}" _project_xml LIMIT 4096)
+        if(_project_xml MATCHES "<OpenGeoSysProjectDiff")
+            _ogs_collect_projectdiff_mesh_replacements("${PROJECT_FILE}" _meshes)
+        endif()
+    endif()
+    if(_meshes)
+        set(${OUT_MESHES} "${_meshes}" PARENT_SCOPE)
+        return()
+    endif()
+
     _ogs_resolve_project_file("${PROJECT_FILE}" _resolved_project_file)
     file(STRINGS "${_resolved_project_file}" _project_lines)
 
     set(_inside_meshes_block FALSE)
     set(_before_process_sections TRUE)
-    set(_meshes "")
+    set(_inside_mesh_tag FALSE)
+    set(_pending_mesh "")
+    set(_resolved_meshes "")
     foreach(_line IN LISTS _project_lines)
         string(STRIP "${_line}" _line)
         if(_line MATCHES "^<meshes[^>]*>")
@@ -407,21 +452,51 @@ function(_ogs_collect_project_meshes PROJECT_FILE OUT_MESHES)
             set(_before_process_sections FALSE)
         endif()
 
-        if(NOT _line MATCHES "<mesh[^>]*>[^<]+</mesh>")
+        if(_inside_mesh_tag)
+            if(_line MATCHES "^(.*)</mesh>.*$")
+                string(APPEND _pending_mesh "${CMAKE_MATCH_1}")
+                set(_inside_mesh_tag FALSE)
+                string(STRIP "${_pending_mesh}" _mesh)
+                set(_pending_mesh "")
+                if(NOT _mesh STREQUAL "")
+                    list(APPEND _resolved_meshes "${_mesh}")
+                endif()
+            else()
+                string(APPEND _pending_mesh "${_line}")
+            endif()
             continue()
         endif()
+
         if(NOT _inside_meshes_block AND NOT _before_process_sections)
             continue()
         endif()
 
-        string(REGEX REPLACE ".*<mesh[^>]*>([^<]+)</mesh>.*" "\\1" _mesh "${_line}")
-        string(STRIP "${_mesh}" _mesh)
-        if(NOT _mesh STREQUAL "")
-            list(APPEND _meshes "${_mesh}")
+        if(_line MATCHES ".*<mesh([ \t][^>]*)?>([^<]+)</mesh>.*")
+            set(_mesh "${CMAKE_MATCH_2}")
+            string(STRIP "${_mesh}" _mesh)
+            if(NOT _mesh STREQUAL "")
+                list(APPEND _resolved_meshes "${_mesh}")
+            endif()
+            continue()
+        endif()
+
+        if(_line MATCHES ".*<mesh([ \t][^>]*)?>(.*)$")
+            set(_pending_mesh "${CMAKE_MATCH_2}")
+            if(_pending_mesh MATCHES "^(.*)</mesh>.*$")
+                set(_inside_mesh_tag FALSE)
+                set(_mesh "${CMAKE_MATCH_1}")
+                string(STRIP "${_mesh}" _mesh)
+                set(_pending_mesh "")
+                if(NOT _mesh STREQUAL "")
+                    list(APPEND _resolved_meshes "${_mesh}")
+                endif()
+            else()
+                set(_inside_mesh_tag TRUE)
+            endif()
         endif()
     endforeach()
-    list(REMOVE_DUPLICATES _meshes)
-    set(${OUT_MESHES} "${_meshes}" PARENT_SCOPE)
+    list(REMOVE_DUPLICATES _resolved_meshes)
+    set(${OUT_MESHES} "${_resolved_meshes}" PARENT_SCOPE)
 endfunction()
 
 function(_ogs_resolve_mesh_source PROJECT_DIR MESH_REFERENCE OUT_MESH_SOURCE)
@@ -449,6 +524,94 @@ function(_ogs_resolve_mesh_source PROJECT_DIR MESH_REFERENCE OUT_MESH_SOURCE)
     set(${OUT_MESH_SOURCE} "${_mesh_source}" PARENT_SCOPE)
 endfunction()
 
+function(_ogs_mesh_has_min_elements MESH_FILE MIN_ELEMENTS OUT_HAS_MIN_ELEMENTS)
+    set(_has_min_elements TRUE)
+    if(EXISTS "${MESH_FILE}")
+        get_filename_component(_mesh_ext "${MESH_FILE}" EXT)
+        string(TOLOWER "${_mesh_ext}" _mesh_ext)
+
+        if(_mesh_ext STREQUAL ".vtu")
+            file(READ "${MESH_FILE}" _mesh_header LIMIT 16384)
+            if(_mesh_header MATCHES "NumberOfCells=\"([0-9]+)\"")
+                if(${CMAKE_MATCH_1} LESS ${MIN_ELEMENTS})
+                    set(_has_min_elements FALSE)
+                endif()
+            endif()
+        elseif(_mesh_ext STREQUAL ".msh")
+            file(READ "${MESH_FILE}" _mesh_header LIMIT 32768)
+            if(_mesh_header MATCHES "\\$Elements[ \t\r\n]+([0-9]+)")
+                if(${CMAKE_MATCH_1} LESS ${MIN_ELEMENTS})
+                    set(_has_min_elements FALSE)
+                endif()
+            endif()
+        endif()
+    endif()
+
+    set(${OUT_HAS_MIN_ELEMENTS} ${_has_min_elements} PARENT_SCOPE)
+endfunction()
+
+function(
+    _ogs_project_supports_partitions
+    PROJECT_FILE
+    N_PARTITIONS
+    OUT_SUPPORTS_PARTITIONS
+    OUT_REASON
+)
+    set(_supports_partitions TRUE)
+    set(_reason "")
+
+    if(NOT EXISTS "${PROJECT_FILE}")
+        set(${OUT_SUPPORTS_PARTITIONS} TRUE PARENT_SCOPE)
+        set(${OUT_REASON} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    _ogs_resolve_project_file("${PROJECT_FILE}" _resolved_project_file)
+    _ogs_collect_project_meshes("${PROJECT_FILE}" _project_meshes)
+    if(NOT _project_meshes)
+        set(${OUT_SUPPORTS_PARTITIONS} TRUE PARENT_SCOPE)
+        set(${OUT_REASON} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    list(GET _project_meshes 0 _primary_mesh_reference)
+    get_filename_component(_project_dir "${PROJECT_FILE}" DIRECTORY)
+    get_filename_component(_resolved_project_dir "${_resolved_project_file}" DIRECTORY)
+
+    _ogs_resolve_mesh_source("${_project_dir}" "${_primary_mesh_reference}"
+                             _primary_mesh_source
+    )
+    if(_primary_mesh_source STREQUAL ""
+       AND NOT _resolved_project_dir STREQUAL "${_project_dir}"
+    )
+        _ogs_resolve_mesh_source("${_resolved_project_dir}" "${_primary_mesh_reference}"
+                                 _primary_mesh_source
+        )
+    endif()
+
+    if(_primary_mesh_source STREQUAL "")
+        set(${OUT_SUPPORTS_PARTITIONS} TRUE PARENT_SCOPE)
+        set(${OUT_REASON} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    math(EXPR _minimum_recommended_elements "${N_PARTITIONS} * 2 + 1")
+    _ogs_mesh_has_min_elements("${_primary_mesh_source}"
+                               "${_minimum_recommended_elements}"
+                               _has_min_elements
+    )
+    if(NOT _has_min_elements)
+        set(_supports_partitions FALSE)
+        set(
+            _reason
+            "primary mesh '${_primary_mesh_reference}' has fewer than ${_minimum_recommended_elements} elements"
+        )
+    endif()
+
+    set(${OUT_SUPPORTS_PARTITIONS} ${_supports_partitions} PARENT_SCOPE)
+    set(${OUT_REASON} "${_reason}" PARENT_SCOPE)
+endfunction()
+
 function(_ogs_project_has_cfg4_for_all_meshes PROJECT_FILE N_PARTITIONS OUT_HAS_CFG)
     if(NOT EXISTS "${PROJECT_FILE}")
         set(${OUT_HAS_CFG} FALSE PARENT_SCOPE)
@@ -462,16 +625,21 @@ function(_ogs_project_has_cfg4_for_all_meshes PROJECT_FILE N_PARTITIONS OUT_HAS_
         return()
     endif()
 
-    get_filename_component(_project_dir "${_resolved_project_file}" DIRECTORY)
+    get_filename_component(_project_dir "${PROJECT_FILE}" DIRECTORY)
+    get_filename_component(_resolved_project_dir "${_resolved_project_file}" DIRECTORY)
     set(_has_cfg TRUE)
     foreach(_mesh IN LISTS _project_meshes)
         _ogs_resolve_mesh_source("${_project_dir}" "${_mesh}" _mesh_source)
+        if(_mesh_source STREQUAL "" AND NOT _resolved_project_dir STREQUAL "${_project_dir}")
+            _ogs_resolve_mesh_source("${_resolved_project_dir}" "${_mesh}" _mesh_source)
+        endif()
         if(_mesh_source STREQUAL "")
             set(_has_cfg FALSE)
             break()
         endif()
         get_filename_component(_mesh_source_dir "${_mesh_source}" DIRECTORY)
-        get_filename_component(_mesh_base "${_mesh_source}" NAME_WE)
+        get_filename_component(_mesh_name "${_mesh_source}" NAME)
+        string(REGEX REPLACE "\\.[^.]+$" "" _mesh_base "${_mesh_name}")
         set(_cfg_file
             "${_mesh_source_dir}/${_mesh_base}_partitioned_msh_cfg${N_PARTITIONS}.bin"
         )
@@ -654,6 +822,13 @@ macro(_add_np4_test_variant BASE_TEST_NAME)
             _np4_project_file "${AddTest_SOURCE_PATH}" ${AddTest_EXECUTABLE_ARGS}
         )
         if(NOT _np4_project_file STREQUAL "")
+            _ogs_project_supports_partitions("${_np4_project_file}" 4
+                                             _supports_np4_partitions
+                                             _supports_np4_reason
+            )
+            if(NOT _supports_np4_partitions)
+                set(_register_np4_variant FALSE)
+            endif()
             _ogs_project_has_cfg4_for_all_meshes(
                 "${_np4_project_file}" 4 _np4_cfg_ready
             )
@@ -671,10 +846,17 @@ macro(_add_np4_test_variant BASE_TEST_NAME)
     endif()
 
     if(NOT _register_np4_variant)
-        message(
-            STATUS
-                "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: cfg4 meshes are not ready and auto-preparation is unavailable."
-        )
+        if(DEFINED _supports_np4_reason AND NOT _supports_np4_reason STREQUAL "")
+            message(
+                STATUS
+                    "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: ${_supports_np4_reason}."
+            )
+        else()
+            message(
+                STATUS
+                    "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: cfg4 meshes are not ready and auto-preparation is unavailable."
+            )
+        endif()
     endif()
 
     set(AddTest_WRAPPER_ARGS ${_np4_wrapper_args})
@@ -985,7 +1167,9 @@ Use six arguments version of AddTest with absolute and relative tolerances"
         WORKING_DIRECTORY ${AddTest_SOURCE_PATH}
     )
     set(_tester_labels ${labels})
-    if("${TEST_NAME}" MATCHES "-np4")
+    if(NOT OGS_PETSC_NP4_INCLUDE_TESTER_VARIANTS)
+        list(REMOVE_ITEM _tester_labels petsc_np1_source petsc_np4_variant)
+    elseif("${TEST_NAME}" MATCHES "-np4")
         list(REMOVE_ITEM _tester_labels petsc_np1_source)
         list(APPEND _tester_labels petsc_np4_variant)
     endif()

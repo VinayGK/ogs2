@@ -71,6 +71,12 @@ option(
     ON
 )
 
+option(
+    OGS_PETSC_NP4_INCLUDE_TESTER_VARIANTS
+    "Label generated tester/diff variants as petsc_np* comparison tests."
+    OFF
+)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/AddTest.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/OgsTest.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/NotebookTest.cmake)

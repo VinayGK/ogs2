@@ -470,10 +470,25 @@ MeshLib::Properties partitionProperties(
         properties,
         [&](auto type, auto const property)
         {
+            auto const& property_name = property->getPropertyName();
+            // VTK provenance arrays are not required for OGS simulations and can
+            // trigger tuple-copy mismatches on tiny boundary meshes.
+            if (property_name == "vtkOriginalCellIds" ||
+                property_name == "vtkOriginalPointIds")
+            {
+                return true;
+            }
+
+            auto const* typed_property =
+                dynamic_cast<PropertyVector<decltype(type)> const*>(property);
+            if (typed_property == nullptr)
+            {
+                return false;
+            }
+
             return copyPropertyVector<decltype(type)>(
                 mesh->getElements(), partitioned_properties, properties,
-                partitions,
-                dynamic_cast<PropertyVector<decltype(type)> const*>(property),
+                partitions, typed_property,
                 total_number_of_tuples);
         });
 

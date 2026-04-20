@@ -79,6 +79,24 @@ function(OgsTest)
     set(_exe_args -r ${OgsTest_SOURCE_DIR}
                   ${OgsTest_SOURCE_DIR}/${OgsTest_NAME}
     )
+    set(_enable_petsc_np4_pair FALSE)
+    if(_is_petsc_np1_source)
+        set(_enable_petsc_np4_pair TRUE)
+        set(_petsc_np4_project_file "${OgsTest_SOURCE_DIR}/${OgsTest_NAME}")
+        if(EXISTS "${_petsc_np4_project_file}")
+            _ogs_project_supports_partitions("${_petsc_np4_project_file}" 4
+                                             _supports_np4_partitions
+                                             _supports_np4_reason
+            )
+            if(NOT _supports_np4_partitions)
+                set(_enable_petsc_np4_pair FALSE)
+                message(
+                    STATUS
+                        "Skipping PETSc np4 pairing for ${TEST_NAME}: ${_supports_np4_reason}."
+                )
+            endif()
+        endif()
+    endif()
 
     current_dir_as_list(ProcessLib labels)
     if(${AddTest_LABELS})
@@ -92,7 +110,7 @@ function(OgsTest)
     else()
         list(APPEND labels large)
     endif()
-    if(_is_petsc_np1_source)
+    if(_enable_petsc_np4_pair)
         list(APPEND labels petsc_np1_source)
     endif()
 
@@ -111,7 +129,7 @@ function(OgsTest)
 
     if(_add_non_omp_variant)
         _ogs_add_test(${TEST_NAME})
-        if(_is_petsc_np1_source)
+        if(_enable_petsc_np4_pair)
             _ogs_add_np4_test_variant(${TEST_NAME})
         endif()
     endif()
@@ -119,7 +137,7 @@ function(OgsTest)
     if(_has_omp_variant)
         _ogs_add_test(${TEST_NAME}-omp)
         _set_omp_test_properties_for(${TEST_NAME}-omp)
-        if(_is_petsc_np1_source)
+        if(_enable_petsc_np4_pair)
             _ogs_add_np4_test_variant(${TEST_NAME}-omp)
         endif()
     endif()
@@ -205,6 +223,13 @@ macro(_ogs_add_np4_test_variant BASE_TEST_NAME)
     set(_np4_cfg_ready FALSE)
 
     if(EXISTS "${_np4_project_file}")
+        _ogs_project_supports_partitions("${_np4_project_file}" 4
+                                         _supports_np4_partitions
+                                         _supports_np4_reason
+        )
+        if(NOT _supports_np4_partitions)
+            set(_register_np4_variant FALSE)
+        endif()
         _ogs_project_has_cfg4_for_all_meshes("${_np4_project_file}" 4
                                              _np4_cfg_ready
         )
@@ -221,10 +246,17 @@ macro(_ogs_add_np4_test_variant BASE_TEST_NAME)
     endif()
 
     if(NOT _register_np4_variant)
-        message(
-            STATUS
-                "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: cfg4 meshes are not ready and auto-preparation is unavailable."
-        )
+        if(DEFINED _supports_np4_reason AND NOT _supports_np4_reason STREQUAL "")
+            message(
+                STATUS
+                    "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: ${_supports_np4_reason}."
+            )
+        else()
+            message(
+                STATUS
+                    "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: cfg4 meshes are not ready and auto-preparation is unavailable."
+            )
+        endif()
     endif()
 
     set(OgsTest_WRAPPER ${_np4_wrapper})
