@@ -330,6 +330,211 @@ function(AddTest)
 
 endfunction()
 
+function(_ogs_resolve_project_file INPUT_PROJECT_FILE OUT_PROJECT_FILE)
+    set(_resolved_project_file "${INPUT_PROJECT_FILE}")
+    if(EXISTS "${INPUT_PROJECT_FILE}")
+        file(READ "${INPUT_PROJECT_FILE}" _project_xml LIMIT 4096)
+        if(_project_xml MATCHES "<OpenGeoSysProjectDiff")
+            get_filename_component(_project_dir "${INPUT_PROJECT_FILE}" DIRECTORY)
+            get_filename_component(_project_stem "${INPUT_PROJECT_FILE}" NAME_WE)
+            set(_fallback_project "${_project_dir}/${_project_stem}.prj")
+            if(EXISTS "${_fallback_project}")
+                set(_resolved_project_file "${_fallback_project}")
+            else()
+                file(GLOB _project_candidates "${_project_dir}/*.prj")
+                list(LENGTH _project_candidates _num_project_candidates)
+                if(_num_project_candidates EQUAL 1)
+                    list(GET _project_candidates 0 _resolved_project_file)
+                endif()
+            endif()
+        endif()
+    endif()
+    set(${OUT_PROJECT_FILE} "${_resolved_project_file}" PARENT_SCOPE)
+endfunction()
+
+function(_ogs_find_project_file_from_args OUT_PROJECT_FILE BASE_DIR)
+    set(_project_file "")
+    foreach(_arg ${ARGN})
+        if(NOT _arg MATCHES "\\.(prj|xml)$")
+            continue()
+        endif()
+
+        if(IS_ABSOLUTE "${_arg}")
+            set(_candidate "${_arg}")
+        else()
+            set(_candidate "${BASE_DIR}/${_arg}")
+        endif()
+        if(NOT EXISTS "${_candidate}")
+            continue()
+        endif()
+
+        file(READ "${_candidate}" _candidate_xml LIMIT 4096)
+        if(NOT _candidate_xml MATCHES "OpenGeoSysProject")
+            continue()
+        endif()
+
+        _ogs_resolve_project_file("${_candidate}" _resolved_candidate)
+        if(_project_file STREQUAL "")
+            set(_project_file "${_resolved_candidate}")
+        endif()
+
+        get_filename_component(_resolved_ext "${_resolved_candidate}" EXT)
+        if(_resolved_ext STREQUAL ".prj")
+            set(_project_file "${_resolved_candidate}")
+            break()
+        endif()
+    endforeach()
+    set(${OUT_PROJECT_FILE} "${_project_file}" PARENT_SCOPE)
+endfunction()
+
+function(_ogs_collect_project_meshes PROJECT_FILE OUT_MESHES)
+    _ogs_resolve_project_file("${PROJECT_FILE}" _resolved_project_file)
+    file(STRINGS "${_resolved_project_file}" _project_lines)
+
+    set(_inside_meshes_block FALSE)
+    set(_before_process_sections TRUE)
+    set(_meshes "")
+    foreach(_line IN LISTS _project_lines)
+        string(STRIP "${_line}" _line)
+        if(_line MATCHES "^<meshes[^>]*>")
+            set(_inside_meshes_block TRUE)
+        elseif(_line MATCHES "^</meshes>")
+            set(_inside_meshes_block FALSE)
+        elseif(
+            _line MATCHES
+            "^<(processes|time_loop|media|parameters|process_variables|nonlinear_solvers|linear_solvers|curves|python_script|output|deactivated_subdomains)>"
+        )
+            set(_before_process_sections FALSE)
+        endif()
+
+        if(NOT _line MATCHES "<mesh[^>]*>[^<]+</mesh>")
+            continue()
+        endif()
+        if(NOT _inside_meshes_block AND NOT _before_process_sections)
+            continue()
+        endif()
+
+        string(REGEX REPLACE ".*<mesh[^>]*>([^<]+)</mesh>.*" "\\1" _mesh "${_line}")
+        string(STRIP "${_mesh}" _mesh)
+        if(NOT _mesh STREQUAL "")
+            list(APPEND _meshes "${_mesh}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _meshes)
+    set(${OUT_MESHES} "${_meshes}" PARENT_SCOPE)
+endfunction()
+
+function(_ogs_resolve_mesh_source PROJECT_DIR MESH_REFERENCE OUT_MESH_SOURCE)
+    set(_mesh_source "")
+    if(IS_ABSOLUTE "${MESH_REFERENCE}" AND EXISTS "${MESH_REFERENCE}")
+        set(_mesh_source "${MESH_REFERENCE}")
+    else()
+        set(_candidate "${PROJECT_DIR}/${MESH_REFERENCE}")
+        if(EXISTS "${_candidate}")
+            set(_mesh_source "${_candidate}")
+        else()
+            get_filename_component(_mesh_ext "${MESH_REFERENCE}" EXT)
+            if(_mesh_ext STREQUAL "")
+                foreach(_ext .vtu .msh .vtk .vtm .vti)
+                    set(_candidate_with_ext "${PROJECT_DIR}/${MESH_REFERENCE}${_ext}")
+                    if(EXISTS "${_candidate_with_ext}")
+                        set(_mesh_source "${_candidate_with_ext}")
+                        break()
+                    endif()
+                endforeach()
+            endif()
+        endif()
+    endif()
+
+    set(${OUT_MESH_SOURCE} "${_mesh_source}" PARENT_SCOPE)
+endfunction()
+
+function(_ogs_project_has_cfg4_for_all_meshes PROJECT_FILE N_PARTITIONS OUT_HAS_CFG)
+    if(NOT EXISTS "${PROJECT_FILE}")
+        set(${OUT_HAS_CFG} FALSE PARENT_SCOPE)
+        return()
+    endif()
+
+    _ogs_resolve_project_file("${PROJECT_FILE}" _resolved_project_file)
+    _ogs_collect_project_meshes("${PROJECT_FILE}" _project_meshes)
+    if(NOT _project_meshes)
+        set(${OUT_HAS_CFG} FALSE PARENT_SCOPE)
+        return()
+    endif()
+
+    get_filename_component(_project_dir "${_resolved_project_file}" DIRECTORY)
+    set(_has_cfg TRUE)
+    foreach(_mesh IN LISTS _project_meshes)
+        _ogs_resolve_mesh_source("${_project_dir}" "${_mesh}" _mesh_source)
+        if(_mesh_source STREQUAL "")
+            set(_has_cfg FALSE)
+            break()
+        endif()
+        get_filename_component(_mesh_source_dir "${_mesh_source}" DIRECTORY)
+        get_filename_component(_mesh_base "${_mesh_source}" NAME_WE)
+        set(_cfg_file
+            "${_mesh_source_dir}/${_mesh_base}_partitioned_msh_cfg${N_PARTITIONS}.bin"
+        )
+        if(NOT EXISTS "${_cfg_file}")
+            set(_has_cfg FALSE)
+            break()
+        endif()
+    endforeach()
+
+    set(${OUT_HAS_CFG} ${_has_cfg} PARENT_SCOPE)
+endfunction()
+
+function(_ogs_append_test_dependency TEST_NAME DEPENDENCY_TEST)
+    get_test_property(${TEST_NAME} DEPENDS _existing_depends)
+    if(_existing_depends AND NOT _existing_depends STREQUAL "NOTFOUND")
+        set(_depends ${_existing_depends})
+    else()
+        set(_depends "")
+    endif()
+    list(APPEND _depends ${DEPENDENCY_TEST})
+    list(REMOVE_DUPLICATES _depends)
+    set_tests_properties(${TEST_NAME} PROPERTIES DEPENDS "${_depends}")
+endfunction()
+
+function(
+    _ogs_add_np4_mesh_setup_test
+    OUT_SETUP_TEST_NAME
+    NP4_TEST_NAME
+    PROJECT_FILE
+    MESH_OUTPUT_DIR
+    DISABLED
+)
+    set(_partmesh_executable "")
+    if(TARGET partmesh)
+        set(_partmesh_executable "$<TARGET_FILE:partmesh>")
+    endif()
+
+    set(_setup_test_name "${NP4_TEST_NAME}-prepare-meshes")
+    get_filename_component(_project_dir "${PROJECT_FILE}" DIRECTORY)
+
+    add_test(
+        NAME ${_setup_test_name}
+        COMMAND
+            ${CMAKE_COMMAND} -DPROJECT_FILE=${PROJECT_FILE}
+            -DMESH_OUTPUT_DIR=${MESH_OUTPUT_DIR} -DN_PARTITIONS=4
+            "-DPARTMESH_EXECUTABLE=${_partmesh_executable}" -P
+            ${PROJECT_SOURCE_DIR}/scripts/cmake/test/PreparePartitionedMesh.cmake
+        WORKING_DIRECTORY ${_project_dir}
+    )
+
+    set_tests_properties(
+        ${_setup_test_name}
+        PROPERTIES COST
+                   1
+                   DISABLED
+                   ${DISABLED}
+                   LABELS
+                   "petsc_np4_setup"
+    )
+
+    set(${OUT_SETUP_TEST_NAME} ${_setup_test_name} PARENT_SCOPE)
+endfunction()
+
 # Add a ctest and sets properties
 macro(_add_test TEST_NAME)
 
@@ -418,6 +623,7 @@ endmacro()
 macro(_add_np4_test_variant BASE_TEST_NAME)
     set(_wrapper_args_backup ${AddTest_WRAPPER_ARGS})
     set(_labels_backup ${labels})
+    set(_exe_args_backup ${AddTest_EXECUTABLE_ARGS})
     set(_had_mpi_processors FALSE)
     if(DEFINED MPI_PROCESSORS)
         set(_had_mpi_processors TRUE)
@@ -438,17 +644,69 @@ macro(_add_np4_test_variant BASE_TEST_NAME)
         endif()
     endforeach()
 
+    set(_register_np4_variant TRUE)
+    set(_np4_project_file "")
+    set(_np4_cfg_ready FALSE)
+    set(_np4_setup_test "")
+
+    if("${AddTest_EXECUTABLE}" STREQUAL "ogs")
+        _ogs_find_project_file_from_args(
+            _np4_project_file "${AddTest_SOURCE_PATH}" ${AddTest_EXECUTABLE_ARGS}
+        )
+        if(NOT _np4_project_file STREQUAL "")
+            _ogs_project_has_cfg4_for_all_meshes(
+                "${_np4_project_file}" 4 _np4_cfg_ready
+            )
+        endif()
+    endif()
+
+    if(OGS_PETSC_NP4_VARIANTS_REQUIRE_CFG4_READY)
+        if(_np4_project_file STREQUAL "")
+            set(_register_np4_variant FALSE)
+        elseif(NOT _np4_cfg_ready AND (NOT OGS_PETSC_NP4_AUTO_PREPARE_CFG4
+                                       OR NOT TARGET partmesh)
+        )
+            set(_register_np4_variant FALSE)
+        endif()
+    endif()
+
+    if(NOT _register_np4_variant)
+        message(
+            STATUS
+                "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: cfg4 meshes are not ready and auto-preparation is unavailable."
+        )
+    endif()
+
     set(AddTest_WRAPPER_ARGS ${_np4_wrapper_args})
     set(MPI_PROCESSORS 4)
     set(_np4_labels ${labels})
     list(REMOVE_ITEM _np4_labels petsc_np1_source)
     list(APPEND _np4_labels petsc_np4_variant)
     set(labels ${_np4_labels})
-    _add_test(${BASE_TEST_NAME}-np4)
 
-    if("${BASE_TEST_NAME}" MATCHES "-omp$")
-        _set_omp_test_properties_for(${BASE_TEST_NAME}-np4)
+    if(_register_np4_variant)
+        if(NOT _np4_project_file STREQUAL "")
+            set(_np4_mesh_dir "${AddTest_BINARY_PATH}-np4-meshes")
+            list(APPEND AddTest_EXECUTABLE_ARGS -m ${_np4_mesh_dir})
+            _ogs_add_np4_mesh_setup_test(
+                _np4_setup_test "${BASE_TEST_NAME}-np4" "${_np4_project_file}"
+                "${_np4_mesh_dir}" "${AddTest_DISABLED}"
+            )
+        endif()
+
+        _add_test(${BASE_TEST_NAME}-np4)
+        if(NOT _np4_setup_test STREQUAL "")
+            _ogs_append_test_dependency("${BASE_TEST_NAME}-np4"
+                                        "${_np4_setup_test}"
+            )
+        endif()
+
+        if("${BASE_TEST_NAME}" MATCHES "-omp$")
+            _set_omp_test_properties_for(${BASE_TEST_NAME}-np4)
+        endif()
     endif()
+
+    set(AddTest_EXECUTABLE_ARGS ${_exe_args_backup})
 
     set(AddTest_WRAPPER_ARGS ${_wrapper_args_backup})
     if(_had_mpi_processors)

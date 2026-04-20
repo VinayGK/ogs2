@@ -42,13 +42,19 @@ Checkpoint A (already present at start of this continuation) was \texttt{5324bca
 
 During this execution, label and tester wiring were corrected in:
 \begin{itemize}
+\item \texttt{scripts/cmake/test/Test.cmake}
 \item \texttt{scripts/cmake/test/AddTest.cmake}
 \item \texttt{scripts/cmake/test/OgsTest.cmake}
+\item \texttt{scripts/cmake/test/PreparePartitionedMesh.cmake}
 \end{itemize}
 Fixes applied:
 \begin{itemize}
 \item \texttt{petsc\_np1\_source} and \texttt{petsc\_np4\_variant} are now mutually exclusive.
 \item np4 tester variants now use \texttt{-np4} output directories and carry \texttt{petsc\_np4\_variant}.
+\item Added dedicated setup label \texttt{petsc\_np4\_setup} for cfg4 mesh generation.
+\item Added gated cfg4 controls:
+\texttt{OGS\_PETSC\_NP4\_VARIANTS\_REQUIRE\_CFG4\_READY} and
+\texttt{OGS\_PETSC\_NP4\_AUTO\_PREPARE\_CFG4}.
 \end{itemize}
 
 \subsection*{Step 3: Configure/build (Release PETSc + OpenMP + MFront)}
@@ -90,6 +96,9 @@ Executed commands:
 ctest -L petsc_np1_source --output-on-failure --progress \
       --output-junit /tmp/petsc_np1_source.junit.xml
 
+ctest -L petsc_np4_setup --output-on-failure --progress \
+      --output-junit /tmp/petsc_np4_setup.junit.xml
+
 ctest -L petsc_np4_variant --output-on-failure --progress \
       --output-junit /tmp/petsc_np4_variant.junit.xml
 \end{verbatim}
@@ -97,13 +106,18 @@ ctest -L petsc_np4_variant --output-on-failure --progress \
 Outcomes:
 \begin{itemize}
 \item Baseline (\texttt{petsc\_np1\_source}): 94/94 passed.
-\item np4 variants (\texttt{petsc\_np4\_variant}): 0/94 passed, 94/94 failed.
-\item Pair summary: 94 PASS\textrightarrow{}FAIL transitions.
+\item Setup (\texttt{petsc\_np4\_setup}): 47/47 passed.
+\item np4 variants (\texttt{petsc\_np4\_variant}): 34/94 passed, 60/94 failed.
+\item Pair summary: 34 PASS\textrightarrow{}PASS and 60 PASS\textrightarrow{}FAIL.
 \end{itemize}
 
-Primary np4 failure cause: missing partitioned mesh binaries
-(\texttt{*\_partitioned\_msh\_cfg4.bin}) required by MPI read paths. Tester
-failures then cascade when np4 output files are absent.
+Primary np4 failure categories:
+\begin{itemize}
+\item 13 cases: missing cfg4 partitioned meshes for some projects
+(\texttt{*\_partitioned\_msh\_cfg4.bin}).
+\item 47 cases: missing np4 result files in \texttt{vtkdiff} tester variants
+(parallel output naming/layout differs from np1 reference expectations).
+\end{itemize}
 
 \subsection*{Step 6: Reporting artefacts}
 Generated:
@@ -142,6 +156,8 @@ git restore --source=HEAD~1 -- Documentation/petsc_np4_report.tex \
   Documentation/petsc_np4_comparison_rows.tex \
   Documentation/petsc_np4_summary.json \
   scripts/test/generate_petsc_np4_report.py \
+  scripts/cmake/test/PreparePartitionedMesh.cmake \
+  scripts/cmake/test/Test.cmake \
   scripts/cmake/test/AddTest.cmake \
   scripts/cmake/test/OgsTest.cmake
 \end{verbatim}

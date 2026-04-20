@@ -1,95 +1,95 @@
 baseline_test,np4_test,baseline_status,baseline_time_s,np4_status,np4_time_s,delta_s,ratio_np4_over_np1,np4_failure_reason
-ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp,ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp-np4,PASS,0.260696,FAIL,0.164321,-0.096375,0.630317,missing cfg4 partitioned mesh
-ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp-vtkdiff,ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp-np4-vtkdiff,PASS,1.006290,FAIL,0.026707,-0.979583,0.026540,missing np4 result file for vtkdiff
-ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun,ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun-np4,PASS,12.300500,FAIL,0.164704,-12.135796,0.013390,missing cfg4 partitioned mesh
-ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun-vtkdiff,ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun-np4-vtkdiff,PASS,0.042672,FAIL,0.035457,-0.007215,0.830925,missing np4 result file for vtkdiff
-ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun,ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun-np4,PASS,14.102000,FAIL,0.166566,-13.935434,0.011812,missing cfg4 partitioned mesh
-ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun-vtkdiff,ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun-np4-vtkdiff,PASS,0.042409,FAIL,0.034863,-0.007545,0.822086,missing np4 result file for vtkdiff
-ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun,ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun-np4,PASS,0.152121,FAIL,0.173384,0.021263,1.139777,missing cfg4 partitioned mesh
-ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun-vtkdiff,ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun-np4-vtkdiff,PASS,0.032898,FAIL,0.031683,-0.001215,0.963076,missing np4 result file for vtkdiff
-ogs-LiquidFlow_AxisymTheis-mpirun,ogs-LiquidFlow_AxisymTheis-mpirun-np4,PASS,0.228982,FAIL,0.172881,-0.056101,0.754998,missing cfg4 partitioned mesh
-ogs-LiquidFlow_AxisymTheis-mpirun-vtkdiff,ogs-LiquidFlow_AxisymTheis-mpirun-np4-vtkdiff,PASS,0.022795,FAIL,0.024640,0.001845,1.080917,missing np4 result file for vtkdiff
-ogs-LiquidFlow_GravityDriven-mpirun,ogs-LiquidFlow_GravityDriven-mpirun-np4,PASS,0.167937,FAIL,0.179847,0.011910,1.070919,missing cfg4 partitioned mesh
-ogs-LiquidFlow_GravityDriven-mpirun-vtkdiff,ogs-LiquidFlow_GravityDriven-mpirun-np4-vtkdiff,PASS,0.028204,FAIL,0.024389,-0.003815,0.864726,missing np4 result file for vtkdiff
-ogs-LiquidFlow_LineDirichletNeumannBC-mpirun,ogs-LiquidFlow_LineDirichletNeumannBC-mpirun-np4,PASS,0.174305,FAIL,0.174535,0.000230,1.001320,missing cfg4 partitioned mesh
-ogs-LiquidFlow_LineDirichletNeumannBC-mpirun-vtkdiff,ogs-LiquidFlow_LineDirichletNeumannBC-mpirun-np4-vtkdiff,PASS,0.038296,FAIL,0.024229,-0.014067,0.632677,missing np4 result file for vtkdiff
-ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun,ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun-np4,PASS,0.156890,FAIL,0.178271,0.021381,1.136280,missing cfg4 partitioned mesh
-ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun-vtkdiff,ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun-np4-vtkdiff,PASS,0.024096,FAIL,0.025154,0.001057,1.043882,missing np4 result file for vtkdiff
-ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp,ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp-np4,PASS,13.341100,FAIL,0.174018,-13.167082,0.013044,missing cfg4 partitioned mesh
-ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp-vtkdiff,ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp-np4-vtkdiff,PASS,0.045389,FAIL,0.041876,-0.003513,0.922594,missing np4 result file for vtkdiff
-ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp,ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp-np4,PASS,0.179157,FAIL,0.160187,-0.018970,0.894115,missing cfg4 partitioned mesh
-ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp-vtkdiff,ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp-np4-vtkdiff,PASS,0.040268,FAIL,0.039354,-0.000914,0.977292,missing np4 result file for vtkdiff
-ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun,ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun-np4,PASS,1.166610,FAIL,0.174592,-0.992018,0.149658,missing cfg4 partitioned mesh
-ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun-vtkdiff,ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun-np4-vtkdiff,PASS,0.033210,FAIL,0.031967,-0.001244,0.962557,missing np4 result file for vtkdiff
-ogs-PhaseField_2D_surfing_AT1_vd-mpirun,ogs-PhaseField_2D_surfing_AT1_vd-mpirun-np4,PASS,14.140400,FAIL,0.162437,-13.977963,0.011487,missing cfg4 partitioned mesh
-ogs-PhaseField_2D_surfing_AT1_vd-mpirun-vtkdiff,ogs-PhaseField_2D_surfing_AT1_vd-mpirun-np4-vtkdiff,PASS,0.033524,FAIL,0.029279,-0.004245,0.873368,missing np4 result file for vtkdiff
-ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun,ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun-np4,PASS,6.522730,FAIL,0.160026,-6.362704,0.024534,missing cfg4 partitioned mesh
-ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun-vtkdiff,ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun-np4-vtkdiff,PASS,0.034278,FAIL,0.029888,-0.004390,0.871922,missing np4 result file for vtkdiff
-ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun,ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun-np4,PASS,13.791700,FAIL,0.171392,-13.620308,0.012427,missing cfg4 partitioned mesh
-ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun-vtkdiff,ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun-np4-vtkdiff,PASS,0.042783,FAIL,0.035465,-0.007317,0.828964,missing np4 result file for vtkdiff
-ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun,ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun-np4,PASS,15.128000,FAIL,0.162794,-14.965206,0.010761,missing cfg4 partitioned mesh
-ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun-vtkdiff,ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun-np4-vtkdiff,PASS,0.042221,FAIL,0.034710,-0.007511,0.822111,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun-np4,PASS,0.199966,FAIL,0.177998,-0.021968,0.890141,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun-np4-vtkdiff,PASS,0.023093,FAIL,0.023714,0.000622,1.026918,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun-np4,PASS,0.191425,FAIL,0.177260,-0.014165,0.926002,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun-np4-vtkdiff,PASS,0.022712,FAIL,0.024657,0.001945,1.085623,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun-np4,PASS,0.169715,FAIL,0.161847,-0.007868,0.953640,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun-np4-vtkdiff,PASS,0.022189,FAIL,0.025046,0.002856,1.128719,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun-np4,PASS,0.200836,FAIL,0.161543,-0.039293,0.804353,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun-np4-vtkdiff,PASS,0.026484,FAIL,0.024050,-0.002434,0.908103,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun-np4,PASS,0.479230,FAIL,0.176402,-0.302828,0.368095,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun-np4-vtkdiff,PASS,0.034393,FAIL,0.026507,-0.007886,0.770700,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun-np4,PASS,2.467880,FAIL,0.200491,-2.267389,0.081240,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun-np4-vtkdiff,PASS,0.104795,FAIL,0.066131,-0.038664,0.631055,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun-np4,PASS,0.549752,FAIL,0.176908,-0.372844,0.321796,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun-np4-vtkdiff,PASS,0.041993,FAIL,0.032740,-0.009253,0.779660,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun-np4,PASS,0.829541,FAIL,0.173303,-0.656238,0.208914,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun-np4-vtkdiff,PASS,0.049666,FAIL,0.036194,-0.013472,0.728753,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun-np4,PASS,1.057640,FAIL,0.174922,-0.882718,0.165389,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun-np4-vtkdiff,PASS,0.058033,FAIL,0.039013,-0.019020,0.672254,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun-np4,PASS,1.339120,FAIL,0.164157,-1.174963,0.122586,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun-np4-vtkdiff,PASS,0.068139,FAIL,0.046114,-0.022024,0.676775,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun-np4,PASS,0.162172,FAIL,0.175939,0.013767,1.084891,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun-np4-vtkdiff,PASS,0.022079,FAIL,0.023260,0.001181,1.053485,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun-np4,PASS,0.140806,FAIL,0.166810,0.026004,1.184680,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun-np4-vtkdiff,PASS,0.022440,FAIL,0.025632,0.003192,1.142258,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun-np4,PASS,0.142646,FAIL,0.156542,0.013896,1.097416,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun-np4-vtkdiff,PASS,0.021865,FAIL,0.024478,0.002613,1.119491,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun-np4,PASS,0.172574,FAIL,0.170743,-0.001831,0.989390,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun-np4-vtkdiff,PASS,0.025332,FAIL,0.024863,-0.000469,0.981478,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun-np4,PASS,0.345318,FAIL,0.169854,-0.175464,0.491877,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun-np4-vtkdiff,PASS,0.034620,FAIL,0.027798,-0.006823,0.802926,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun-np4,PASS,2.459460,FAIL,0.174943,-2.284517,0.071131,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun-np4-vtkdiff,PASS,0.114307,FAIL,0.065685,-0.048622,0.574639,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun-np4,PASS,0.601254,FAIL,0.172939,-0.428315,0.287631,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun-np4-vtkdiff,PASS,0.043093,FAIL,0.033233,-0.009860,0.771193,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun-np4,PASS,0.732756,FAIL,0.176549,-0.556207,0.240938,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun-np4-vtkdiff,PASS,0.051875,FAIL,0.034559,-0.017315,0.666207,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun-np4,PASS,0.991527,FAIL,0.169933,-0.821594,0.171385,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun-np4-vtkdiff,PASS,0.060110,FAIL,0.039035,-0.021074,0.649401,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun-np4,PASS,1.275520,FAIL,0.156534,-1.118986,0.122722,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun-np4-vtkdiff,PASS,0.070384,FAIL,0.046516,-0.023868,0.660892,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_line_1_1e1-mpirun,ogs-SteadyStateDiffusion_line_1_1e1-mpirun-np4,PASS,0.138739,FAIL,0.169178,0.030439,1.219398,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_line_1_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_line_1_1e1-mpirun-np4-vtkdiff,PASS,0.023224,FAIL,0.020407,-0.002817,0.878700,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun,ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun-np4,PASS,0.142301,FAIL,0.175031,0.032730,1.230005,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun-np4-vtkdiff,PASS,0.021875,FAIL,0.028284,0.006408,1.292946,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun-np4,PASS,0.163154,FAIL,0.170209,0.007055,1.043241,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun-np4-vtkdiff,PASS,0.025316,FAIL,0.024776,-0.000540,0.978673,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun-np4,PASS,0.158919,FAIL,0.173752,0.014833,1.093337,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun-np4-vtkdiff,PASS,0.025476,FAIL,0.023417,-0.002059,0.919175,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun-np4,PASS,0.161902,FAIL,0.175575,0.013673,1.084452,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun-np4-vtkdiff,PASS,0.024694,FAIL,0.022306,-0.002388,0.903292,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun-np4,PASS,0.169111,FAIL,0.180345,0.011234,1.066430,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun-np4-vtkdiff,PASS,0.026011,FAIL,0.020052,-0.005959,0.770898,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun-np4,PASS,0.242989,FAIL,0.165922,-0.077067,0.682837,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun-np4-vtkdiff,PASS,0.031917,FAIL,0.024800,-0.007117,0.777021,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun-np4,PASS,0.158965,FAIL,0.174330,0.015365,1.096656,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun-np4-vtkdiff,PASS,0.024836,FAIL,0.024486,-0.000350,0.985892,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun-np4,PASS,0.163624,FAIL,0.171693,0.008069,1.049314,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun-np4-vtkdiff,PASS,0.023992,FAIL,0.024272,0.000280,1.011675,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun-np4,PASS,0.164442,FAIL,0.195086,0.030644,1.186351,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun-np4-vtkdiff,PASS,0.024653,FAIL,0.020970,-0.003682,0.850625,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun-np4,PASS,0.169103,FAIL,0.197016,0.027913,1.165065,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun-np4-vtkdiff,PASS,0.025242,FAIL,0.020128,-0.005114,0.797409,missing np4 result file for vtkdiff
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun-np4,PASS,0.227634,FAIL,0.171789,-0.055845,0.754672,missing cfg4 partitioned mesh
-ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun-np4-vtkdiff,PASS,0.032808,FAIL,0.024551,-0.008257,0.748327,missing np4 result file for vtkdiff
+ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp,ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp-np4,PASS,0.255500,PASS,0.393860,0.138360,1.541526,
+ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp-vtkdiff,ogs-1D_HeatConduction_dirichlet_SourceTerm_PETSc-mpirun-omp-np4-vtkdiff,PASS,0.038047,FAIL,0.037602,-0.000446,0.988288,missing np4 result file for vtkdiff
+ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun,ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun-np4,PASS,12.734300,PASS,3.987030,-8.747270,0.313094,
+ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun-vtkdiff,ogs-HMPhaseField_3D_beam_tens_AT1_iso-mpirun-np4-vtkdiff,PASS,0.048294,FAIL,0.039081,-0.009212,0.809248,missing np4 result file for vtkdiff
+ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun,ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun-np4,PASS,14.386000,PASS,4.352340,-10.033660,0.302540,
+ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun-vtkdiff,ogs-HMPhaseField_3D_beam_tens_AT1_vd-mpirun-np4-vtkdiff,PASS,0.049023,FAIL,0.038328,-0.010695,0.781831,missing np4 result file for vtkdiff
+ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun,ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun-np4,PASS,0.148346,PASS,0.212425,0.064079,1.431956,
+ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun-vtkdiff,ogs-LiquidFlowDirichletBCWithinTimeInterval-mpirun-np4-vtkdiff,PASS,0.028566,FAIL,0.033365,0.004799,1.167996,missing np4 result file for vtkdiff
+ogs-LiquidFlow_AxisymTheis-mpirun,ogs-LiquidFlow_AxisymTheis-mpirun-np4,PASS,0.227857,PASS,0.262681,0.034824,1.152833,
+ogs-LiquidFlow_AxisymTheis-mpirun-vtkdiff,ogs-LiquidFlow_AxisymTheis-mpirun-np4-vtkdiff,PASS,0.020003,FAIL,0.024021,0.004017,1.200839,missing np4 result file for vtkdiff
+ogs-LiquidFlow_GravityDriven-mpirun,ogs-LiquidFlow_GravityDriven-mpirun-np4,PASS,0.173704,PASS,0.190279,0.016575,1.095421,
+ogs-LiquidFlow_GravityDriven-mpirun-vtkdiff,ogs-LiquidFlow_GravityDriven-mpirun-np4-vtkdiff,PASS,0.020302,FAIL,0.026256,0.005954,1.293247,missing np4 result file for vtkdiff
+ogs-LiquidFlow_LineDirichletNeumannBC-mpirun,ogs-LiquidFlow_LineDirichletNeumannBC-mpirun-np4,PASS,0.165791,PASS,0.188674,0.022883,1.138023,
+ogs-LiquidFlow_LineDirichletNeumannBC-mpirun-vtkdiff,ogs-LiquidFlow_LineDirichletNeumannBC-mpirun-np4-vtkdiff,PASS,0.020369,FAIL,0.024283,0.003914,1.192179,missing np4 result file for vtkdiff
+ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun,ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun-np4,PASS,0.158268,PASS,0.199494,0.041226,1.260482,
+ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun-vtkdiff,ogs-LiquidFlow_PressureBCatCornerOfAnisotropicSquare-mpirun-np4-vtkdiff,PASS,0.020152,FAIL,0.023403,0.003251,1.161334,missing np4 result file for vtkdiff
+ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp,ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp-np4,PASS,15.077700,FAIL,0.208613,-14.869087,0.013836,missing cfg4 partitioned mesh
+ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp-vtkdiff,ogs-OneThreadPETSc_ThermoRichardsFlow_TaskCDECOVALEX2023-mpirun-omp-np4-vtkdiff,PASS,0.050335,FAIL,0.043505,-0.006830,0.864310,missing np4 result file for vtkdiff
+ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp,ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp-np4,PASS,0.179444,FAIL,0.158718,-0.020726,0.884499,missing cfg4 partitioned mesh
+ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp-vtkdiff,ogs-ParallelFEM_ThermoRichardsFlow_comp_TRMuni_unsaturated-TRuni_unsaturated-mpirun-omp-np4-vtkdiff,PASS,0.045976,FAIL,0.042522,-0.003454,0.924872,missing np4 result file for vtkdiff
+ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun,ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun-np4,PASS,1.182840,PASS,0.613140,-0.569700,0.518363,
+ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun-vtkdiff,ogs-Parallel_RichardsMechanics_RichardsFlow_2d_richardsflow-mpirun-np4-vtkdiff,PASS,0.028319,FAIL,0.030822,0.002502,1.088367,missing np4 result file for vtkdiff
+ogs-PhaseField_2D_surfing_AT1_vd-mpirun,ogs-PhaseField_2D_surfing_AT1_vd-mpirun-np4,PASS,14.051200,PASS,6.352440,-7.698760,0.452092,
+ogs-PhaseField_2D_surfing_AT1_vd-mpirun-vtkdiff,ogs-PhaseField_2D_surfing_AT1_vd-mpirun-np4-vtkdiff,PASS,0.039295,FAIL,0.034076,-0.005219,0.867189,missing np4 result file for vtkdiff
+ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun,ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun-np4,PASS,6.518090,FAIL,0.183270,-6.334820,0.028117,missing cfg4 partitioned mesh
+ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun-vtkdiff,ogs-PhaseField_2D_surfing_AT1_vd_restart-mpirun-np4-vtkdiff,PASS,0.041586,FAIL,0.034057,-0.007529,0.818947,missing np4 result file for vtkdiff
+ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun,ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun-np4,PASS,13.488500,PASS,4.162960,-9.325540,0.308630,
+ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun-vtkdiff,ogs-PhaseField_3D_beam_tens_AT1_iso-mpirun-np4-vtkdiff,PASS,0.050960,FAIL,0.039409,-0.011551,0.773324,missing np4 result file for vtkdiff
+ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun,ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun-np4,PASS,15.381600,PASS,4.628090,-10.753510,0.300885,
+ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun-vtkdiff,ogs-PhaseField_3D_beam_tens_AT1_vd-mpirun-np4-vtkdiff,PASS,0.049365,FAIL,0.039450,-0.009914,0.799162,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun-np4,PASS,0.197944,PASS,0.274483,0.076539,1.386670,
+ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e0-mpirun-np4-vtkdiff,PASS,0.019682,FAIL,0.020838,0.001156,1.058739,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun-np4,PASS,0.190375,PASS,0.289204,0.098829,1.519128,
+ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e1-mpirun-np4-vtkdiff,PASS,0.019635,FAIL,0.020049,0.000414,1.021064,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun-np4,PASS,0.169056,FAIL,0.176328,0.007272,1.043015,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e2-mpirun-np4-vtkdiff,PASS,0.019657,FAIL,0.020357,0.000699,1.035580,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun-np4,PASS,0.192367,PASS,0.266704,0.074337,1.386433,
+ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e3-mpirun-np4-vtkdiff,PASS,0.020334,FAIL,0.020397,0.000063,1.003084,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun-np4,PASS,0.360915,PASS,0.264200,-0.096715,0.732028,
+ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e4-mpirun-np4-vtkdiff,PASS,0.026631,FAIL,0.024124,-0.002507,0.905854,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun-np4,PASS,2.429260,PASS,0.892733,-1.536527,0.367492,
+ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_1e5-mpirun-np4-vtkdiff,PASS,0.100043,FAIL,0.056428,-0.043615,0.564039,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun-np4,PASS,0.582439,PASS,0.316509,-0.265930,0.543420,
+ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_2e4-mpirun-np4-vtkdiff,PASS,0.033251,FAIL,0.026653,-0.006598,0.801581,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun-np4,PASS,0.723233,PASS,0.367729,-0.355504,0.508452,
+ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_3e4-mpirun-np4-vtkdiff,PASS,0.040072,FAIL,0.030213,-0.009859,0.753972,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun-np4,PASS,1.049000,PASS,0.417387,-0.631613,0.397890,
+ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_4e4-mpirun-np4-vtkdiff,PASS,0.050250,FAIL,0.034839,-0.015411,0.693320,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun-np4,PASS,1.334630,PASS,0.555023,-0.779607,0.415863,
+ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_5e4-mpirun-np4-vtkdiff,PASS,0.061248,FAIL,0.038075,-0.023173,0.621650,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun-np4,PASS,0.161903,PASS,0.187313,0.025410,1.156946,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e0-mpirun-np4-vtkdiff,PASS,0.019858,FAIL,0.021034,0.001176,1.059236,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun-np4,PASS,0.140671,PASS,0.190926,0.050255,1.357252,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e1-mpirun-np4-vtkdiff,PASS,0.019340,FAIL,0.019784,0.000445,1.022994,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun-np4,PASS,0.142001,FAIL,0.172626,0.030625,1.215667,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e2-mpirun-np4-vtkdiff,PASS,0.019887,FAIL,0.019789,-0.000098,0.995092,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun-np4,PASS,0.172144,PASS,0.197252,0.025108,1.145855,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e3-mpirun-np4-vtkdiff,PASS,0.020273,FAIL,0.020240,-0.000033,0.998357,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun-np4,PASS,0.382747,PASS,0.259476,-0.123271,0.677931,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e4-mpirun-np4-vtkdiff,PASS,0.027216,FAIL,0.023521,-0.003694,0.864254,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun-np4,PASS,2.504120,PASS,0.823661,-1.680459,0.328922,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_1e5-mpirun-np4-vtkdiff,PASS,0.114116,FAIL,0.058983,-0.055133,0.516871,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun-np4,PASS,0.592574,PASS,0.329897,-0.262677,0.556719,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_2e4-mpirun-np4-vtkdiff,PASS,0.033720,FAIL,0.026305,-0.007415,0.780098,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun-np4,PASS,0.858299,PASS,0.350887,-0.507412,0.408817,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_3e4-mpirun-np4-vtkdiff,PASS,0.042213,FAIL,0.029378,-0.012835,0.695941,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun-np4,PASS,1.020330,PASS,0.453118,-0.567212,0.444090,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_4e4-mpirun-np4-vtkdiff,PASS,0.054827,FAIL,0.033578,-0.021249,0.612435,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun-np4,PASS,1.317810,PASS,0.508412,-0.809398,0.385801,
+ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_cube_1x1x1_Neumann_5e4-mpirun-np4-vtkdiff,PASS,0.072482,FAIL,0.037172,-0.035310,0.512843,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_line_1_1e1-mpirun,ogs-SteadyStateDiffusion_line_1_1e1-mpirun-np4,PASS,0.137102,PASS,0.189818,0.052716,1.384502,
+ogs-SteadyStateDiffusion_line_1_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_line_1_1e1-mpirun-np4-vtkdiff,PASS,0.023645,FAIL,0.021952,-0.001693,0.928401,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun,ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun-np4,PASS,0.151469,PASS,0.192324,0.040855,1.269725,
+ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_line_1_Neumann_1e1-mpirun-np4-vtkdiff,PASS,0.024644,FAIL,0.021749,-0.002895,0.882516,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun-np4,PASS,0.163002,PASS,0.194395,0.031393,1.192593,
+ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e0-mpirun-np4-vtkdiff,PASS,0.025185,FAIL,0.022949,-0.002236,0.911213,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun-np4,PASS,0.158662,FAIL,0.163158,0.004496,1.028337,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e1-mpirun-np4-vtkdiff,PASS,0.026129,FAIL,0.022007,-0.004122,0.842243,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun-np4,PASS,0.161392,FAIL,0.163592,0.002200,1.013631,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e2-mpirun-np4-vtkdiff,PASS,0.024782,FAIL,0.022115,-0.002667,0.892376,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun-np4,PASS,0.170136,FAIL,0.171818,0.001682,1.009886,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e3-mpirun-np4-vtkdiff,PASS,0.025933,FAIL,0.023171,-0.002762,0.893497,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun,ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun-np4,PASS,0.237584,FAIL,0.173379,-0.064205,0.729759,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_1e4-mpirun-np4-vtkdiff,PASS,0.031873,FAIL,0.027117,-0.004756,0.850774,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun-np4,PASS,0.156624,PASS,0.185586,0.028962,1.184914,
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e0-mpirun-np4-vtkdiff,PASS,0.023299,FAIL,0.022011,-0.001288,0.944735,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun-np4,PASS,0.157343,FAIL,0.167260,0.009917,1.063028,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e1-mpirun-np4-vtkdiff,PASS,0.025527,FAIL,0.022312,-0.003214,0.874073,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun-np4,PASS,0.167569,FAIL,0.160480,-0.007089,0.957695,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e2-mpirun-np4-vtkdiff,PASS,0.025403,FAIL,0.022447,-0.002956,0.883632,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun-np4,PASS,0.169271,FAIL,0.171910,0.002639,1.015590,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e3-mpirun-np4-vtkdiff,PASS,0.025087,FAIL,0.021897,-0.003190,0.872846,missing np4 result file for vtkdiff
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun-np4,PASS,0.227667,FAIL,0.173612,-0.054055,0.762570,missing cfg4 partitioned mesh
+ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun-vtkdiff,ogs-SteadyStateDiffusion_square_1x1_Neumann_1e4-mpirun-np4-vtkdiff,PASS,0.034371,FAIL,0.025778,-0.008593,0.749999,missing np4 result file for vtkdiff

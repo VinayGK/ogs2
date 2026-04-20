@@ -59,6 +59,18 @@ option(
     OFF
 )
 
+option(
+    OGS_PETSC_NP4_VARIANTS_REQUIRE_CFG4_READY
+    "Register np=4 PETSc variants only when cfg4 meshes are already available or can be prepared."
+    ON
+)
+
+option(
+    OGS_PETSC_NP4_AUTO_PREPARE_CFG4
+    "Automatically prepare missing cfg4 partitioned meshes for generated np=4 PETSc variants."
+    ON
+)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/AddTest.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/OgsTest.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/test/NotebookTest.cmake)

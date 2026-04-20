@@ -183,6 +183,7 @@ endmacro()
 macro(_ogs_add_np4_test_variant BASE_TEST_NAME)
     set(_wrapper_backup ${OgsTest_WRAPPER})
     set(_labels_backup ${labels})
+    set(_exe_args_backup ${_exe_args})
 
     set(_np4_wrapper "")
     set(_expect_np_value FALSE)
@@ -198,18 +199,69 @@ macro(_ogs_add_np4_test_variant BASE_TEST_NAME)
         endif()
     endforeach()
 
+    set(_register_np4_variant TRUE)
+    set(_np4_setup_test "")
+    set(_np4_project_file "${OgsTest_SOURCE_DIR}/${OgsTest_NAME}")
+    set(_np4_cfg_ready FALSE)
+
+    if(EXISTS "${_np4_project_file}")
+        _ogs_project_has_cfg4_for_all_meshes("${_np4_project_file}" 4
+                                             _np4_cfg_ready
+        )
+    endif()
+
+    if(OGS_PETSC_NP4_VARIANTS_REQUIRE_CFG4_READY)
+        if(NOT EXISTS "${_np4_project_file}")
+            set(_register_np4_variant FALSE)
+        elseif(NOT _np4_cfg_ready AND (NOT OGS_PETSC_NP4_AUTO_PREPARE_CFG4
+                                       OR NOT TARGET partmesh)
+        )
+            set(_register_np4_variant FALSE)
+        endif()
+    endif()
+
+    if(NOT _register_np4_variant)
+        message(
+            STATUS
+                "Skipping PETSc np4 variant for ${BASE_TEST_NAME}: cfg4 meshes are not ready and auto-preparation is unavailable."
+        )
+    endif()
+
     set(OgsTest_WRAPPER ${_np4_wrapper})
     set(_np4_labels ${labels})
     list(REMOVE_ITEM _np4_labels petsc_np1_source)
     list(APPEND _np4_labels petsc_np4_variant)
     set(labels ${_np4_labels})
-    _ogs_add_test(${BASE_TEST_NAME}-np4)
 
-    if("${BASE_TEST_NAME}" MATCHES "-omp$")
-        _set_omp_test_properties_for(${BASE_TEST_NAME}-np4)
+    if(_register_np4_variant)
+        if(EXISTS "${_np4_project_file}")
+            set(_np4_mesh_token "${BASE_TEST_NAME}-np4-meshes")
+            string(SHA1 _np4_mesh_hash "${_np4_mesh_token}")
+            string(SUBSTRING "${_np4_mesh_hash}" 0 8 _np4_mesh_short_hash)
+            set(_np4_mesh_dir
+                "${Data_BINARY_DIR}/${OgsTest_DIR}_${_np4_mesh_short_hash}_np4_meshes"
+            )
+            list(APPEND _exe_args -m ${_np4_mesh_dir})
+            _ogs_add_np4_mesh_setup_test(
+                _np4_setup_test "${BASE_TEST_NAME}-np4" "${_np4_project_file}"
+                "${_np4_mesh_dir}" "${OgsTest_DISABLED}"
+            )
+        endif()
+
+        _ogs_add_test(${BASE_TEST_NAME}-np4)
+        if(NOT _np4_setup_test STREQUAL "")
+            _ogs_append_test_dependency("${BASE_TEST_NAME}-np4"
+                                        "${_np4_setup_test}"
+            )
+        endif()
+
+        if("${BASE_TEST_NAME}" MATCHES "-omp$")
+            _set_omp_test_properties_for(${BASE_TEST_NAME}-np4)
+        endif()
     endif()
 
     set(OgsTest_WRAPPER ${_wrapper_backup})
+    set(_exe_args ${_exe_args_backup})
     set(labels ${_labels_backup})
 endmacro()
 
