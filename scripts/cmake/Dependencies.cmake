@@ -8,25 +8,7 @@ if(NOT CPM_SOURCE_CACHE)
 endif()
 
 if(OGS_BUILD_TESTING)
-    find_package(GTest QUIET)
-    if(GTest_FOUND)
-        add_library(gtest ALIAS GTest::gtest)
-        add_library(gmock ALIAS GTest::gmock)
-
-        CPMAddPackage(
-            NAME autocheck
-            GITHUB_REPOSITORY ufz/autocheck
-            GIT_TAG e388ecbb31c49fc2724c8d0436da313b6edca7fd
-            DOWNLOAD_ONLY YES
-            SYSTEM TRUE
-        )
-        if(autocheck_ADDED)
-            add_library(autocheck INTERFACE IMPORTED)
-            target_include_directories(
-                autocheck SYSTEM INTERFACE ${autocheck_SOURCE_DIR}/include
-            )
-        endif()
-    elseif(GUIX_BUILD)
+    if(GUIX_BUILD)
         find_package(GTest REQUIRED)
         add_library(gtest ALIAS GTest::gtest)
         add_library(gmock ALIAS GTest::gmock)
