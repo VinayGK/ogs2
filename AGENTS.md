@@ -35,3 +35,7 @@ Every process must have:
 - Integration tests: `Tests/Data/{ProcessName}/` (`.prj` files with reference outputs)
 - Always run ctests from release build.
 - Check `.clang-format`, `.clang-tidy` for linting rules
+
+## Open work
+
+For longer-running tasks (current state, next step, file/line entry points), see [`WORKLOG.md`](./WORKLOG.md) at the repo root. Read it before starting DSM, RichardsMechanics, or constitutive-closure work — the DSM additive-hydration-term task lives there with frozen reference numbers and the open MFront-bridge prerequisites.
