@@ -203,6 +203,274 @@ The regularisation is also a precondition for the upcoming hydration term — `K
 - `ctest -R "mfront_restart_part1_dsm_micromacro_mcc_tuller_(native|bridge)" --output-on-failure` runs to `t_end = 1000` on both branches with no step-cut errors.
 - Native↔MFront swelling-pressure parity stays ≤0.1% at every output time (existing tolerance).
 
+#### Failure 3 — `libOgsMFrontBehaviour` dlopen fails on macOS
+
+**Symptom** (six logs: `beacon_1[abc]_vk_notebook_mcc_bridge{,_omp}`):
+```
+critical: MaterialLib/SolidModels/MFront/CreateMFrontGeneric.cpp:313 loadBehaviour()
+error: Could not load the RichardsMechanicsNotebookBridge_MCC from libOgsMFrontBehaviour
+       … library 'libOgsMFrontBehaviour' could not be loaded
+       (dlopen(libOgsMFrontBehaviour, 0x0002): tried: 'libOgsMFrontBehaviour' (no such file),
+       …14 paths…) …
+```
+
+**Root cause**: the `.dylib` is built and present at `release-mfront-tpm/lib/libOgsMFrontBehaviour.dylib`, but the OGS lookup asks dyld for the bare name `libOgsMFrontBehaviour` (no extension). macOS dyld does not auto-append `.dylib` for relative-path or rpath lookups the way Linux dlopen appends `.so`. The result is "no such file" in every search path even though the file exists. Pure environmental bug, not a build problem and unrelated to constitutive.
+
+**Fix 3A — runtime, ctest-side (immediate)**: set `DYLD_LIBRARY_PATH` for the affected ctests via `set_tests_properties(... PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/lib")` in the relevant CMake `Tests.cmake`. macOS post-Catalina also requires SIP-aware paths; if `DYLD_LIBRARY_PATH` is stripped, fall back to `DYLD_FALLBACK_LIBRARY_PATH`.
+
+**Fix 3B — code, platform-aware lookup (proper)**: in `CreateMFrontGeneric.cpp:313` (or wherever the lib name is composed before passing to TFEL's `LibrariesManager::loadLibrary`), append the platform-correct extension explicitly:
+```cpp
+#if defined(__APPLE__)
+    constexpr auto kLibExt = ".dylib";
+#elif defined(_WIN32)
+    constexpr auto kLibExt = ".dll";
+#else
+    constexpr auto kLibExt = ".so";
+#endif
+auto const lib_name = std::string{"libOgsMFrontBehaviour"} + kLibExt;
+```
+This matches what TFEL's own external-library loader does internally and removes the macOS-only failure.
+
+**Fix 3C — quick local workaround (one-shot)**: symlink `lib/libOgsMFrontBehaviour → libOgsMFrontBehaviour.dylib` in the build tree. Acceptable for local testing, not for CI.
+
+**Verification**: `ctest -R "beacon_1[abc]_vk_notebook_mcc_bridge" --output-on-failure` returns 0 on macOS.
+
+#### Failure 4 — `mfront_restart_part1_notebook_mcc_tuller_{native,bridge}` step-5 cut at t=50
+
+**Symptom**: identical pattern to Failure 2 — both native and bridge variants fail with `Time stepper cannot reduce the time step size further`, but at step #5 / t = 50 (because this prj uses `delta_t = 10` instead of `delta_t = 1`). Steps 1–4 converge in ~1.5 ms each, step 5 fails.
+
+**Root cause**: same constitutive pathology as Failure 2 (vdW singularity, local-Newton overshoot, MCC + Tuller-Or coupling). The shared `mcc_tuller` token in both failing test names is the giveaway — the MCC + Tuller combination is the trigger; the DSM-bearing variant fails earlier (Failure 2 at t=8) because it adds more nonlinearity.
+
+**Fix**: covered by Failure 2's fixes — Fix 2A (regularise vdW closure) is the primary, Fix 2C (line search in local Newton) is the safety net. Once those land, Failure 4 should resolve without any additional change. **Verify** by running `ctest -R "mfront_restart_part1_notebook_mcc_tuller_(native|bridge)" --output-on-failure` after Failure 2's fixes; if Failure 4 still trips, the MCC closure has its own pathology distinct from vdW and warrants a separate diagnostic pass.
+
+#### Failure 5 — `mfront_restart_part1_rm_bridge.prj` empty `<output><variables>` block
+
+**Symptom**:
+```
+critical: Applications/ApplicationsLib/TestDefinition.cpp:218 TestDefinition()
+error: No files from test definitions were added for tests but 7 tests were specified.
+```
+
+**Root cause**: the prj's `<output>` block has `<variables></variables>` (empty) while its `<test_definition>` declares 7 `<vtkdiff>` checks against fields `displacement`, `sigma`, `epsilon`, `pressure`, `velocity`, `MassFlowRate`, `NodalForces`. With empty `<variables>`, OGS does not write the fields into the VTU (or skips file emission entirely), so the test-definition regex matches zero files.
+
+**Fix**: populate the `<variables>` block in `mfront_restart_part1_rm_bridge.prj`:
+```xml
+<variables>
+    <variable>displacement</variable>
+    <variable>sigma</variable>
+    <variable>epsilon</variable>
+    <variable>pressure</variable>
+    <variable>velocity</variable>
+    <variable>MassFlowRate</variable>
+    <variable>NodalForces</variable>
+</variables>
+```
+The same fix likely applies to any sibling prj that uses `mfront_restart_part1_*` naming with empty `<variables>`. Sweep with:
+```sh
+grep -l "<variables>$" Tests/Data/RichardsMechanics/mfront_restart_part1_*.prj
+```
+and patch all matches.
+
+**Verification**: `ctest -R "mfront_restart_part1_rm_bridge" --output-on-failure` returns 0 with all 7 vtkdiff checks executed.
+
+#### Latent issue — MFront bridge silently uses plane strain on axisymmetric meshes
+
+**Symptom** (warning in every 2D MFront-bridge test):
+```
+warning: The model is defined in 2D. On the material level currently a plane strain setting is used.
+         In particular it is not checked if axial symmetry or plane stress are assumed.
+         Special material behaviour for these settings is currently not supported.
+```
+Source: `MaterialLib/SolidModels/MFront/CreateMFrontGeneric.cpp:366`.
+
+**Why this matters here**: `mfront_parity_1element_bridge.prj` declares `<mesh axially_symmetric="true">` (line 4) but the constitutive integrator treats the element as plane strain. The hoop strain term ε_θθ = u_r/r is zero in plane strain but non-zero in axisymmetric — every stress component dependent on volumetric strain is wrong by exactly that contribution. For DSM swelling, where the volumetric driver is large, this is not a small error.
+
+**Status**: latent — the bridge tests pass (when they pass) by comparing against reference VTUs that were also generated under plane-strain treatment. So native vs. MFront parity is preserved *within the wrong physics*; the absolute swelling stress is not the axisymmetric solution it claims to be.
+
+**Fix** (medium-effort, before any axisymmetric DSM publication): in `CreateMFrontGeneric.cpp` honour the mesh's `axially_symmetric` attribute and instantiate the MFront behaviour with `MGIS::Behaviour::Hypothesis::AXISYMMETRICAL` instead of `PLANESTRAIN` when the flag is set. TFEL/MGIS supports the hypothesis natively for `Standard*` behaviours; the bridge `.mfront` files (`RichardsMechanicsDSMMicroMacroBridge*.mfront`) need to be re-checked to confirm they declare an `@ModellingHypotheses` block that lists `Axisymmetrical` (re-generate behaviours after editing).
+
+**Quick interim mitigation**: change every axisymmetric DSM test prj to `axially_symmetric="false"` on its mesh until the constitutive supports the hypothesis — this at least makes the inconsistency visible (geometry no longer claims axisymmetric while constitutive silently isn't). Better yet, fail loudly: convert the warning into an `OGS_FATAL` when `hypothesis = PLANESTRAIN` and `mesh.axially_symmetric = true`, so the inconsistency is impossible to ignore.
+
+**Verification**: re-run `mfront_parity_1element_bridge` with the axisymmetric hypothesis enabled; hoop strain should appear in the output and the swelling stress magnitude should differ from the plane-strain reference by a quantifiable amount. Document the new reference in the parity-test prj.
+
+### DSM source audit (issues found by reading the code on `dsm_native`)
+
+These are not test-runtime failures (no log line points at them) but are real bugs found in the DSM source on `dsm_native` (recovered to `34eb79dabc`). Address them when the implementation lands; some of them block clean addition of the hydration term and others are latent fragilities.
+
+**Audit ground rules for the agent**:
+- All file paths below are valid on `dsm_native` (= `origin/dsm-nb-transition` tip after recovery).
+- For each item, apply the fix on `dsm_native` first, then port the equivalent change to `dsm_mfront` (mirror in `RichardsMechanicsDSMMicroMacroBridge.mfront` for items affecting the closure; native-only for items affecting the local Newton or guards).
+- Add a regression unit test for every fix in `Tests/ProcessLib/RichardsMechanics/PotentialExchange.cpp` or `DSMMicroMacroSingleIntegrationPoint.cpp`. The audit explicitly noticed gaps in test coverage; close them with each fix.
+
+#### Audit-1 — Regression in the porosity-ceiling commit `34eb79dabc`: kinematic-fallback path is dead code
+
+**Location**: `ProcessLib/RichardsMechanics/RichardsMechanicsFEM-impl.h`, `struct PotentialExchangeLocalSolveContext` (line ~264) and `boundedMicroWaterContentCeiling` (line ~273) and `computeTransportPorosityUpdate` (line ~349).
+
+**What changed**: the commit altered the default of `PotentialExchangeLocalSolveContext::phi` from `std::numeric_limits<double>::infinity()` to `1.0`. Both `boundedMicroWaterContentCeiling` and `computeTransportPorosityUpdate` test `if (std::isfinite(local_context.phi))` to decide between using the supplied `phi` and computing it from kinematics (`(phi_prev_sum + Δε_v) / (1 + Δε_v)`). Since `1.0` is finite, the kinematic-fallback branch is now unreachable.
+
+**Why it matters**: dormant today (both call sites at lines 2655 and 3425 set `.phi = phi` explicitly via designated initializer), but the original opt-in semantics — caller passes `infinity` to mean "compute from kinematics" — are silently broken. If any future caller forgets `.phi`, the function returns `clamp(1.0, 0, 0.999999) ≈ 1.0` and the porosity ceiling becomes ineffective: every `boundedMicroWaterContentCeiling(...)` call returns `n_l_floor` regardless of state.
+
+**Fix**: revert the default — change line 266 of `RichardsMechanicsFEM-impl.h` from
+```cpp
+double phi = 1.0;
+```
+back to
+```cpp
+double phi = std::numeric_limits<double>::infinity();
+```
+The other defaults (`= 0.0`) on `phi_M_prev`, `phi_m_prev`, `volumetric_strain*` are fine; only `phi` was a sentinel.
+
+**Test**: in `DSMMicroMacroSingleIntegrationPoint.cpp`, add a test that constructs a `PotentialExchangeLocalSolveContext` *without* setting `.phi`, then asserts `boundedMicroWaterContentCeiling(...)` returns the kinematically-derived value (within tolerance). Today's code returns ~1.0; the fix should produce the kinematic value.
+
+#### Audit-2 — vdW cubic singularity unguarded in `PotentialExchange.h`
+
+**Location**: `ProcessLib/RichardsMechanics/ConstitutiveRelations/PotentialExchange.h:117–135`.
+
+**Symptom**:
+```cpp
+out.mu_lR = potential_sign_factor * prefactor * (nS·nS·nS) * (rho_SR³) / (n_l·n_l·n_l);
+out.dmu_lR_dnl = -3.0 * out.mu_lR / n_l;   //  ~ -1/n_l^4
+```
+As `n_l → 0+`, `mu_lR → ±∞` and the derivative blows up faster. The only guard is `n_l > 0`.
+
+**Why it matters**: this is the singularity the WORKLOG initially hypothesised for Failure 2. The actual Failure 2 was resolved by a BC change keeping the macro pressure away from the saturated branch — but the singularity itself is intact and will resurface for any prj that drives micro water content low (drying, dehydration, dewetting). It is also a precondition for safely adding the hydration term: `K·exp(−h/λ)` is finite at small `h`, but if vdW remains singular the sum is still pathological.
+
+**Fix**: regularise.
+```cpp
+constexpr double n_l_min_factor = 1e-3;  // floor relative to typical micro porosity
+double const n_l_eff = std::max(n_l, n_l_min_factor * std::max(nS, 1e-6));
+// then use n_l_eff in place of n_l in mu_lR and dmu_lR_dnl
+```
+Or, more physically, set the floor from an interlayer-thickness lower bound: `n_l_min` corresponds to `h_min ≈ 5·10⁻¹¹ m` (sub-water-molecule, well outside the physical regime), inverted via `n_l = ω · ρ_S · (1 − φ) / ρ_L` if needed. Regularise both `mu_lR` and `dmu_lR_dnl`. The `potential_sign_factor` remains correct in either case.
+
+**Test**: add a vdW edge-case test in `Tests/ProcessLib/RichardsMechanics/PotentialExchange.cpp` that sweeps `n_l` from `1e-12 → 0.5` and asserts the result is finite and the FD-derivative matches the analytic one within `1e-3` relative — failing today, passing after the fix.
+
+#### Audit-3 — Macro chemical-potential branch is C⁰ but **not C¹** at `p_L = −p_tol`
+
+**Location**: `PotentialExchange.h:23–51` (`computeYoungLaplaceMacroPotential`).
+
+**Symptom**: at the boundary, value is continuous (both branches → 0 as `p_L → −p_tol⁻`), but `∂μ_LR/∂p_L` jumps from `0` (saturated) to `1/ρ_LR` (unsaturated). With the **default `pressure_tolerance = 0.0`**, the kink sits at exactly `p_L = 0`. This is the cause of the Failure-2 family that was worked around with a BC change in the resolved WORKLOG entry.
+
+**Why it matters**: any future test or production case that sweeps `p_L` across zero will hit the same Newton-oscillation pathology. The user's resolved entry already named this as the next real code task: *"add a smooth transition or a globalization strategy around p_L = 0 / p_cap = 0".*
+
+**Fix candidates** (apply at least one):
+- (a) **Cheap mitigation**: change the default `pressure_tolerance` from `0.0` to `1.0` (Pa) so callers don't accidentally land on the kink. One-line change in the function signature; existing callers that pass an explicit tolerance are unaffected.
+- (b) **Structural fix**: smooth the transition. Replace the hard switch with a tanh blend over a width `ε`:
+  ```cpp
+  double const blend = 0.5 * (1.0 - std::tanh((p_LR + pressure_tolerance) / epsilon));
+  out.mu_LR = blend * (p_LR / rho_LR);
+  out.dmu_LR_dpLR = ...;  // analytic, continuous
+  ```
+  Choose `ε ≈ p_tol / 10` so the blend is concentrated at the boundary and negligible far from it. Regenerate the analytic derivative and FD-test it.
+
+**Test**: add a parametrised FD test in `Tests/ProcessLib/RichardsMechanics/PotentialExchange.cpp` that sweeps `p_L` from `−2·p_tol` to `+2·p_tol` in 50 steps and asserts the FD-derivative jumps by less than some bound. Should fail today (kink), pass after Fix (b). Couple this with a dedicated crossing-test prj — exactly the *"verify on a dedicated crossing test"* gate the resolved WORKLOG entry calls out.
+
+#### Audit-4 — Misleading variable name `mu_LR` in `ComputeMicroPorosity.h`
+
+**Location**: `ProcessLib/RichardsMechanics/ComputeMicroPorosity.h`, `computeMicroPorosity` parameter list and residual at lines 64, 88, 144.
+
+**What's wrong**: the parameter is named `mu_LR` (like the macro chemical potential from `PotentialExchange.h`) but is actually the **dynamic viscosity** (Pa·s) — Darcy-style. The residual line
+```cpp
+- micro_porosity_parameters.mass_exchange_coefficient / mu_LR * (p_L - p_L_m) * dt;
+```
+looks like a divide-by-zero hazard (chemical potential is zero on saturated branch) but actually isn't (viscosity > 0 always). Bug-bait. The Pinion deck flagged this confusion: *"Mathematica: formulas are consistent, but legacy map labels for macro/micro potential are historically swapped."*
+
+**Fix**: rename to `viscosity_L` (or `mu`) in `ComputeMicroPorosity.h`:
+- Line 64 signature: `double const mu_LR` → `double const viscosity_L`.
+- Line 88 residual: `... / mu_LR * (p_L - p_L_m) * dt` → `... / viscosity_L * ...`.
+- Line 144 Jacobian: `alpha_bar / mu_LR * dt` → `alpha_bar / viscosity_L * dt`.
+- Update the doc comment above the function.
+- Audit callers (only one, in `RichardsMechanicsFEM-impl.h:139`) — the call `computeMicroPorosity<...>(..., rho_LR, mu, ...)` already passes `mu` (the viscosity); only the function-side name needs to change.
+
+**Test**: existing tests still pass (rename is non-functional). Optional: add a short doc-test asserting that `computeMicroPorosity` produces the same result whether `viscosity_L` is `1e-3` (water) or `1e-2` (oil) by a factor of 10 in the exchange flux.
+
+#### Audit-5 — Phase-1 (`ComputeMicroPorosity`) and Phase-2 (`computePotentialDrivenMassExchange`) coexist with different physics
+
+**Location**: `ComputeMicroPorosity.h` (Phase-1 Darcy-style) vs. `PotentialExchange.h::computePotentialDrivenMassExchange` (Phase-2 chemical-potential). Both are reachable from `RichardsMechanicsFEM-impl.h`.
+
+**What's wrong**:
+- Phase-1: residual contains `α_bar / μ · Δp` — Darcy transmissibility; `α_bar` has units `m²` (or similar permeability-like).
+- Phase-2: `α_M · (μ_LR − μ_lR)` — chemical-potential driver; `α_M` has units `kg²·J⁻¹·m⁻³·s⁻¹` (per the deck slide on the chemical-potential bridge).
+
+Two code paths, two `α` values with the same name (`mass_exchange_coefficient` / `alpha_bar` / `alpha_M`) but different units and physics. Selection is by which branch in `RichardsMechanicsFEM-impl.h` is taken at runtime, driven by prj configuration. Risk: a prj configured to land on the wrong path silently produces wrong physics with no warning.
+
+**Fix (preferred, structural)**: deprecate Phase-1. After the hydration term is in place and the parity tests pass on Phase-2, mark `computeMicroPorosity` (Phase-1) as `[[deprecated]]` and remove all calling code paths. Single physics, single closure.
+
+**Fix (interim, cheap)**: log loudly at construction time which exchange path is active for each material. Add to `CreateRichardsMechanicsProcess.cpp`:
+```cpp
+INFO("Material '{}': using {} exchange path (alpha = {})",
+     name, use_phase2_potential_exchange ? "Phase-2 chemical potential" : "Phase-1 Darcy",
+     alpha_value);
+```
+Also assert at runtime that exactly one of the two `α` parameters is non-zero per material — fail loud otherwise.
+
+**Test**: a smoke ctest on each branch that sets the wrong-typed `α` and asserts `OGS_FATAL` or a clear log message.
+
+#### Audit-6 — No FD test for derivative continuity across the saturated/unsaturated branch
+
+**Location**: `Tests/ProcessLib/RichardsMechanics/PotentialExchange.cpp` lines ~22–67 (the `PotentialExchangeYoungLaplaceMacroPotential` test).
+
+**What's missing**: the existing test checks the `saturated_branch` flag at points around the boundary (lines 29, 37, 45, 53) but never finite-differences the derivative across it. This is the exact discontinuity that drives Failure 2's family.
+
+**Fix**: add a parametrised test that sweeps `p_L ∈ [−2·p_tol, +2·p_tol]` in 50 points, computes the analytic derivative and the FD derivative, and asserts the maximum FD-vs-analytic error is bounded. Today this should *fail* at the boundary (kink → FD blows up); after Audit-3 Fix (b) lands, it should pass with a clean continuous derivative.
+
+#### Audit-7 — No vdW edge-case tests
+
+**Location**: same file, the `PotentialExchangeVanDerWaalsMicroPotential*` tests. Currently fix `n_l = 0.03` and FD-check at one point.
+
+**Add three tests**:
+1. **Singularity behaviour**: sweep `n_l` from `1e-12` to `0.5` (log-spaced, 30 points). Today expect failure as `n_l → 0`; after Audit-2 fix, expect bounded result and analytic-matching derivative.
+2. **Porosity-ceiling boundary**: with the recent `boundedMicroWaterContentCeiling` enforcing `n_l ≤ phi`, set up cases at `n_l = phi - eps` and `n_l = phi + eps` and assert the bound clamps correctly.
+3. **Sign-factor symmetry**: assert `mu_lR(sign=-1) == -mu_lR(sign=+1)` exactly (currently covered partially by `NegativeAttractiveConvention` test; extend to confirm derivatives flip sign too).
+
+#### Audit-8 — Long-standing TODO debt: rewrite equations with `p_cap = pG − p_L` as primary
+
+**Location**: `RichardsMechanicsFEM-impl.h` lines 1997, 2326, 3157, 3677. Same comment four times: `// TODO : rewrite equations s.t. p_L = pG-p_cap`.
+
+**What it would fix**: using capillary pressure as primary variable instead of liquid pressure eliminates the `p_L = 0` sign switch entirely (because `p_cap` is monotonic from saturated `p_cap = 0` to unsaturated `p_cap > 0`, no sign change). If addressed, **Audits 3, 6, and 8 all become moot** and Failure 2's family disappears structurally.
+
+**Status**: out of scope for the hydration-term task but flagged here so the agent recording the deck refresh in Phase 6 can also add a "Future structural cleanup" subsection in the deck if appropriate.
+
+#### Audit-9 — `computePotentialDrivenMassExchange` has zero input validation
+
+**Location**: `PotentialExchange.h:148–162`.
+
+**What's missing**: no `OGS_FATAL` for `alpha_M < 0` (would invert exchange direction silently). No NaN/inf checks on `mu_LR`, `mu_lR`. Other functions in the same file have eight lines of validation each; this one has none.
+
+**Fix**: add input validation matching the pattern from `computeVanDerWaalsMicroPotential` (lines 80–113):
+```cpp
+if (!(alpha_M >= 0.0))
+{
+    OGS_FATAL("computePotentialDrivenMassExchange requires alpha_M >= 0, got {:g}.", alpha_M);
+}
+if (!std::isfinite(mu_LR) || !std::isfinite(mu_lR))
+{
+    OGS_FATAL("computePotentialDrivenMassExchange requires finite mu_LR and mu_lR, got mu_LR={:g}, mu_lR={:g}.", mu_LR, mu_lR);
+}
+```
+
+#### Audit-10 — `RichardsMechanicsFEM-impl.h:2826`: numerical compromise that may break restarts
+
+**Location**: `RichardsMechanicsFEM-impl.h:2826`. Comment: `// TODO (CL) changed that, using eps_prev for the moment, not B * u_prev`.
+
+**What it means**: the strain at the previous time step is being read from a stored `eps_prev` instead of being recomputed kinematically as `B · u_prev` (where `B` is the strain-displacement matrix). On a restart from a checkpoint, `eps_prev` may not be in sync with `u_prev` if any post-processing happened between checkpoint and restart.
+
+**Fix**: cross-check this against the restart-parity tests (`mfront_restart_part1_*` family). If the parity tests pass, document the assumption explicitly and remove the TODO. If they fail under specific restart scenarios, switch to `B · u_prev` and re-baseline.
+
+### Audit-fix sequencing
+
+Recommended order so each fix has a clean baseline:
+
+1. **Audit-1** (revert `phi` default) — tiny diff, no semantic change for current callers, removes the dead-code regression.
+2. **Audit-9** (add validation to `computePotentialDrivenMassExchange`) — defensive, no behaviour change.
+3. **Audit-4** (rename `mu_LR` to `viscosity_L` in `ComputeMicroPorosity.h`) — pure rename, no behaviour change.
+4. **Audits 6 + 7** (add missing tests) — establish coverage gates *before* the constitutive fixes. Tests should fail at the right places, then pass after the fixes.
+5. **Audit-2** (regularise vdW singularity) — required for the hydration term to be safe at small `n_l`.
+6. **Audit-3** (smooth or pad the macro branch) — fixes Failure 2's family structurally; if Audit-3(a) is taken (cheap default change), do that first; if Audit-3(b) (smooth blend) is taken, do it after the FD test from Audit-6 is in place.
+7. **Audit-5** (deprecate Phase-1 exchange) — only after Phase-2 has proven hydration parity in Phase 5.
+8. **Audit-8** (rewrite with `p_cap` primary) — large refactor, defer to a follow-up task; cite from Phase 6 deck refresh as future work.
+9. **Audit-10** (`eps_prev` vs `B · u_prev`) — investigate during restart-parity verification in Phase 5.
+
 ### Why MFront is the long-term home
 
 - Constitutive evolution is on the critical path (hydration now, possibly Donnan/EDL next). Each closure change in native = C++ edit + OGS rebuild; in MFront = `.mfront` edit + behaviour recompile, OGS untouched.
@@ -346,6 +614,11 @@ These are not blockers for the hydration-term task but the analysis flagged them
 
 Append a dated bullet for each completed phase. Do not delete entries.
 
+- 2026-05-06 native Audit-1/2/3/4/9 application:
+  - Applied Audit-2 in `/Users/vinaykumar/git/ogs-native-dsm-transition/ProcessLib/RichardsMechanics/ConstitutiveRelations/PotentialExchange.h` using the MFront-style `omega3 + omega_min_vdw3` vdW denominator with `h_min_vdw = 5e-11`; adjusted `dmu_lR_dnl`, `dmu_lR_drho_lR`, `dmu_lR_dnS`, and `dmu_lR_drho_SR` consistently.
+  - Verified the source contains the regularisation marker with `grep -q "omega_min\|n_l_min\|h_min" .../PotentialExchange.h` (hit).
+  - Applied Audit-1 (`PotentialExchangeLocalSolveContext::phi` default restored to `std::numeric_limits<double>::infinity()`), Audit-3 (`computeYoungLaplaceMacroPotential` defensive default tolerance set to `1.0` Pa), Audit-4 (`mu_LR` viscosity argument renamed to `viscosity_L` in `ComputeMicroPorosity.h`), and Audit-9 (input validation in `computePotentialDrivenMassExchange`).
+  - Verification: `cmake --build /Users/vinaykumar/git/build/release-native-transition2 --parallel 18` completed successfully; `ctest -j 18 --output-on-failure -R "ogs-RichardsMechanics(/DoubleStructureBenchmark/double_porosity_swelling_RM|_.*dsm_micromacro)"` passed `32/32`.
 - 2026-04-26 Phase 0/1 execution attempt:
   - Remote host `vinaykumar@100.102.97.23:~/git/ogs` fetched successfully; `origin/dsm-nb-transition` advanced to `34eb79dabc`, `origin/dsm-nb-mfront-transition` advanced to `7bbe07925f`.
   - Local `/Users/vinaykumar/git/ogs` branch refs recovered without touching the dirty current worktree: `dsm_native=34eb79dabc`, `dsm_mfront=7bbe07925f`.
@@ -361,7 +634,7 @@ Append a dated bullet for each completed phase. Do not delete entries.
 - 2026-04-27 Phase 3 plumbing execution attempt:
   - Applied Fix 1A in `/Users/vinaykumar/git/ogs-TPM_Swelling_MCC_Coupled`: added a no-op Solid-phase `swelling_stress_rate` property to `Tests/Data/RichardsMechanics/mfront_parity_1element_bridge.prj`. This clears the previously fatal missing-property lookup for the bridge parity test.
   - Applied Fix 2A vdW regularisation in the MFront branch: `MaterialLib/SolidModels/MFront/RichardsMechanicsDSMMicroMacroBridge.mfront` and `RichardsMechanicsDSMMicroMacroBridge_MCC.mfront` now replace the singular `omega^-3` form by a bounded denominator `omega^3 + omega_min^3`, with `h_min = 5e-11 m` and `omega_min = h_min * specific_surface`.
-  - Applied the corresponding native-side vdW regularisation in `/Users/vinaykumar/git/ogs-native-dsm-transition/ProcessLib/RichardsMechanics/ConstitutiveRelations/PotentialExchange.h`, including consistent derivatives of the regularised denominator.
+  - Recorded the corresponding native-side vdW regularisation as intended, but the active native checkout was later found still to contain the unregularised denominator; the actual native-side application is recorded in the 2026-05-06 bullet above.
   - Build verification: `cmake --build /Users/vinaykumar/git/build/release-mfront-tpm --target ogs -j 8` completed successfully. Only pre-existing/unrelated warnings were seen (`ld64.lld` missing `/usr/local/lib`, `GeoLib::Grid` virtual destructor warning).
   - Parity verification: `ctest --test-dir /Users/vinaykumar/git/build/release-mfront-tpm -R 'mfront_parity_1element_(bridge|native)$'` passed 4/4 (`1120`, `1122`, `2471`, `2473`).
   - Restart verification after Fix 2A: `ctest --test-dir /Users/vinaykumar/git/build/release-mfront-tpm -R 'mfront_restart_part1_dsm_micromacro_mcc_tuller_(native|bridge)$'` still failed 0/4 (`1142`, `1144`, `2493`, `2495`) at timestep 8. Because the native Tuller restart uses `ModCamClay_semiExpl_constE` rather than the DSM bridge, the remaining failure is not explained by bridge-only vdW singularity.
