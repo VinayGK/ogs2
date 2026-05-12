@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdflatex -interaction=nonstopmode THMDSMRichardsRM_BEACON_ANCHORS_benchmark_note.tex)",
+      "Bash(git -C /Users/vinaykumar/git/materialmodels add src/TPM/THMDSMRichardsRM_BEACON_ANCHORS_benchmark_note.tex)",
+      "Bash(git -C /Users/vinaykumar/git/materialmodels commit -m ' *)",
+      "Bash(git -C /Users/vinaykumar/git/materialmodels log --oneline -3)",
+      "Bash(/Users/vinaykumar/git/build/ogs-worktrees/build/dsm_native-release/bin/ogs --version)",
+      "Bash(ctest -R \"beacon_1a01_dsm_micromacro_reference-time-vtkdiff$\" --output-on-failure)",
+      "Bash(cp /Users/vinaykumar/git/build/ogs-worktrees/build/dsm_native-release/Tests/Data/RichardsMechanics/beacon_1a01_dsm_micromacro_smoke_t_1000.000000.vtu /Users/vinaykumar/git/ogs-dsm_native/Tests/Data/RichardsMechanics/beacon_1a01_reference_t_1000.000000.vtu)",
+      "Bash(cp /Users/vinaykumar/git/build/ogs-worktrees/build/dsm_native-release/Tests/Data/RichardsMechanics/beacon_1a01_dsm_micromacro_inflow_t_100000.000000.vtu /Users/vinaykumar/git/ogs-dsm_native/Tests/Data/RichardsMechanics/beacon_1a01_dsm_micromacro_inflow_reference_t_100000.000000.vtu)",
+      "Bash(cp /Users/vinaykumar/git/build/ogs-worktrees/build/dsm_native-release/Tests/Data/RichardsMechanics/beacon_1c_dsm_micromacro_smoke_t_1000.000000.vtu /Users/vinaykumar/git/ogs-dsm_native/Tests/Data/RichardsMechanics/beacon_1c_reference_t_1000.000000.vtu)",
+      "Bash(ctest -R \"beacon_1a01_dsm_micromacro_reference|beacon_1a01_dsm_micromacro_inflow_reference|beacon_1c_dsm_micromacro_reference\" --output-on-failure)",
+      "Bash(git -C /Users/vinaykumar/git/build/ogs-worktrees/dsm_native status)",
+      "Bash(git -C /Users/vinaykumar/git/build/ogs-worktrees/dsm_native log --oneline -3)",
+      "Bash(cp /Users/vinaykumar/git/build/ogs-worktrees/build/dsm_native-release/Tests/Data/RichardsMechanics/beacon_1a01_dsm_micromacro_smoke_t_1000.000000.vtu /Users/vinaykumar/git/build/ogs-worktrees/dsm_native/Tests/Data/RichardsMechanics/beacon_1a01_reference_t_1000.000000.vtu)",
+      "Bash(cp /Users/vinaykumar/git/build/ogs-worktrees/build/dsm_native-release/Tests/Data/RichardsMechanics/beacon_1a01_dsm_micromacro_inflow_t_100000.000000.vtu /Users/vinaykumar/git/build/ogs-worktrees/dsm_native/Tests/Data/RichardsMechanics/beacon_1a01_dsm_micromacro_inflow_reference_t_100000.000000.vtu)",
+      "Bash(cp /Users/vinaykumar/git/build/ogs-worktrees/build/dsm_native-release/Tests/Data/RichardsMechanics/beacon_1c_dsm_micromacro_smoke_t_1000.000000.vtu /Users/vinaykumar/git/build/ogs-worktrees/dsm_native/Tests/Data/RichardsMechanics/beacon_1c_reference_t_1000.000000.vtu)",
+      "Bash(git -C /Users/vinaykumar/git/ogs-dsm_native diff --stat)",
+      "Bash(git -C /Users/vinaykumar/git/ogs-dsm_native status)",
+      "Bash(git -C /Users/vinaykumar/git/ogs-dsm_native add Tests/Data/RichardsMechanics/beacon_1a01_reference_t_1000.000000.vtu Tests/Data/RichardsMechanics/beacon_1a01_dsm_micromacro_inflow_reference_t_100000.000000.vtu Tests/Data/RichardsMechanics/beacon_1c_reference_t_1000.000000.vtu AGENTS.md)",
+      "Bash(git -C /Users/vinaykumar/git/ogs-dsm_native commit -m ' *)",
+      "Bash(git -C /Users/vinaykumar/git/ogs-dsm_native log --oneline -4)"
+    ]
+  }
+}

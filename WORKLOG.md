@@ -74,6 +74,23 @@ p^disj_total(h) = A_H_lit / (6π h³)   +   K · exp(−h/λ)
 
 Rationale: a single vdW multiplier cannot close the Villar parity gap. The required multiplier varies 5–9 orders of magnitude across `ρ_d` (1e5 at 1400 kg/m³ → 9.3e8 at 1800 kg/m³), so the missing physics has its own `ρ_d`-dependence that vdW alone cannot represent. An additive hydration-like term separates the calibration knob from `A_H` and isolates the unmodeled physics in a named term. See `materialmodels/src/TPM/THMDSMRichardsVK_OGS_RM_transition.tex` and the Pinion presentation (April 2026) for the physics narrative.
 
+### Design intent (binding for the agent)
+
+The current OGS DSM micro-closure is **vdW-only**. The intent of this task is **not** to calibrate vdW to account for all micro-scale forces — that would distort the physical nature of vdW attraction (literature `A_H` is a Lifshitz material constant, not a fitting knob). Instead, the agent is to add a **single lumped additive term** that absorbs all non-vdW micro-scale contributions (Donnan / EDL / hydration / ion-correlation) into one named closure. The result is two cleanly separated pieces:
+
+- vdW: `p_vdW = A_H_lit / (6π h³)` — frozen at literature `A_H`, never rescaled, never multiplied, never recalibrated. Sole purpose: represent the van der Waals contribution honestly with literature material parameters.
+- Lumped missing-physics term: `p_lumped(h)` (functional form e.g. `K·exp(−h/λ)`, see Goal) — the **only** calibration knob. Carries every non-vdW mechanism. Two free parameters; calibrated against Villar.
+
+**Binding rules for any code or test that lands under this task**:
+
+1. **Do not introduce or revive any path that scales `A_H`.** No `vdw_multiplier`, `A_H_eff`, `hamaker_scale`, or equivalent. If such a parameter exists in the legacy calibration code, it must be set to exactly `1.0` and either removed or guarded by an `OGS_FATAL` if any other value is read.
+2. **vdW-off baseline must be bit-identical to vdW-only baseline when the lumped term is disabled** (i.e. `K = 0` or the term flag is off). This is the regression gate that proves vdW physics has not been distorted.
+3. **The lumped term is one term, not several.** Resist the temptation to split it into Donnan + EDL + hydration sub-terms in the first pass. The fitted parameters of a single lumped term will be effective composites — that is honest reporting of "we don't yet know the decomposition", not a defect. Splitting can come later as a separate task once XRD-anchored data permits identification.
+4. **The lumped term must default to zero**. New XML parameters (`hydration_K`, `hydration_lambda` or whatever the final names are) default to `0.0`. Existing tests stay vdW-only; the lumped term only activates when both parameters are explicitly set in the prj. This protects every existing reference VTU.
+5. **Calibration documentation rule**: every parity experiment that exercises the lumped term must record `(A_H, K, λ)` together and report `(p_vdW, p_lumped, p_total)` separately, so the contributions are visible. Never report only `p_total`.
+
+This design intent is the answer to the deck's "is vdW being abused?" question: no — vdW stays literature-anchored and any future criticism of the magnitude of swelling pressure lands on the lumped term, where it belongs.
+
 ### Pre-fit results (offline, Python; not yet in OGS)
 
 - Source: `archive/2026-04-22/folders/ogs-TPM_Swelling_MCC_Coupled/Tests/Data/RichardsMechanics/ANCHORS_MS33_ModelI/villar_dense_dd_native_dsm_micromacro_calibration.csv` (17 points, ρ_d = 1400–1800 kg/m³).
