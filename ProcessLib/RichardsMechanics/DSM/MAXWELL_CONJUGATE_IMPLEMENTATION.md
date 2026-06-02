@@ -91,18 +91,33 @@ non-symmetric, non-conservative tangent.
 3. `RichardsMechanicsFEM-impl.h` — add the `(α_M·S₁/ρ_lR)·mᵀ` exchange↔disp
    Jacobian block; assert it is the transpose of the eigenstress block (§4).
 
-## 6. DECISIONS — Vinay, before the algebra is coded
-- **[DECISION] Sign of (★)** — choose so the steady state satisfies `Π(n_l)=σ_n`
-  (spec §4.1). Drives whether load *expels* (correct) or imbibes micro water.
-- **[DECISION] Effective-stress measure** — mean Bishop effective stress
-  `σ'_m = tr(σ')/3` (recommended) vs net/total; confirm compression-positive sign.
-- **[DECISION] Gate (spec §5)** — B1-sharp: term active only for `σ'_m ≥ Π` via a
-  Macaulay `⟨σ'_m − Π⟩₊` (tangent kink at the gate; inherits the snap-drain) **vs**
-  a smoothed ramp of width `δ_gate` (Newton-friendly; `δ_gate` to be **derived
-  from problem scale**, value TBD). B2 (smear `g(Π)`) is the follow-on.
-- **[DECISION] φ_m(ε_v) coupling** — keep `σ_sw,m`'s `ε_v`-dependence (through
-  `φ_m`) inside `S₁`, or freeze `φ_m` at the GP? Needs the exact `φ_m` code
-  definition; sets the §3 second derivative.
+## 6. DECISIONS — RESOLVED (Vinay, 2026-06-02)
+- **[RESOLVED] Sign — load EXPELS micro water** (steady state `Π(n_l)=σ_n`, spec
+  §4.1). The (★) sign is pinned in code against the existing eigenstress
+  (`σ_sw = −φ_m·Π`, compressive, tension-positive); the Maxwell-symmetry test
+  (§7.1) catches a sign error.
+- **[RESOLVED] Stress measure = OGS effective stress, tension-positive.** Code
+  fact (FEM-impl L1575): "Π = −ρ·μ_lR > 0 ⇒ σ_sw = −φ_m·Π compressive
+  (tension-positive)." Use OGS's own effective-stress Kelvin vector σ′; mean
+  `σ′_m = tr(σ′)/3` (negative in compression). The compression gate is on the
+  **confining pressure** `p′ = −σ′_m = −tr(σ′)/3`: term active for `p′ ≥ Π`, i.e.
+  Macaulay `⟨−tr(σ′)/3 − Π⟩₊`. No new stress measure.
+- **[RESOLVED] Gate = SHARP (B1).** `⟨p′ − Π⟩₊`, no smoothing. Per Vinay: when
+  `p′` reaches `Π` on a compression path the micro structure **drains violently** —
+  the snap-drain is the **physically expected repercussion** of the term, not a
+  numerical artifact. B2 (`g(Π)` smear) deferred.
+- **[OPEN — info gathered] φ_m(ε_v) coupling.** Code: `φ_m = (1−φ)·n_l/(1−n_l)`,
+  `φ = φ(ε_v)` (porosity grows with dilation) ⇒ `σ_sw,m = −φ_m·Π` carries a **real**
+  `ε_v`-dependence, `∂φ_m/∂ε_v = −[n_l/(1−n_l)]·∂φ/∂ε_v = O(φ_m)`.
+  - **B1 (recommended): freeze φ at the GP** when forming `S₁`. `S₁` reduces to the
+    explicit `n_l`-derivatives; pair closes exactly; tangent symmetric;
+    parameter-free. Inconsistency `O(φ_m·Δφ)` — negligible at ANCHORS-regime strain.
+  - **B1.5: keep φ(ε_v,n_l) live.** Fully consistent; needed for large-strain
+    oedometer paths (Ferrari 2022 high-stress compression where φ changes a lot);
+    adds cross-terms (φ is itself a sub-Newton solve, `ComputeMicroPorosity.h`),
+    symmetry must be re-verified. Heavier.
+  - **Recommendation: B1 freeze now; B1.5 only if the strain coupling proves
+    quantitatively material.** ← the one open call.
 
 ## 7. Verification — NOT fit-and-verify (anchors per spec §6)
 1. **Maxwell-symmetry GP test** [anchor: derived identity]: FD-confirm
