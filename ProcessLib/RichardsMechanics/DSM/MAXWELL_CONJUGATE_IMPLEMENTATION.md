@@ -106,18 +106,49 @@ non-symmetric, non-conservative tangent.
   `p′` reaches `Π` on a compression path the micro structure **drains violently** —
   the snap-drain is the **physically expected repercussion** of the term, not a
   numerical artifact. B2 (`g(Π)` smear) deferred.
-- **[OPEN — info gathered] φ_m(ε_v) coupling.** Code: `φ_m = (1−φ)·n_l/(1−n_l)`,
-  `φ = φ(ε_v)` (porosity grows with dilation) ⇒ `σ_sw,m = −φ_m·Π` carries a **real**
-  `ε_v`-dependence, `∂φ_m/∂ε_v = −[n_l/(1−n_l)]·∂φ/∂ε_v = O(φ_m)`.
-  - **B1 (recommended): freeze φ at the GP** when forming `S₁`. `S₁` reduces to the
-    explicit `n_l`-derivatives; pair closes exactly; tangent symmetric;
-    parameter-free. Inconsistency `O(φ_m·Δφ)` — negligible at ANCHORS-regime strain.
-  - **B1.5: keep φ(ε_v,n_l) live.** Fully consistent; needed for large-strain
-    oedometer paths (Ferrari 2022 high-stress compression where φ changes a lot);
-    adds cross-terms (φ is itself a sub-Newton solve, `ComputeMicroPorosity.h`),
-    symmetry must be re-verified. Heavier.
-  - **Recommendation: B1 freeze now; B1.5 only if the strain coupling proves
-    quantitatively material.** ← the one open call.
+- **[RESOLVED] φ_m coupling = B1 (freeze φ at the GP). B1.5 DEFERRED to the next
+  iteration** (Vinay, 2026-06-02). Full derivation + the porosity-dependence
+  detail in §6.1.
+
+## 6.1 Why φ-freezing is the right B1 simplification — and what B1.5 costs
+
+`σ_sw,m = −φ_m·Π`, `φ_m = (1−φ)·n_l/(1−n_l)`. The total porosity `φ` is **not**
+purely mechanical. From the solid mass balance (OGS porosity-from-mass-balance):
+
+```
+φ̇ = (α_B − φ)·ε̇_v  +  (α_B − φ)·ṗ_FR / K_S  −  (φ/ρ_SR)·ρ̇_SR ,
+ρ_SR = ρ_SR(p_FR, T)        # solid EOS: grain compressibility + thermal expansion
+```
+
+so in general **`φ = φ(ε_v, p_FR, ρ_SR(p_FR,T))`** — it carries the pore-fluid
+pressure (the Biot term **and** grain compressibility `1/K_S`) and the grain
+density `ρ_SR`. `φ` is **not** a function of `ε_v` alone.
+
+**Current benchmark switches those channels OFF.** ANCHORS PRJs set
+`biot_coefficient = 1.0` (α_B = 1, incompressible mineral), solid
+`density = Constant`, `micro_solid_density_reference = 2780` (ρ_SR const ⇒
+`ρ̇_SR = 0`). With α_B = 1 and `K_S → ∞` the `ṗ_FR` term vanishes and `ρ̇_SR = 0`
+kills the last ⇒ **here `φ = φ(ε_v)` only.** This is *why* the ε_v-only reading
+of (★) is valid today — but only because the grain is rigid.
+
+**B1 — CHOSEN. Freeze `φ` at the Gauss point** when forming `S₁`. Then
+`S₁ = ∂σ_sw,m/∂n_l` is the explicit `n_l`-derivatives only; the (★) pair closes
+exactly; the tangent is symmetric; parameter-free. **Robust to the porosity
+model** — it sidesteps `ε_v`, `p_FR`, *and* `ρ_SR` in one stroke. Loss vs full
+consistency is `O(φ_m·Δφ)` per step — negligible at α_B = 1 / rigid grain.
+
+**B1.5 — DEFERRED to the next iteration. Keep `φ` live.** Under **compressible
+grains (α_B < 1) or a p/T-dependent `ρ_SR`**, letting `φ` live makes `σ_sw,m`
+inherit `∂σ_sw/∂p_FR` and `∂σ_sw/∂ρ_SR`. Maxwell then demands conjugate partners
+for **both**:
+- `∂σ_sw/∂p_FR` ↔ a **storage / fluid-content** term in the potentials;
+- `∂σ_sw/∂ρ_SR` ↔ a **solid-EOS** coupling.
+
+That is no longer "restore one cross-term" — it is **re-deriving the full
+poromechanical `Ψ`** so the entire web of conjugate pairs closes (σ–n_l, μ_lR–ε_v,
+*and* the new pressure / solid-density pairs). Worth the cost **only** in
+compressible-grain / strongly-coupled regimes. **Trigger to revisit B1.5:** a
+benchmark with `α_B < 1` or `ρ_SR = ρ_SR(p,T)`. Until then it is out of scope.
 
 ## 7. Verification — NOT fit-and-verify (anchors per spec §6)
 1. **Maxwell-symmetry GP test** [anchor: derived identity]: FD-confirm
