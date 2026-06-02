@@ -207,6 +207,60 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     return out;
 }
 
+// ── DSM Maxwell-conjugate term (B1) ─────────────────────────────────────────
+// Restores the mean-effective-stress dependence of mu_lR — the Maxwell partner
+// of the swelling eigenstress sigma_sw = -phi_m * Pi — so that (sigma, mu_lR)
+// derive from ONE free energy Psi. Design + derivation:
+//   ProcessLib/RichardsMechanics/DSM/MAXWELL_CONJUGATE_IMPLEMENTATION.md
+//
+//   mu_lR_mech = (1/rho_lR) * S1 * eps_v        for p_conf >= Pi   (sharp gate)
+//              = 0                              otherwise
+//   S1 = d sigma_sw,m / d n_l  (frozen phi, B1) [Pa] — supplied by the caller
+//        from the eigenstress site (S1 = -n_S*(Pi + n_l*dPi_dnl)).
+//
+// Decisions (Vinay 2026-06-02): load EXPELS micro water; OGS effective stress,
+// tension-positive; gate on confining pressure p_conf = -tr(sigma')/3 >= Pi;
+// gate SHARP (the snap-drain at p_conf = Pi is the expected physical
+// repercussion, not a numerical artifact); freeze phi when forming S1 (B1;
+// B1.5 keep-phi-live deferred — see design doc ss.6.1).
+struct MaxwellConjugateMicroPotentialData
+{
+    double mu_lR_mech = 0.0;           // J/kg
+    double dmu_lR_mech_deps_v = 0.0;   // J/kg            per unit volumetric strain
+    double dmu_lR_mech_dnl = 0.0;      // J/kg            per unit n_l
+    double dmu_lR_mech_drho_lR = 0.0;  // (J/kg)/(kg/m^3)
+    bool gate_open = false;
+};
+
+inline MaxwellConjugateMicroPotentialData computeMaxwellConjugateMicroPotential(
+    double const S1, double const dS1_dnl, double const eps_v,
+    double const p_conf, double const Pi, double const rho_lR)
+{
+    if (!(rho_lR > 0.0))
+    {
+        OGS_FATAL(
+            "computeMaxwellConjugateMicroPotential requires rho_lR > 0, got "
+            "{:g}.",
+            rho_lR);
+    }
+    MaxwellConjugateMicroPotentialData out;
+    // Sharp gate (B1): the term switches on only once the confining pressure
+    // reaches the disjoining pressure. Below it the films out-push the wall, so
+    // stress cannot expel water and the term is EXACTLY zero (the model stays
+    // identical to the pre-Maxwell code there). This branch is a constitutive
+    // choice (sharp Pi), not a numerical guard.
+    out.gate_open = (p_conf >= Pi);
+    if (!out.gate_open)
+    {
+        return out;
+    }
+    out.mu_lR_mech = S1 * eps_v / rho_lR;                // J/kg
+    out.dmu_lR_mech_deps_v = S1 / rho_lR;                // J/kg per unit strain
+    out.dmu_lR_mech_dnl = dS1_dnl * eps_v / rho_lR;      // J/kg per unit n_l
+    out.dmu_lR_mech_drho_lR = -out.mu_lR_mech / rho_lR;  // (J/kg)/(kg/m^3)
+    return out;
+}
+
 struct PotentialDrivenMassExchangeData
 {
     double rho_l_hat = 0.0;
