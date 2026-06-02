@@ -52,6 +52,30 @@ Do not mark a step done in AGENTS.md unless DSM_NATIVE_HIERARCHICAL_PATCH_RECIPE
 
 ## Known limitations (logged 2026-05-27)
 
+### Forgotten Maxwell pair — mean stress absent from μ_lR  (NEXT IMPLEMENTATION GOAL)
+
+**Location:** `PotentialExchange.h` — `μ_lR = μ_lR(n_l, ρ_lR)` (aggregate fraction
+`1−n_l`, no stress/strain); swelling enters σ one-way as the Π-eigenstress
+`σ_sw = −φ_m·Π(n_l)` (`RichardsMechanicsFEM-impl.h`, commit `72f4f3a192`).
+
+**Issue:** from one `Ψ(ε,n_l)`, `∂σ/∂n_l = ∂μ_lR/∂ε` (Maxwell). The Π-eigenstress
+gives `∂σ/∂n_l ≠ 0` (mean-stress, isotropic); `μ_lR` has no stress dependence so
+`∂μ_lR/∂ε = 0` → **broken pair** → not derivable from a single `Ψ` →
+non-conservative (`∮≠0`) past the gate. (= the "unlicensed equipresence deletion"
+of the T&N lecture's Maxwell-pairs unit.)
+
+**Gate:** exact **iff `σ_n < Π`** — below the disjoining pressure the missing
+mechanical-expulsion term is physically zero; swelling-driven monotonic loading is
+in-domain. Breaks past `Π` (over-compaction): `Π(n_l)=σ_n` is never closed (the
+exchange does only the chemical balance `ψ_M=ψ_m`) → `φ_M→0` crash. Current claim:
+restricted-domain admissibility (A).
+
+**Right fix = the next goal:** give `μ_lR` a mean-effective-stress dependence — the
+Maxwell partner of the swelling eigenstress, derived from one `Ψ` (coefficient
+fixed by the existing swelling closure, **no new constant**; re-verify `K`). Full
+spec — diagnosis, code plan, tiers (B1 sharp / B2 smear `Π`), verification — in
+**`MAXWELL_PAIR_RESTORATION.md`**.
+
 ### Hydraulic-side double-counting of suction in Darcy flux
 
 **Location:** `ProcessLib/RichardsMechanics/RichardsMechanicsFEM-impl.h:2627` (and
