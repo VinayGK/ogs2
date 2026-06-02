@@ -106,6 +106,11 @@ non-symmetric, non-conservative tangent.
   `p′` reaches `Π` on a compression path the micro structure **drains violently** —
   the snap-drain is the **physically expected repercussion** of the term, not a
   numerical artifact. B2 (`g(Π)` smear) deferred.
+  - **[OPEN — surfaced by verification, §7.2] Gate SCALE.** The sharp gate decided
+    *that* there is a threshold; the 2026-06-02 confined probe revealed the
+    *scale* is unsettled: my code uses `p′(REV) ≥ Π(micro)`, which never fires
+    (p′≈7 MPa < Π≈16.6 MPa at achievable load). REV-consistent `p′ ≥ φ_m·Π`
+    (≈7.8 MPa) is the likely fix. Vinay to decide — see §7.2.
 - **[RESOLVED] φ_m coupling = B1 (freeze φ at the GP). B1.5 DEFERRED to the next
   iteration** (Vinay, 2026-06-02). Full derivation + the porosity-dependence
   detail in §6.1.
@@ -163,6 +168,70 @@ benchmark with `α_B < 1` or `ρ_SR = ρ_SR(p,T)`. Until then it is out of scope
 6. **K re-calibration** vs Dixon afterward (saturated `σ` shifts; spec estimates
    ~13% drop, **[PRED]**) — a separate step; never fit-and-verify with 1–5.
 
+## 7.2 Confined-expulsion verification (2026-06-02) — result + the gate-scale finding
+
+**Implemented (committed on `dsm_native_maxwell_conjugate`):**
+- Helper `computeMaxwellConjugateMicroPotential` (`8024aad35e`).
+- Residual wiring at BOTH exchange assembly sites (`assemble` L2711 +
+  `assembleWithJacobian` L3695): `mu_lR += mu_lR_mech`, with
+  `S1 = -n_S(Pi + n_l dPi/dn_l)` (frozen phi), `p' = -tr(sigma')/3` from
+  `EffectiveStressData`, sharp gate `p' >= Pi` (`811e224b90`).
+- NOT yet: the analytic `d rho_hat/d eps` Jacobian block, the 3 micro local-solve
+  sites (604/770/1091).
+
+**Below-gate regression — PASS (valid isolation).** Free-swelling `dd1400`
+(p'~0, gate closed): a *true* same-build with-vs-without comparison (the wiring
+was still uncommitted at that time, so the stash genuinely removed it) gave the
+final VTU **bit-for-bit identical**. => the term is provably inert below the gate;
+the wiring disturbs nothing there.
+
+**Confined-expulsion probe — gate did NOT open.**
+`ms33_confined_expulsion_dd1400.prj` (oedometer: left/right/bottom fixed, top
+compressive displacement ramp to -5e-4 m AFTER the 20-d wetting; p' reaches
+~7.1 MPa). Clean run (301 steps, 0 rejected). The conjugate term **never fired**,
+and the reason is a **scale mismatch in the gate**:
+
+```
+ t(d)     p'(REV,MPa)   Pi=micro_pressure(MPa)   phi_m   phi_m*Pi(REV,MPa)
+ 20 (wet)    4.96             16.9               0.43         7.3
+ 200 (comp)  7.15             16.6               0.47         7.8
+```
+
+My gate compares **REV-scale `p' = -tr(sigma')/3` (7.15 MPa)** against the
+**micro-scale disjoining pressure `Pi = micro_pressure` (16.6 MPa)** — different
+scales. `p' >= Pi` is never satisfied (7.15 < 16.6) => gate stays closed =>
+`mu_lR_mech == 0`. But the eigenstress is `sigma_sw = -phi_m*Pi`, so the
+**REV-consistent** swelling stress is `phi_m*Pi ~ 7.8 MPa` — and p' (7.15) is
+*just below* it: a gate at `p' >= phi_m*Pi` would open right here.
+
+**[Integrity note] The confined "no-wiring" comparison was INVALID.** The wiring
+was already committed (`811e224b90`), so the `git stash push` for the no-wiring
+build was a no-op ("No local changes to save") => both runs used the
+**with-wiring** binary => the reported `Delta(n_l)=0` was trivial (same binary),
+NOT an isolation. The inert-term conclusion does NOT rely on it: it follows
+directly from the gate condition `p'(7.15) < Pi(16.6)` being provably false in the
+(valid) with-wiring outputs => `gate_open=false` by construction. A proper
+confined isolation (revert the committed wiring, rebuild, compare) is moot here
+because the gate never opens regardless.
+
+**=> OPEN DECISION (Vinay): the gate scale.** Surfaced by this verification — a
+referencing/scale call (the S_L>1-style trap):
+1. **REV-consistent `p' >= phi_m*Pi`** (~7.8 MPa) — confining effective stress vs
+   the REV swelling stress; pairs with the eigenstress (also `phi_m*Pi`); opens at
+   achievable stresses. One-line change: `Pi_mc = p_L_m` -> `Pi_mc = n_S*n_l*p_L_m`.
+   *Recommended, pending Vinay.*
+2. **Micro-scale** `(p'/phi_m, or the aggregate-felt stress) >= Pi` — micro-
+   referenced confining stress vs full Pi.
+3. **Keep `p' >= Pi`** (micro, ~16.6 MPa) — delamination requires overcoming the
+   FULL disjoining pressure; defensible, but needs a stiff skeleton / very high
+   load to ever fire (the committed default; rarely fires in soft-skeleton tests).
+
 ## 8. Status
-**DESIGN — §6 decisions pending Vinay.** No code written; no parameter values
-introduced; predicted items labelled. Successor to `MAXWELL_PAIR_RESTORATION.md`.
+**B1 PARTIAL — residual wired + below-gate-verified; gate-scale decision OPEN.**
+Done: helper (`8024aad35e`), residual wiring at both sites (`811e224b90`),
+below-gate bit-for-bit regression PASS (valid), confined probe built + run.
+**Pending Vinay:** the **gate-scale decision** (§7.2). Then: analytic
+`d rho_hat/d eps` Jacobian block (the symmetry), the 3 micro local-solve sites,
+and re-run the confined probe to SHOW expulsion once the gate can open. No
+parameter values introduced; predicted and invalid items labelled.
+Successor to `MAXWELL_PAIR_RESTORATION.md`.
