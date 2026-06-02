@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+  <Collection>
+    <DataSet timestep="0" group="" part="0" file="beacon_t33_path2_P2-1_ts_0_t_0.000000.vtu"/>
+    <DataSet timestep="864000" group="" part="0" file="beacon_t33_path2_P2-1_ts_55_t_864000.000000.vtu"/>
+    <DataSet timestep="1382400" group="" part="0" file="beacon_t33_path2_P2-1_ts_62_t_1382400.000000.vtu"/>
+    <DataSet timestep="1555200" group="" part="0" file="beacon_t33_path2_P2-1_ts_70_t_1555200.000000.vtu"/>
+    <DataSet timestep="1641600" group="" part="0" file="beacon_t33_path2_P2-1_ts_75_t_1641600.000000.vtu"/>
+    <DataSet timestep="1693440" group="" part="0" file="beacon_t33_path2_P2-1_ts_95_t_1693440.000000.vtu"/>
+    <DataSet timestep="1710720" group="" part="0" file="beacon_t33_path2_P2-1_ts_99_t_1710720.000000.vtu"/>
+    <DataSet timestep="1719360" group="" part="0" file="beacon_t33_path2_P2-1_ts_101_t_1719360.000000.vtu"/>
+    <DataSet timestep="1726272" group="" part="0" file="beacon_t33_path2_P2-1_ts_103_t_1726272.000000.vtu"/>
+    <DataSet timestep="1728000" group="" part="0" file="beacon_t33_path2_P2-1_ts_104_t_1728000.000000.vtu"/>
+    <DataSet timestep="8640000" group="" part="0" file="beacon_t33_path2_P2-1_ts_199_t_8640000.000000.vtu"/>
+    <DataSet timestep="17280000" group="" part="0" file="beacon_t33_path2_P2-1_ts_308_t_17280000.000000.vtu"/>
+    <DataSet timestep="17712000" group="" part="0" file="beacon_t33_path2_P2-1_ts_315_t_17712000.000000.vtu"/>
+    <DataSet timestep="18144000" group="" part="0" file="beacon_t33_path2_P2-1_ts_327_t_18144000.000000.vtu"/>
+    <DataSet timestep="18576000" group="" part="0" file="beacon_t33_path2_P2-1_ts_347_t_18576000.000000.vtu"/>
+    <DataSet timestep="19008000" group="" part="0" file="beacon_t33_path2_P2-1_ts_353_t_19008000.000000.vtu"/>
+    <DataSet timestep="19440000" group="" part="0" file="beacon_t33_path2_P2-1_ts_359_t_19440000.000000.vtu"/>
+    <DataSet timestep="19872000" group="" part="0" file="beacon_t33_path2_P2-1_ts_381_t_19872000.000000.vtu"/>
+    <DataSet timestep="20304000" group="" part="0" file="beacon_t33_path2_P2-1_ts_390_t_20304000.000000.vtu"/>
+    <DataSet timestep="20736000" group="" part="0" file="beacon_t33_path2_P2-1_ts_396_t_20736000.000000.vtu"/>
+  </Collection>
+</VTKFile>
