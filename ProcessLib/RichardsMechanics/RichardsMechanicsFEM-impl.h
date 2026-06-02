@@ -2708,7 +2708,7 @@ void RichardsMechanicsLocalAssembler<
                 dmu_lR_vdw_drho_lR = micro_potential.dmu_lR_drho_lR;
                 // ── DSM Maxwell-conjugate term (B1) ──────────────────────────
                 // Restore the partner of the swelling eigenstress so (sigma,
-                // mu_lR) come from one Psi. Sharp gate p'>=Pi; freeze phi (B1).
+                // mu_lR) come from one Psi. Sharp gate p'>=phi_m*Pi (opt.1); freeze phi (B1).
                 // See ProcessLib/RichardsMechanics/DSM/
                 // MAXWELL_CONJUGATE_IMPLEMENTATION.md. EXACTLY zero below the
                 // gate, so gate-closed runs are unchanged bit-for-bit.
@@ -2735,9 +2735,16 @@ void RichardsMechanicsLocalAssembler<
                             : 0.0;
                     double const S1_mc =
                         -n_S_mc * (Pi_mc + n_l * dPi_dnl_mc);  // Pa
+                    // Gate-scale = option 1 (decision #4, 2026-06-02): the gate
+                    // threshold is the REV-consistent PARTIAL stress phi_m*Pi =
+                    // n_S*n_l*Pi, NOT the intrinsic micro Pi. p'(REV) reaches
+                    // phi_m*Pi but never Pi (confined probe 7.15<16.6; EPFL
+                    // path2 10.4>9.2). Trigger only -- S1_mc keeps the full Pi
+                    // for the term magnitude. See tex/maxwell_gate_scale.
+                    double const Pi_gate_mc = n_S_mc * n_l * Pi_mc;  // = phi_m*Pi
                     auto const mc = computeMaxwellConjugateMicroPotential(
                         S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
-                        p_conf_mc, Pi_mc, rho_mc);
+                        p_conf_mc, Pi_gate_mc, rho_mc);
                     mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                 }
@@ -3591,9 +3598,16 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             : 0.0;
                     double const S1_mc =
                         -n_S_mc * (Pi_mc + n_l * dPi_dnl_mc);  // Pa
+                    // Gate-scale = option 1 (decision #4, 2026-06-02): the gate
+                    // threshold is the REV-consistent PARTIAL stress phi_m*Pi =
+                    // n_S*n_l*Pi, NOT the intrinsic micro Pi. p'(REV) reaches
+                    // phi_m*Pi but never Pi (confined probe 7.15<16.6; EPFL
+                    // path2 10.4>9.2). Trigger only -- S1_mc keeps the full Pi
+                    // for the term magnitude. See tex/maxwell_gate_scale.
+                    double const Pi_gate_mc = n_S_mc * n_l * Pi_mc;  // = phi_m*Pi
                     auto const mc = computeMaxwellConjugateMicroPotential(
                         S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
-                        p_conf_mc, Pi_mc, rho_mc);
+                        p_conf_mc, Pi_gate_mc, rho_mc);
                     mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                 }
