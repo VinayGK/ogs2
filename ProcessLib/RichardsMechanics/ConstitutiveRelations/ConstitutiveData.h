@@ -8,6 +8,9 @@
 #include "LiquidDensity.h"
 #include "MicroPressure.h"
 #include "MicroSaturation.h"
+#include "MicroLiquidDensity.h"
+#include "MicroPorosity.h"
+#include "MicroWaterContent.h"
 #include "ProcessLib/ConstitutiveRelations/Base.h"
 #include "ProcessLib/ConstitutiveRelations/EffectiveStressData.h"
 #include "ProcessLib/ConstitutiveRelations/MechanicalStrainData.h"
@@ -37,7 +40,8 @@ using StatefulData = std::tuple<
     ProcessLib::ThermoRichardsMechanics::SaturationData,
     ProcessLib::ThermoRichardsMechanics::PorosityData,
     ProcessLib::ThermoRichardsMechanics::TransportPorosityData, MicroPressure,
-    MicroSaturation>;
+    MicroSaturation, MicroWaterContent, MicroLiquidDensity, MicroPorosity,
+    MicroExchangeSource>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<
@@ -47,6 +51,7 @@ using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<
 template <int DisplacementDim>
 using OutputData = std::tuple<
     ProcessLib::ThermoRichardsMechanics::DarcyLawData<DisplacementDim>,
+    ProcessLib::ThermoRichardsMechanics::PermeabilityData<DisplacementDim>,
     DrySolidDensity>;
 
 /// Data that is needed for the equation system assembly.
@@ -61,7 +66,6 @@ using ConstitutiveData = std::tuple<
     ProcessLib::ThermoRichardsMechanics::SolidCompressibilityData,
     ProcessLib::ThermoRichardsMechanics::BishopsData,
     PrevState<ProcessLib::ThermoRichardsMechanics::BishopsData>,
-    ProcessLib::ThermoRichardsMechanics::PermeabilityData<DisplacementDim>,
     SaturationSecantDerivative>;
 
 /// Data that stores intermediate values, which are not needed outside the

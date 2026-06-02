@@ -3,6 +3,7 @@
 
 #include "CreateRichardsMechanicsProcess.h"
 
+#include <algorithm>
 #include <cassert>
 
 #include "MaterialLib/MPL/CreateMaterialSpatialDistributionMap.h"
@@ -22,6 +23,91 @@ namespace ProcessLib
 {
 namespace RichardsMechanics
 {
+namespace
+{
+MicroPotentialConvention parseMicroPotentialConvention(
+    std::string const& convention)
+{
+    if (convention == "positive_reduced")
+    {
+        return MicroPotentialConvention::PositiveReduced;
+    }
+    if (convention == "negative_attractive")
+    {
+        return MicroPotentialConvention::NegativeAttractive;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_potential_convention '{}'. Currently supported: "
+        "'positive_reduced', 'negative_attractive'.",
+        convention);
+}
+
+LocalNonlinearSolveMode parseLocalNonlinearSolveMode(
+    std::string const& mode)
+{
+    if (mode == "scalar_exchange")
+    {
+        return LocalNonlinearSolveMode::ScalarExchange;
+    }
+    if (mode == "scalar_microstate_storage_mode")
+    {
+        return LocalNonlinearSolveMode::ScalarReferenceStorage;
+    }
+    if (mode == "scalar_micro_macro_mass_storage_mode")
+    {
+        return LocalNonlinearSolveMode::ScalarReferenceMassStorage;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "local_nonlinear_solve_mode '{}'. Currently supported: "
+        "'scalar_exchange', 'scalar_microstate_storage_mode', "
+        "'scalar_micro_macro_mass_storage_mode'.",
+        mode);
+}
+
+MacroPorosityUpdateMode parseMacroPorosityUpdateMode(
+    std::string const& mode)
+{
+    if (mode == "algebraic_split")
+    {
+        return MacroPorosityUpdateMode::AlgebraicSplit;
+    }
+    if (mode == "additive_macro_porosity_rate_mode")
+    {
+        return MacroPorosityUpdateMode::ReferenceAdditiveRate;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "macro_porosity_update_mode '{}'. Currently supported: "
+        "'algebraic_split', 'additive_macro_porosity_rate_mode'.",
+        mode);
+}
+
+MicroSolidVolumeFractionMode parseMicroSolidVolumeFractionMode(
+    std::string const& mode)
+{
+    if (mode == "reference")
+    {
+        return MicroSolidVolumeFractionMode::Reference;
+    }
+    if (mode == "current_porosity_split")
+    {
+        return MicroSolidVolumeFractionMode::CurrentPorositySplit;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_solid_volume_fraction_mode '{}'. Currently supported: "
+        "'reference', 'current_porosity_split'.",
+        mode);
+}
+
+}  // namespace
+
 void checkMPLProperties(
     std::map<int, std::shared_ptr<MaterialPropertyLib::Medium>> const& media)
 {
@@ -39,13 +125,355 @@ void checkMPLProperties(
     for (auto const& m : media)
     {
         checkRequiredProperties(*m.second, required_medium_properties);
-        checkRequiredProperties(
-            m.second->phase(MaterialPropertyLib::PhaseName::AqueousLiquid),
-            required_liquid_properties);
-        checkRequiredProperties(
-            m.second->phase(MaterialPropertyLib::PhaseName::Solid),
-            required_solid_properties);
+        checkRequiredProperties(m.second->phase(MaterialPropertyLib::PhaseName::AqueousLiquid),
+                                required_liquid_properties);
+        checkRequiredProperties(m.second->phase(MaterialPropertyLib::PhaseName::Solid),
+                                required_solid_properties);
     }
+}
+
+void validateMicroPorosityAndPotentialExchangeConfiguration(
+    std::map<int, std::shared_ptr<MaterialPropertyLib::Medium>> const& media,
+    std::optional<MicroPorosityParameters> const& micro_porosity_parameters,
+    std::optional<PotentialExchangeParameters> const&
+        potential_exchange_parameters,
+    std::map<int, PotentialExchangeParameters> const&
+        potential_exchange_parameters_by_material)
+{
+    namespace MPL = MaterialPropertyLib;
+
+    bool const micro_porosity_enabled = micro_porosity_parameters.has_value();
+    bool any_saturation_micro = false;
+    bool const any_dsm_exchange_enabled =
+        (potential_exchange_parameters &&
+         potential_exchange_parameters->enabled) ||
+        std::any_of(potential_exchange_parameters_by_material.begin(),
+                    potential_exchange_parameters_by_material.end(),
+                    [](auto const& item) { return item.second.enabled; });
+
+    for (auto const& [material_id, medium] : media)
+    {
+        bool const has_saturation_micro =
+            medium->hasProperty(MPL::PropertyType::saturation_micro);
+        any_saturation_micro = any_saturation_micro || has_saturation_micro;
+
+        if (has_saturation_micro && !micro_porosity_enabled)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: medium {} defines 'saturation_micro' but "
+                "the process has no <micro_porosity> block. Define "
+                "<micro_porosity> or remove 'saturation_micro'.",
+                material_id);
+        }
+    }
+
+    if (micro_porosity_enabled && !any_saturation_micro && !any_dsm_exchange_enabled)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: <micro_porosity> is configured, but no medium "
+            "defines 'saturation_micro'. Define 'saturation_micro' in at least "
+            "one medium or remove <micro_porosity>.");
+    }
+
+    if (any_dsm_exchange_enabled && !micro_porosity_enabled)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: potential_exchange.enabled=true requires "
+            "a <micro_porosity> process block.");
+    }
+
+    for (auto const& [material_id, potential_exchange_params] :
+         potential_exchange_parameters_by_material)
+    {
+        if (media.find(material_id) == media.end())
+        {
+            OGS_FATAL(
+                "RichardsMechanics: potential_exchange medium override "
+                "references unknown material id {}.",
+                material_id);
+        }
+
+    }
+}
+
+PotentialExchangeParameters parsePotentialExchangeParameters(
+    BaseLib::ConfigTree const& config,
+    std::optional<PotentialExchangeParameters> const& defaults,
+    std::string const& context)
+{
+    auto const enabled =
+        config.getConfigParameter<bool>("enabled",
+                                        defaults ? defaults->enabled : false);
+
+    auto const pressure_tolerance = config.getConfigParameter<double>(
+        "pressure_tolerance",
+        defaults ? defaults->pressure_tolerance : 0.0);
+    if (pressure_tolerance < 0.0)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} pressure_tolerance must be >= 0, got {:g}.",
+            context, pressure_tolerance);
+    }
+
+    auto const micro_potential_convention = parseMicroPotentialConvention(
+        config.getConfigParameter<std::string>(
+            "micro_potential_convention",
+            defaults ? toString(defaults->micro_potential_convention)
+                     : "positive_reduced"));
+    auto const local_nonlinear_solve_mode = parseLocalNonlinearSolveMode(
+        config.getConfigParameter<std::string>(
+            "local_nonlinear_solve_mode",
+            defaults ? toString(defaults->local_nonlinear_solve_mode)
+                     : "scalar_exchange"));
+    auto const macro_porosity_update_mode = parseMacroPorosityUpdateMode(
+        config.getConfigParameter<std::string>(
+            "macro_porosity_update_mode",
+            defaults ? toString(defaults->macro_porosity_update_mode)
+                     : "algebraic_split"));
+    auto const micro_solid_volume_fraction_mode =
+        parseMicroSolidVolumeFractionMode(
+            config.getConfigParameter<std::string>(
+                "micro_solid_volume_fraction_mode",
+                defaults
+                    ? toString(defaults->micro_solid_volume_fraction_mode)
+                    : "reference"));
+    auto get_positive_required_or_default =
+        [&](char const* const key, double const fallback)
+    {
+        auto const value = config.getConfigParameterOptional<double>(key);
+        double const selected = value ? *value : fallback;
+        if (!(selected > 0.0))
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} {} must be > 0, got {:g}.", context,
+                key, selected);
+        }
+        return selected;
+    };
+
+    auto get_positive_optional_or_default =
+        [&](char const* const key, std::optional<double> const fallback)
+            -> std::optional<double>
+    {
+        auto const value = config.getConfigParameterOptional<double>(key);
+        std::optional<double> selected = value ? std::optional<double>{*value}
+                                               : fallback;
+        if (selected && !(*selected > 0.0))
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} {} must be > 0 if provided, got {:g}.",
+                context, key, *selected);
+        }
+        return selected;
+    };
+
+    double const default_hamaker =
+        defaults ? defaults->hamaker_constant : 0.0;
+    double const default_surface =
+        defaults ? defaults->specific_surface : 0.0;
+    double const default_rho_sr =
+        defaults ? defaults->micro_solid_density_reference : 0.0;
+    double const default_ns =
+        defaults ? defaults->micro_solid_volume_fraction_reference : 0.0;
+    double const default_rho_l0 =
+        defaults ? defaults->micro_liquid_density_reference : 0.0;
+    double const default_a_rho =
+        defaults ? defaults->micro_liquid_density_a : 0.0;
+    double const default_b_rho =
+        defaults ? defaults->micro_liquid_density_b : 0.0;
+
+    double hamaker_constant = 0.0;
+    double specific_surface = 0.0;
+    double micro_solid_density_reference = 0.0;
+    double micro_solid_volume_fraction_reference = 0.0;
+    double micro_liquid_density_reference = 0.0;
+    double micro_liquid_density_a = 0.0;
+    double micro_liquid_density_b = 0.0;
+    bool const uses_micro_liquid_density_eos =
+        local_nonlinear_solve_mode ==
+        LocalNonlinearSolveMode::ScalarReferenceMassStorage;
+
+    if (enabled)
+    {
+        hamaker_constant =
+            get_positive_required_or_default("hamaker_constant",
+                                             default_hamaker);
+        specific_surface =
+            get_positive_required_or_default("specific_surface",
+                                             default_surface);
+        micro_solid_density_reference = get_positive_required_or_default(
+            "micro_solid_density_reference", default_rho_sr);
+        micro_solid_volume_fraction_reference =
+            get_positive_required_or_default(
+                "micro_solid_volume_fraction_reference", default_ns);
+        if (uses_micro_liquid_density_eos)
+        {
+            micro_liquid_density_reference =
+                get_positive_required_or_default(
+                    "micro_liquid_density_reference", default_rho_l0);
+            micro_liquid_density_a = get_positive_required_or_default(
+                "micro_liquid_density_a", default_a_rho);
+            micro_liquid_density_b = get_positive_required_or_default(
+                "micro_liquid_density_b", default_b_rho);
+        }
+        else
+        {
+            micro_liquid_density_reference =
+                get_positive_optional_or_default(
+                    "micro_liquid_density_reference",
+                    defaults ? std::optional<double>{
+                                   defaults->micro_liquid_density_reference}
+                             : std::nullopt)
+                    .value_or(0.0);
+            micro_liquid_density_a = get_positive_optional_or_default(
+                                         "micro_liquid_density_a",
+                                         defaults
+                                             ? std::optional<double>{
+                                                   defaults->micro_liquid_density_a}
+                                             : std::nullopt)
+                                         .value_or(0.0);
+            micro_liquid_density_b = get_positive_optional_or_default(
+                                         "micro_liquid_density_b",
+                                         defaults
+                                             ? std::optional<double>{
+                                                   defaults->micro_liquid_density_b}
+                                             : std::nullopt)
+                                         .value_or(0.0);
+        }
+    }
+    else
+    {
+        hamaker_constant = get_positive_optional_or_default(
+                               "hamaker_constant",
+                               defaults ? std::optional<double>{
+                                              defaults->hamaker_constant}
+                                        : std::nullopt)
+                               .value_or(0.0);
+        specific_surface = get_positive_optional_or_default(
+                               "specific_surface",
+                               defaults ? std::optional<double>{
+                                              defaults->specific_surface}
+                                        : std::nullopt)
+                               .value_or(0.0);
+        micro_solid_density_reference =
+            get_positive_optional_or_default(
+                "micro_solid_density_reference",
+                defaults ? std::optional<double>{
+                               defaults->micro_solid_density_reference}
+                         : std::nullopt)
+                .value_or(0.0);
+        micro_solid_volume_fraction_reference =
+            get_positive_optional_or_default(
+                "micro_solid_volume_fraction_reference",
+                defaults ? std::optional<double>{
+                               defaults->micro_solid_volume_fraction_reference}
+                         : std::nullopt)
+                .value_or(0.0);
+        micro_liquid_density_reference =
+            get_positive_optional_or_default(
+                "micro_liquid_density_reference",
+                defaults ? std::optional<double>{
+                               defaults->micro_liquid_density_reference}
+                         : std::nullopt)
+                .value_or(0.0);
+        micro_liquid_density_a =
+            get_positive_optional_or_default(
+                "micro_liquid_density_a",
+                defaults
+                    ? std::optional<double>{defaults->micro_liquid_density_a}
+                    : std::nullopt)
+                .value_or(0.0);
+        micro_liquid_density_b =
+            get_positive_optional_or_default(
+                "micro_liquid_density_b",
+                defaults
+                    ? std::optional<double>{defaults->micro_liquid_density_b}
+                    : std::nullopt)
+                .value_or(0.0);
+    }
+
+    auto const initial_micro_water_content = get_positive_optional_or_default(
+        "initial_micro_water_content",
+        defaults ? defaults->initial_micro_water_content : std::nullopt);
+
+    auto const use_fd_jacobian_for_exchange = config.getConfigParameter<bool>(
+        "fd_jacobian_for_exchange",
+        defaults ? defaults->use_fd_jacobian_for_exchange : false);
+
+    auto const fd_jacobian_perturbation = config.getConfigParameter<double>(
+        "fd_jacobian_perturbation",
+        defaults ? defaults->fd_jacobian_perturbation : 1e-8);
+    if (!(fd_jacobian_perturbation > 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} fd_jacobian_perturbation must be > 0, got {:g}.",
+            context, fd_jacobian_perturbation);
+    }
+
+    auto const local_jacobian_perturbation = config.getConfigParameter<double>(
+        "local_jacobian_perturbation",
+        defaults ? defaults->local_jacobian_perturbation : 1e-8);
+    if (!(local_jacobian_perturbation > 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} local_jacobian_perturbation must be > 0, got {:g}.",
+            context, local_jacobian_perturbation);
+    }
+
+    auto const vdw_augmentation_prefactor = config.getConfigParameter<double>(
+        "vdw_augmentation_prefactor",
+        defaults ? defaults->vdw_augmentation_prefactor : 0.0);
+    if (!(vdw_augmentation_prefactor >= 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} vdw_augmentation_prefactor must be >= 0, got {:g}.",
+            context, vdw_augmentation_prefactor);
+    }
+
+    auto const vdw_augmentation_decay_length = config.getConfigParameter<double>(
+        "vdw_augmentation_decay_length",
+        defaults ? defaults->vdw_augmentation_decay_length : 0.0);
+    if (vdw_augmentation_prefactor > 0.0 &&
+        !(vdw_augmentation_decay_length > 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} vdw_augmentation_decay_length must be > 0 when "
+            "vdw_augmentation_prefactor > 0, got {:g}.",
+            context, vdw_augmentation_decay_length);
+    }
+
+    auto const use_micro_liquid_density_for_micro_pressure =
+        config.getConfigParameter<bool>(
+            "use_micro_liquid_density_for_micro_pressure",
+            defaults ? defaults->use_micro_liquid_density_for_micro_pressure
+                     : true);
+    if (!use_micro_liquid_density_for_micro_pressure)
+    {
+        WARN(
+            "RichardsMechanics: {} use_micro_liquid_density_for_micro_pressure=false selected; micro pressure will use bulk rho_LR instead of confined rho_lR.",
+            context);
+    }
+    return PotentialExchangeParameters{
+        enabled,
+        pressure_tolerance,
+        hamaker_constant,
+        specific_surface,
+        micro_solid_density_reference,
+        micro_solid_volume_fraction_reference,
+        micro_liquid_density_reference,
+        micro_liquid_density_a,
+        micro_liquid_density_b,
+        micro_potential_convention,
+        local_nonlinear_solve_mode,
+        macro_porosity_update_mode,
+        micro_solid_volume_fraction_mode,
+        initial_micro_water_content,
+        use_fd_jacobian_for_exchange,
+        fd_jacobian_perturbation,
+        local_jacobian_perturbation,
+        vdw_augmentation_prefactor,
+        vdw_augmentation_decay_length,
+        use_micro_liquid_density_for_micro_pressure};
 }
 
 template <int DisplacementDim>
@@ -180,6 +608,42 @@ std::unique_ptr<Process> createRichardsMechanicsProcess(
                 "mass_exchange_coefficient")};
     }
 
+    std::optional<PotentialExchangeParameters> potential_exchange_parameters;
+    std::map<int, PotentialExchangeParameters>
+        potential_exchange_parameters_by_material;
+    if (auto const potential_exchange_config =
+            //! \ogs_file_param{prj__processes__process__RICHARDS_MECHANICS__potential_exchange}
+            config.getConfigSubtreeOptional("potential_exchange"))
+    {
+        potential_exchange_parameters = parsePotentialExchangeParameters(
+            *potential_exchange_config, std::nullopt,
+            "potential_exchange");
+
+        for (auto medium_config :
+             potential_exchange_config->getConfigSubtreeList("medium"))
+        {
+            int const material_id = medium_config.getConfigAttribute<int>("id");
+            if (!potential_exchange_parameters_by_material
+                     .emplace(material_id,
+                              parsePotentialExchangeParameters(
+                                  medium_config,
+                                  potential_exchange_parameters,
+                                  fmt::format(
+                                      "potential_exchange medium id {}",
+                                      material_id)))
+                     .second)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: duplicate potential_exchange medium override for material id {}.",
+                    material_id);
+            }
+        }
+    }
+
+    validateMicroPorosityAndPotentialExchangeConfiguration(
+        media, micro_porosity_parameters, potential_exchange_parameters,
+        potential_exchange_parameters_by_material);
+
     auto const mass_lumping =
         //! \ogs_file_param{prj__processes__process__RICHARDS_MECHANICS__mass_lumping}
         config.getConfigParameter<bool>("mass_lumping", false);
@@ -203,6 +667,8 @@ std::unique_ptr<Process> createRichardsMechanicsProcess(
         initial_stress,
         specific_body_force,
         micro_porosity_parameters,
+        potential_exchange_parameters,
+        potential_exchange_parameters_by_material,
         mass_lumping,
         explicit_hm_coupling_in_unsaturated_zone,
         use_numerical_jacobian};

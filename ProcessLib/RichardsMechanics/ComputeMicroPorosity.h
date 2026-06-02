@@ -59,7 +59,7 @@ MicroPorosityStateSpace<DisplacementDim> computeMicroPorosity(
     MathLib::KelvinVector::KelvinVectorType<DisplacementDim> const&
         I_2_C_el_inverse,
     double const rho_LR_m,  // for simplification equal to rho_LR_M
-    double const mu_LR,
+    double const viscosity_L,  // dynamic liquid viscosity
     MicroPorosityParameters const& micro_porosity_parameters,
     double const alpha_B, double const phi, double const p_L,
     double const p_L_m_prev,
@@ -137,7 +137,7 @@ MicroPorosityStateSpace<DisplacementDim> computeMicroPorosity(
             rho_LR_m *
                 (phi_m * delta_S_L_m - (alpha_B - phi) * S_L_m * delta_e_sw) +
             phi_m * S_L_m * rho_LR_m * delta_e_sw -
-            micro_porosity_parameters.mass_exchange_coefficient / mu_LR *
+            micro_porosity_parameters.mass_exchange_coefficient / viscosity_L *
                 (p_L - p_L_m) * dt;
     };
 
@@ -184,7 +184,7 @@ MicroPorosityStateSpace<DisplacementDim> computeMicroPorosity(
         jacobian(i_p_L_m, i_e_sw) = -rho_LR_m * S_L_m * (alpha_B - phi - phi_m);
 
         jacobian(i_p_L_m, i_p_L_m) =
-            alpha_bar / mu_LR * dt -
+            alpha_bar / viscosity_L * dt -
             rho_LR_m * (phi_m - (alpha_B - phi - phi_m) * delta_e_sw) *
                 dS_L_m_dp_cap_m;
     };

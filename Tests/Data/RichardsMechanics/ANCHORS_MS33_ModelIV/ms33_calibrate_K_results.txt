@@ -1,0 +1,6 @@
+# ms33_calibrate_K results
+# Villar formula: p_sw = exp(6.77*rho_d[g/cm3] - 9.07) MPa
+#    rho_d[kg/m3]      K_opt[J/kg]   target[MPa]
+             1400      7654.903524      1.503807
+             1600     29984.953697      5.824074
+             1800    118582.583910     22.555975

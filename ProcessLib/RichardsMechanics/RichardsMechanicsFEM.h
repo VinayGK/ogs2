@@ -114,7 +114,7 @@ public:
 
         for (unsigned ip = 0; ip < n_integration_points; ip++)
         {
-            auto& SD = this->current_states_[ip];
+            auto& state_current = this->current_states_[ip];
             auto& ip_data = ip_data_[ip];
 
             ParameterLib::SpatialPosition const x_position{
@@ -128,7 +128,7 @@ public:
             if (this->process_data_.initial_stress.value)
             {
                 std::get<ProcessLib::ConstitutiveRelations::EffectiveStressData<
-                    DisplacementDim>>(SD)
+                    DisplacementDim>>(state_current)
                     .sigma_eff =
                     MathLib::KelvinVector::symmetricTensorToKelvinVector<
                         DisplacementDim>(
@@ -147,7 +147,7 @@ public:
 
             this->material_states_[ip].pushBackState();
 
-            this->prev_states_[ip] = SD;
+            this->prev_states_[ip] = state_current;
         }
     }
 
@@ -226,10 +226,13 @@ private:
         MPL::VariableArray& variables, MPL::VariableArray& variables_prev,
         MPL::Medium const* const medium, TemperatureData const T_data,
         CapillaryPressureData<DisplacementDim> const& p_cap_data,
-        ConstitutiveData<DisplacementDim>& CD,
-        StatefulData<DisplacementDim>& SD,
-        StatefulDataPrev<DisplacementDim> const& SD_prev,
+        ConstitutiveData<DisplacementDim>& constitutive_data,
+        StatefulData<DisplacementDim>& state_current,
+        StatefulDataPrev<DisplacementDim> const& state_previous,
+        OutputData<DisplacementDim>& OD,
         std::optional<MicroPorosityParameters> const& micro_porosity_parameters,
+        PotentialExchangeParameters const* const
+            potential_exchange_parameters,
         MaterialLib::Solids::MechanicsBase<DisplacementDim> const&
             solid_material,
         ProcessLib::ThermoRichardsMechanics::MaterialStateData<DisplacementDim>&

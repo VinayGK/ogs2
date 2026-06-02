@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<!--This file was created by meshio v5.3.5-->
+<UnstructuredGrid>
+<Piece NumberOfPoints="41" NumberOfCells="40">
+<Points>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAADYAwAADwEAAA==eJybNRMM7BnQwCyoeNVLNUOONTH22MVzMMRl9O+qsDWW4lBfgyH+JnCHXOvrRhzmtGKIe/MwabeLdeIwvwdDPPTx0tlHFCbgsHcihnjLgVMLXbdNxuGeqRjim+e+X37MezoOd87EEH9UJbLO/eEsHO6fgyEuFGG55UTZPBz+WoAhvkAK5NCFOPyLKW7R6Zjw9MIiHOGwGEP8wvdgoM1LcITPUgzx9DQQWIYj3JZjiP+/UgEMiRU4wnMlhvh05+6c578xxSHhvApDXG8TyOLVOMJ/DYb4MYUNRRkT1+KIl3UY4rH9h75qxKzHEV8bMMR/12XtKZmMKQ6Jx40Y4m7bPv+9UoEpDolfhDgAJcBLFg==
+</DataArray>
+</Points>
+<Cells>
+<DataArray type="Int64" Name="connectivity" format="binary">
+AQAAAACAAACAAgAAWAAAAA==eJxdxUkCgQAAAMAsoYUUZSkRLf7/QoecZi4TBLMFL3nFaw55w1veccQxJ5zyng+c8ZFzLvjEZy654gtf+cZ3rrnhB7f85Bd3/OYP9zzwyBN///8AUOsGQQ==
+</DataArray>
+<DataArray type="Int64" Name="offsets" format="binary">
+AQAAAACAAABAAQAAWgAAAA==eJwtxdEGwgAAAMAkk8lMkklmZmaSZGaSyczMJNn/f00P3b3cevW3ceCtQ+8cOfbeBx+d+OSzU2fOXbh05Yuvvvnu2o1bP/x055d7Dx49efbbH3+9+AfO3gZp
+</DataArray>
+<DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAABAAQAAEAAAAA==eJxjZoAA5lGaLBoATiAAeQ==
+</DataArray>
+</Cells>
+<PointData>
+<DataArray type="UInt64" Name="bulk_node_ids" format="binary">
+AQAAAACAAABIAQAAdAAAAA==eJwtxSEawQAYAFDM9wkLsiAIC7KwsOAEgiA4gbAgOIEgCDuBICw4gSAITrAgCE4gLAi68L9X3qgTZl54471Pvrrxx0k3Hjv30qUPPvvmp1sPevHEhVfe+ujad7/8dZrEmedee+fKFz/89s/Dfjz1HzzQE44=
+</DataArray>
+</PointData>
+<CellData>
+<DataArray type="UInt64" Name="bulk_element_ids" format="binary">
+AQAAAACAAABAAQAAbAAAAA==eJwtxR0UwmAAAMB+3ouiKIui0SyKolk0GmVRNMpG0SgbjaIsikazaBRl0SiaBd+d3HIUxE588NlX393648GLcTjyzplzl7658ds/zyfhtbdOffLFtZ/u3Hs2Da+88d5HF6788Mtf/wE3qBQp
+</DataArray>
+<DataArray type="UInt8" Name="bulk_face_ids" format="binary">
+AQAAAACAAAAoAAAADAAAAA==eJxjZCQOAAADXAAp
+</DataArray>
+</CellData>
+</Piece>
+</UnstructuredGrid>
+</VTKFile>

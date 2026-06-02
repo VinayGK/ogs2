@@ -1,0 +1,147 @@
+# AGENTS.md — ANCHORS MS33 DSM (streamlined)
+
+## Scope
+- Models: I / III / IV / VII (plus V_LE/V_MCC where present).
+- Core implementation: `ProcessLib/RichardsMechanics/RichardsMechanicsFEM-impl.h`.
+- Branch: `dsm_native_hierarchical`.
+- Binary: `/Users/vinaykumar/git/build/release-omp-mfront/bin/ogs`.
+
+## Roadmap (one-line commit refs)
+- Step 1 REV-scale storage + split consistency: `0d7a9edd64`.
+- Step 2 thermodynamic swelling stress + K recalibration: `88d42c98fd`.
+- Step 3 Pi-path Gibbs–Duhem consistency + flag cleanup: `c4888b6db4`, `ce9178fa96`.
+- Step 5 vdW dimensional fix (`/rho_lR`) + literature A lock: `0d579e8aeb`.
+- Step 6 DSM hardening (viscosity guards, micro-pressure density default true): `66b782afa1`.
+- Step 7 dead-code removal (compatibility overload/unused flag): `4d47efff55`, `ce9178fa96`.
+- Step 8 DSM micro-macro test refactor (13/13 passing): `3ac6b7de1f`.
+
+## Key physics/implementation invariants
+- Porosity split: `phi = phi_M + phi_m`, with micro state carried by `n_l`.
+- Storage is REV-scale: `phi_m * rho_lR`.
+- Swelling stress uses thermodynamic Pi-path tied to `rho_LR` for Gibbs–Duhem consistency.
+- vdW potential terms are additive; never replace additive update with assignment.
+- `hamaker_constant` is literature/material-fixed; calibration target is K (not A).
+
+## Execution instructions
+- Keep committed runs benchmark-spec compliant.
+- After physics changes, require:
+  1. Model-I Villar target check within tolerance,
+  2. canonical LE reruns with zero rejected steps,
+  3. `./bin/testrunner --gtest_filter='*DSMMicroMacro*'` passing.
+
+## Current summary
+- Production path stable under latest DSM fixes.
+- Canonical LE outcomes unchanged in accepted/rejected-step sense.
+- Open benchmark-quality work is primarily calibration/interpretation side (not immediate solver-break state).
+
+## DSM_NATIVE_HIERARCHICAL_PATCH_RECIPE.md maintenance rule
+
+`ProcessLib/RichardsMechanics/DSM/DSM_NATIVE_HIERARCHICAL_PATCH_RECIPE.md` is the reconstruction
+recipe for this branch from a fresh `master`. It must stay current.
+
+**Update DSM_NATIVE_HIERARCHICAL_PATCH_RECIPE.md before committing whenever:**
+- Any hunk in `RichardsMechanicsFEM-impl.h` or `PotentialExchange.h` changes.
+- The DSMMicroMacro unit tests change (step 8 section + passing count).
+- Any PRJ `hamaker_constant`, `vdw_augmentation_prefactor` (K), or pre-consolidation
+  pressure (`pc_char_mcc` / `InitialPreConsolidationPressure`, the MCC cap `pc`) value changes.
+- A new benchmark model is added to the canonical LE set.
+- Build flags or the verification `ctest` invocation changes.
+- A new step beyond Step 8 is added (add a new numbered section).
+
+Do not mark a step done in AGENTS.md unless DSM_NATIVE_HIERARCHICAL_PATCH_RECIPE.md already reflects it.
+
+## Known limitations (logged 2026-05-27)
+
+### Hydraulic-side double-counting of suction in Darcy flux
+
+**Location:** `ProcessLib/RichardsMechanics/RichardsMechanicsFEM-impl.h:2627` (and
+the parallel branches at 3368 and 3991) — assembly of the macro Darcy flux:
+
+```cpp
+laplace_p += dNdx_p^T · (k_intr·k_rel·ρ_LR/μ) · dNdx_p · w
+// drives:  q_L = -(k_intr·k_rel/μ) · ∇p_L
+```
+
+**Issue:** `p_L` is the primary `pressure` process variable, which the boundary
+conditions impose as *total* suction (lab-measured, capillary + molecular).
+The full ∇p_L therefore drives the macro Darcy flux, including the molecular
+(disjoining-pressure Π) component. Physically the molecular component should
+drive the micro→macro mass exchange via the DSM source term ρ̇_micro→macro,
+NOT bulk advection in the macro pore.
+
+**Manifestation:** boundary suction ramps of order 100 MPa create huge ∇p_L
+gradients that propagate the wetting front much faster than the material
+physically would. Affects all transient III/IV/VII results at finite t. Does
+NOT affect Model I (no spatial gradient) and does NOT affect t→∞ equilibria
+of III/IV/VII (saturated swelling pressure, asymptotic gap closure, equilibrium
+void ratio).
+
+**Mechanical-side companion (already fixed):** the same total p_L was being
+fed into Bishop's effective stress via the `BishopsPowerLaw(exponent=1)` path
+(χ = S_L → χ·p_L = molecular component leaks into σ_eff during unsaturated
+phase). Fixed by switching all 4 MS33 PRJs to `BishopsSaturationCutoff(cutoff=1)`
+so χ=0 below S_L=1; DSM Π then carries all swelling-source work in the
+unsaturated regime.
+
+**Right fix (open):** split p_L into p_L_macro (capillary, bounded by
+Young–Laplace ~3 MPa for compacted bentonite) and p_L_micro (disjoining, Π).
+Use ∇p_L_macro only in Darcy; route the (p_L − p_L_macro) residual through
+the existing DSM micro↔macro exchange. Requires a new constitutive law for
+the split and a process-variable refactor in `RichardsMechanicsProcess`.
+Estimate: 1–2 weeks careful work + tests.
+
+### MCC tension-apex non-convergence (ModelVII AND ModelIV) — use LE
+
+**Location:** `MaterialLib/SolidModels/MFront/ModCamClay_semiExpl_constE.mfront`
+(yield `f = q² + M²·p·(p−pc)`, `p = −trace(σ)/3 + pamb`).
+
+**Issue:** in the free-swelling ModelVII, differential swelling at the wetting
+front drives integration points to the tensile APEX of the cam-clay ellipse —
+the failing Gauss point sits at `p ≈ 0` with a residual deviatoric `q ≈ 0.16 MPa`
+and `pc ≈ 12 MPa` (healthy). At p=0 the ellipse pinches to the single point
+(0,0); a state with q≠0 has no admissible return → MFront `status -1`.
+
+**ModelIV joins this class (2026-05-29).** Once the clay–pellet ModelIV uses the
+*physical* soft pellet modulus (`E_mcc_pellet = 9.2549 MPa = C·ρ_d³` at ρ_d=900,
+parity with the LE variant), the compliant pellet lets differential swelling drive
+the pellet/clay interface to the apex (`p → 0.03 MPa`, `q → 4.8 MPa`, `eqpl=0`,
+`status -1` at ~22 d). The earlier MCC ModelIV that "completed" (1977 steps) used an
+unphysically stiff pellet (`E = 52 MPa = E_clay`) that suppressed the interface
+deformation. Per the user decision (physical params preferred), **ModelIV is now
+submitted with the LE variant** (`ANCHORS_MS33_LE_PER_DD/ModelIV`, soft pellet,
+converges: clay 13.9 / pellet ~0 MPa). ModelIII does NOT fail because its soft gap
+is a per-material LinearElastic zone (id=1) — no MCC integration there, no apex.
+
+**Tested (2026-05-29) and rejected as the fix:** added a gated `TensionCutoff`
+(`pt_cutoff`) @Parameter (default −1 = OFF; converging models I/III/IV stay
+byte-identical, verified dd1400 elastic 4.908 MPa / eqpl=0). `pt_cutoff=0`
+(strict no-tension) routes p<0 elastic predictions to a volumetric-only return
+that caps the mean stress at 0. It works (nodal min mean −63 → +52 kPa) but VII
+still fails at the same step: the cutoff caps p but leaves q, so `f = q² > 0`
+persists at the apex. Completing the Jacobian did not change the outcome →
+structural, not a numerical bug. The earlier "negative mean stress" reading was
+a nodal-extrapolation artifact; the true obstruction is the p→0 / q≠0 apex
+coincidence. `pc_min` and `pamb` were separately ruled out (see
+`project_dsm_mcc_bishop_cutoff.md` memory).
+
+**Verdict:** the gated cutoff is left disabled in the .mfront as the recorded
+experiment, NOT a production lever. ModelVII free swelling and ModelIV clay–pellet
+both use the LE variant (`ANCHORS_MS33_LE_PER_DD/ModelVII` and `.../ModelIV`).
+A genuine cure would relax BOTH p→0 and q→0 (full apex/fissuring collapse), which
+zeroes wetting-front stiffness and is not globally solvable in OGS RM.
+
+**Pragmatic interim:** submit current results with explicit caveat in the
+deliverable (deck frame "Known Limitation — Hydraulic Side of OGS RM-DSM").
+
+**2026-06-01 -- full-Pi closure; beta_sw retired; EMDD=rho_d calibration.**
+The disjoining-pressure eigenstress (Delta sigma_sw = n_S(n_l_prev Pi_prev - n_l Pi) I,
+Pi = -rho_lR psi_Micro) is the implemented micro-swelling closure; the legacy
+micro_water_content_swelling_slope (beta_sw) branch and its
+<accumulate_swelling_contributions> PRJ tag are removed. K re-fit (dt-converged P*
+basis) to the Dixon (2023) MX-80 anchor under the EMDD=rho_d ANCHORS-groups
+agreement: targets 4.92/14.16/40.86 MPa, K=35625.4/85312.6/224610 J/kg at
+dd1400/1600/1800. CLAUDE.md 12.1 updated; 12.2 provenance synced across the LE
+suite; 12.2 blocks added to the ModelVII experimental BC variants. Verified:
+ogs+testrunner build clean; 14/14 DSM unit tests pass (incl. corrected
+active_nS=1-n_l, section-2 incident); full MS33 suite (10/11 to t_end; dd1600
+documented corner crash; endpoints ~2% high, first-order dt error).

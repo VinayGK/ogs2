@@ -9,6 +9,7 @@
 #include "CapillaryPressureSaturation/CreateSaturationExponential.h"
 #include "CapillaryPressureSaturation/CreateSaturationLiakopoulos.h"
 #include "CapillaryPressureSaturation/CreateSaturationLuMcCartney.h"
+#include "CapillaryPressureSaturation/CreateSaturationTuller.h"
 #include "CapillaryPressureSaturation/CreateSaturationVanGenuchten.h"
 #include "CapillaryPressureSaturation/CreateSaturationVanGenuchtenWithVolumetricStrain.h"
 #include "CreateAverageMolarMass.h"

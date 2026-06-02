@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<!--This file was created by meshio v5.3.5-->
+<UnstructuredGrid>
+<Piece NumberOfPoints="41" NumberOfCells="40">
+<Points>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAADYAwAACAEAAA==eJxjYMAPql6qGXKsibHHLp6DIS6jf1eFrbEUh/oaDPE3gTvkWl834jCnFUPcm4dJu12sE4f5PRjioY+Xzj6iMAGHvRMxxFsOnFroum0yDvdMxRDfPPf98mPe03G4cyaG+KMqkXXuD2fhcP8cDHGhCMstJ8rm4fDXAgzxBVIghy7E4V9McYtOx4SnFxbhCIfFGOIXvgcDbV6CI3yWYoinp4HAMhzhthxD/P+VCmBIrMARnisxxKc7d+c8/40pDgnnVRjieptAFq/GEf5rMMSPKWwoypi4Fke8rMMQj+0/9FUjZj2O+NqAIf67LmtPyWRMcUg8bsQQd9v2+e+VCkxxSPwixAF6UpVA
+</DataArray>
+</Points>
+<Cells>
+<DataArray type="Int64" Name="connectivity" format="binary">
+AQAAAACAAACAAgAAWAAAAA==eJxdxUkCgQAAAMAsoYUUZSkRLf7/QoecZi4TBLMFL3nFaw55w1veccQxJ5zyng+c8ZFzLvjEZy654gtf+cZ3rrnhB7f85Bd3/OYP9zzwyBN///8AUOsGQQ==
+</DataArray>
+<DataArray type="Int64" Name="offsets" format="binary">
+AQAAAACAAABAAQAAWgAAAA==eJwtxdEGwgAAAMAkk8lMkklmZmaSZGaSyczMJNn/f00P3b3cevW3ceCtQ+8cOfbeBx+d+OSzU2fOXbh05Yuvvvnu2o1bP/x055d7Dx49efbbH3+9+AfO3gZp
+</DataArray>
+<DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAABAAQAAEAAAAA==eJxjZoAA5lGaLBoATiAAeQ==
+</DataArray>
+</Cells>
+<PointData>
+<DataArray type="UInt64" Name="bulk_node_ids" format="binary">
+AQAAAACAAABIAQAAcwAAAA==eJwtxSECwQAUANBhQRCWBUFwAkEQdoIFQdgJFgTBCYQFwQkWBMEJBEFwAmFBcAJBWJCF/155SRLGnrtw5b0bX/30x2kvnnjhlTeuffLNrb8e9uOpl15764PPvvvlzqNBPHPu0jsfffHDb/+cpfEfuf0TiQ==
+</DataArray>
+</PointData>
+<CellData>
+<DataArray type="UInt64" Name="bulk_element_ids" format="binary">
+AQAAAACAAABAAQAAawAAAA==eJwtxZECwlAAAMC1IIpGWRRFsygazaLRKIuiKIuiaDYajbIoimZRFPUDo1E0eHdyURQsnDr33mdXvrvzz38nk/DamUuffHPrl78ePI/DK29d+OirGz/9ce/ZNLz0xjsffHHth98eAa68E2Y=
+</DataArray>
+<DataArray type="UInt8" Name="bulk_face_ids" format="binary">
+AQAAAACAAAAoAAAADAAAAA==eJxjZiYOAAAJxAB5
+</DataArray>
+</CellData>
+</Piece>
+</UnstructuredGrid>
+</VTKFile>

@@ -10,6 +10,7 @@
 #include "CapillaryPressureSaturation/SaturationExponential.h"
 #include "CapillaryPressureSaturation/SaturationLiakopoulos.h"
 #include "CapillaryPressureSaturation/SaturationLuMcCartney.h"
+#include "CapillaryPressureSaturation/SaturationTuller.h"
 #include "CapillaryPressureSaturation/SaturationVanGenuchten.h"
 #include "CapillaryPressureSaturation/SaturationVanGenuchtenWithVolumetricStrain.h"
 #include "ClausiusClapeyron.h"

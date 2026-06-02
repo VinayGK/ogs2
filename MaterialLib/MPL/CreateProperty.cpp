@@ -186,6 +186,11 @@ std::unique_ptr<MaterialPropertyLib::Property> createProperty(
     {
         return createSaturationExponential(config);
     }
+    if (boost::iequals(property_type, "SaturationTuller") ||
+        boost::iequals(property_type, "TullerRetention"))
+    {
+        return createSaturationTuller(config);
+    }
     if (boost::iequals(property_type, "SaturationVanGenuchten"))
     {
         return createSaturationVanGenuchten(config);
