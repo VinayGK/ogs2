@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+  <Collection>
+    <DataSet timestep="0" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_0_t_0.000000.vtu"/>
+    <DataSet timestep="432000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_39_t_432000.000000.vtu"/>
+    <DataSet timestep="864000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_52_t_864000.000000.vtu"/>
+    <DataSet timestep="1296000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_66_t_1296000.000000.vtu"/>
+    <DataSet timestep="1728000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_77_t_1728000.000000.vtu"/>
+    <DataSet timestep="2160000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_95_t_2160000.000000.vtu"/>
+    <DataSet timestep="2592000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_107_t_2592000.000000.vtu"/>
+    <DataSet timestep="3024000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_118_t_3024000.000000.vtu"/>
+    <DataSet timestep="3456000" group="" part="0" file="beacon_t33_path1_MCCrestart_ts_136_t_3456000.000000.vtu"/>
+  </Collection>
+</VTKFile>
