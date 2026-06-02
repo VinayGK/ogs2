@@ -2706,6 +2706,41 @@ void RichardsMechanicsLocalAssembler<
                 use_vdw_micro_potential_for_active_exchange = true;
                 mu_lR_vdw = micro_potential.mu_lR;
                 dmu_lR_vdw_drho_lR = micro_potential.dmu_lR_drho_lR;
+                // ── DSM Maxwell-conjugate term (B1) ──────────────────────────
+                // Restore the partner of the swelling eigenstress so (sigma,
+                // mu_lR) come from one Psi. Sharp gate p'>=Pi; freeze phi (B1).
+                // See ProcessLib/RichardsMechanics/DSM/
+                // MAXWELL_CONJUGATE_IMPLEMENTATION.md. EXACTLY zero below the
+                // gate, so gate-closed runs are unchanged bit-for-bit.
+                {
+                    double const Pi_mc = p_L_m;  // Pa, disjoining = -rho*mu_lR > 0
+                    double const p_conf_mc =
+                        -std::get<ProcessLib::ConstitutiveRelations::
+                                      EffectiveStressData<DisplacementDim>>(
+                             this->current_states_[ip])
+                             .sigma_eff.dot(identity2) /
+                        3.0;  // Pa, confining pressure = -tr(sigma')/3
+                    double const one_minus_nl_mc = std::max(1e-12, 1.0 - n_l);
+                    double const n_S_mc = std::clamp(
+                        (1.0 - phi) / one_minus_nl_mc, 0.0, 1.0);  // = 1 - phi_M
+                    double const rho_mc =
+                        (std::isfinite(rho_lR_exchange_input) &&
+                         rho_lR_exchange_input > 0.0)
+                            ? rho_lR_exchange_input
+                            : rho_LR;
+                    // dPi/dn_l = (Pi/mu_lR)*dmu_lR_dnl (Pi=-rho*mu_lR; density-agnostic)
+                    double const dPi_dnl_mc =
+                        (std::abs(mu_lR_vdw) > 1e-300)
+                            ? (Pi_mc / mu_lR_vdw) * micro_potential.dmu_lR_dnl
+                            : 0.0;
+                    double const S1_mc =
+                        -n_S_mc * (Pi_mc + n_l * dPi_dnl_mc);  // Pa
+                    auto const mc = computeMaxwellConjugateMicroPotential(
+                        S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
+                        p_conf_mc, Pi_mc, rho_mc);
+                    mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
+                    dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
+                }
             }
 
             auto const potential_exchange_result = computePotentialExchangeUpdate(
@@ -3529,6 +3564,39 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 use_vdw_micro_potential_for_active_exchange = true;
                 mu_lR_vdw = micro_potential.mu_lR;
                 dmu_lR_vdw_drho_lR = micro_potential.dmu_lR_drho_lR;
+                // ── DSM Maxwell-conjugate term (B1) ──────────────────────────
+                // Maxwell partner of the swelling eigenstress (one Psi). Sharp
+                // gate p'>=Pi; freeze phi (B1). ==0 below the gate (gate-closed
+                // runs unchanged bit-for-bit). Mirrors the assemble() path.
+                {
+                    double const Pi_mc = p_L_m;  // Pa, disjoining = -rho*mu_lR > 0
+                    double const p_conf_mc =
+                        -std::get<ProcessLib::ConstitutiveRelations::
+                                      EffectiveStressData<DisplacementDim>>(
+                             this->current_states_[ip])
+                             .sigma_eff.dot(identity2) /
+                        3.0;  // Pa, confining pressure = -tr(sigma')/3
+                    double const one_minus_nl_mc = std::max(1e-12, 1.0 - n_l);
+                    double const n_S_mc = std::clamp(
+                        (1.0 - phi) / one_minus_nl_mc, 0.0, 1.0);  // = 1 - phi_M
+                    double const rho_mc =
+                        (std::isfinite(rho_lR_exchange_input) &&
+                         rho_lR_exchange_input > 0.0)
+                            ? rho_lR_exchange_input
+                            : rho_LR;
+                    // dPi/dn_l = (Pi/mu_lR)*dmu_lR_dnl (Pi=-rho*mu_lR; density-agnostic)
+                    double const dPi_dnl_mc =
+                        (std::abs(mu_lR_vdw) > 1e-300)
+                            ? (Pi_mc / mu_lR_vdw) * micro_potential.dmu_lR_dnl
+                            : 0.0;
+                    double const S1_mc =
+                        -n_S_mc * (Pi_mc + n_l * dPi_dnl_mc);  // Pa
+                    auto const mc = computeMaxwellConjugateMicroPotential(
+                        S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
+                        p_conf_mc, Pi_mc, rho_mc);
+                    mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
+                    dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
+                }
                 use_fd_jacobian_for_direct_macro_derivative =
                     potential_exchange_params_ptr
                         ->use_fd_jacobian_for_exchange;
