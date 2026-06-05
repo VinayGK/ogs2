@@ -77,6 +77,7 @@ Official benchmark specs (MSXX theoretical_benchmarking.tex, Table TH-G_model_pa
                 <hamaker_constant>2.2e-20</hamaker_constant>
                 <specific_surface>523.0</specific_surface>
                 <micro_solid_density_reference>2780.0</micro_solid_density_reference>
+                <micro_solid_volume_fraction_mode>current_porosity_split</micro_solid_volume_fraction_mode>
                 <!-- n_s = 1 - phi0 = 0.575540 -->
                 <micro_solid_volume_fraction_reference>0.5755395683453237</micro_solid_volume_fraction_reference>
                 <!-- rho_l0=100 → rho_lR = 100·exp(-1e-16·ω) + 1000 ≈ 1100 kg/m³
@@ -95,7 +96,7 @@ Official benchmark specs (MSXX theoretical_benchmarking.tex, Table TH-G_model_pa
                 <!-- K [Villar-calibrated; SUPERSEDED 2026-06-01 -> Dixon recalibrated value below] at rho_d=1600 kg/m³ via Pi-path;
                      Π uses bulk ρ_LR (Gibbs–Duhem consistent); steps 2+3, 2026-05-21 -->
                 <!-- K recalibrated 2026-06-01: dt-converged Dixon(2023) reference K (P* basis); prev value 82823.7 -->
-                <vdw_augmentation_prefactor>85312.6</vdw_augmentation_prefactor>
+                <vdw_augmentation_prefactor>85775.584</vdw_augmentation_prefactor>
                 <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
                      (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
                       Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
@@ -228,8 +229,8 @@ Official benchmark specs (MSXX theoretical_benchmarking.tex, Table TH-G_model_pa
                     <t_initial>0.0</t_initial>
                     <!-- 200 days = 17280000 s -->
                     <t_end>17280000</t_end>
-                    <initial_dt>10</initial_dt>
-                    <minimum_dt>0.1</minimum_dt>
+                    <initial_dt>0.5</initial_dt>
+                    <minimum_dt>1e-5</minimum_dt>
                     <maximum_dt>86400</maximum_dt>
                     <number_iterations>1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25</number_iterations>
                     <multiplier>1.225 1.2 1.175 1.15 1.125 1.1 1.075 1.05 1.025 0.975 0.95 0.925 0.9 0.875 0.85 0.825 0.8 0.775 0.75 0.725 0.7 0.675 0.65 0.625</multiplier>
