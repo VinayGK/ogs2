@@ -3610,6 +3610,26 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         p_conf_mc, Pi_gate_mc, rho_mc, /*n_S=*/n_S_mc);
                     mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
+                    // DSM Maxwell-conjugate: exchange<->displacement tangent --
+                    // the transpose partner of the swelling-eigenstress block.
+                    // mu_lR_mech makes the exchange depend on eps_v, so the
+                    // pressure residual rho_L_hat = alpha_M*(mu_lR - mu_LR) has
+                    //   d rho_L_hat/d u = alpha_M * (dmu_lR_mech/deps_v) * m^T B,
+                    // m = identity2 (eps_v = m^T B u). ==0 below the gate, so
+                    // gate-closed runs stay bit-for-bit. Without this block the
+                    // tangent is inconsistent and Newton diverges (Task-13 Pi
+                    // blow-up). Sign mirrors the K[p,p] exchange block (-=).
+                    if (mc.gate_open && mc.dmu_lR_mech_deps_v != 0.0 && mu > 0.0)
+                    {
+                        double const alpha_M_eff_mc = alpha_bar * rho_LR / mu;
+                        local_Jac
+                            .template block<pressure_size, displacement_size>(
+                                pressure_index, displacement_index)
+                            .noalias() -=
+                            N_p.transpose() *
+                            (alpha_M_eff_mc * mc.dmu_lR_mech_deps_v) *
+                            identity2.transpose() * B * w;
+                    }
                 }
                 use_fd_jacobian_for_direct_macro_derivative =
                     potential_exchange_params_ptr
