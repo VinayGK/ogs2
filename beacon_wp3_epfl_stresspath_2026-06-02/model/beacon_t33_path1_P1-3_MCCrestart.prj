@@ -97,7 +97,7 @@
     <parameters>
         <parameter><name>sigma0</name><type>Function</type>
             <expression>-2.1e4</expression><expression>-2.1e4</expression><expression>-2.1e4</expression><expression>0</expression></parameter>
-        <parameter><name>phi0</name><type>Constant</type><value>0.5167</value></parameter>
+        <parameter><name>phi0</name><type>Constant</type><value>0.7006</value></parameter>
         <parameter><name>displacement0</name><type>Constant</type><values>0 0</values></parameter>
         <parameter><name>pressure_ic</name><type>Constant</type><value>0</value></parameter>
         <parameter><name>zero</name><type>Constant</type><value>0.0</value></parameter>
@@ -109,7 +109,7 @@
         <parameter><name>kappa_mcc</name><type>Constant</type><value>0.0066</value></parameter>
         <parameter><name>lambda_mcc</name><type>Constant</type><value>0.077</value></parameter>
         <parameter><name>pc_char_mcc</name><type>Constant</type><value>0.5e6</value></parameter>
-        <parameter><name>Vr0_mcc</name><type>Constant</type><value>2.069</value></parameter>
+        <parameter><name>Vr0_mcc</name><type>Constant</type><value>3.34</value></parameter>
     </parameters>
     <process_variables>
         <process_variable><name>displacement</name><components>2</components><order>1</order>
