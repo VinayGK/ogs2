@@ -25,14 +25,15 @@ fig,ax=plt.subplots(figsize=(8,6))
 ax.plot(mP1_s,mP1_e,"-o",color="#c0392b",lw=1.6,ms=5,mec="k",mew=0.4,zorder=5,label="measured P1 (free swell A-B-C-D)")
 ax.plot(mP2_s,mP2_e,"--s",color="#e08e0b",lw=1.6,ms=5,mec="k",mew=0.4,zorder=5,label="measured P2 (const. vol A-B'-C')")
 ax.plot(S_sw,E_sw,"-^",color="#5fa8d3",ms=4,lw=1.4,zorder=3,label="model P1 free-swell (LE; capped e~1.0, small-strain)")
-ax.plot(S_c,E_c,"-D",color="#7b3fa0",ms=4,lw=1.5,zorder=3,label="model P1 compression (MCC from imposed B=2.34)")
+ax.plot(S_c,E_c,"-D",color="#7b3fa0",ms=4,lw=1.5,zorder=3,label="model P1 compression (MCC from B=2.34, $\lambda$=0.31 fit to D)")
 ax.plot(S_p2,E_p2,"-o",color="#1f5fa8",ms=4,lw=1.7,zorder=4,label="model P2 (split, K=56183)")
 for n,(s,e) in {"A":(0.021,0.84),"B":(0.021,2.34),"C":(3.24,1.10),"C'":(20.0,0.57),"D":(20.0,0.56)}.items():
     ax.annotate(n,(s,e),textcoords="offset points",xytext=(6,5),fontsize=11,fontweight="bold",zorder=6)
 ax.text(0.012,0.34,
         "micro-only disjoining nS=1-n_l (current-porosity-split); K re-fit to Dixon\n"
         "P1: LE free-swell capped at e~1.0 (82% swell strain > small-strain limit,\n"
-        "both E-soften and K-crank diverge); MCC compression from IMPOSED measured B=2.34",
+        "both E-soften and K-crank diverge); MCC from IMPOSED B=2.34,\n"
+        "lambda recalibrated 0.077->0.31 to match measured D (Cc~0.59); endpoint e=0.56",
         fontsize=7.4,color="#1f4e79",bbox=dict(boxstyle="round,pad=0.3",fc="#eef5ff",ec="#1f5fa8",lw=0.8))
 ax.set_xscale("log"); ax.set_xlim(0.01,60); ax.set_ylim(0.3,2.6)
 ax.set_xlabel("$\\sigma_v$ [MPa]"); ax.set_ylabel("void ratio $e$ [-]")

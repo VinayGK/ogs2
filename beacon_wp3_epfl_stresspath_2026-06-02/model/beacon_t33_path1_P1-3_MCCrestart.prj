@@ -107,7 +107,7 @@
         <parameter><name>nu_mcc</name><type>Constant</type><value>0.3</value></parameter>
         <parameter><name>M_csl</name><type>Constant</type><value>1.2</value></parameter>
         <parameter><name>kappa_mcc</name><type>Constant</type><value>0.0066</value></parameter>
-        <parameter><name>lambda_mcc</name><type>Constant</type><value>0.077</value></parameter>
+        <parameter><name>lambda_mcc</name><type>Constant</type><value>0.31</value><!-- recalibrated 2026-06-05 from Acta 0.077 to match measured loose-MX-80 B->D compression (Cc~0.59 -> lambda~0.31); fit to D=0.56 in the large-strain model, NOT the textbook index --></parameter>
         <parameter><name>pc_char_mcc</name><type>Constant</type><value>0.5e6</value></parameter>
         <parameter><name>Vr0_mcc</name><type>Constant</type><value>3.34</value></parameter>
     </parameters>
