@@ -2744,7 +2744,7 @@ void RichardsMechanicsLocalAssembler<
                     double const Pi_gate_mc = n_S_mc * n_l * Pi_mc;  // = phi_m*Pi
                     auto const mc = computeMaxwellConjugateMicroPotential(
                         S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
-                        p_conf_mc, Pi_gate_mc, rho_mc);
+                        p_conf_mc, Pi_gate_mc, rho_mc, /*n_S=*/n_S_mc);
                     mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                 }
@@ -3607,7 +3607,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     double const Pi_gate_mc = n_S_mc * n_l * Pi_mc;  // = phi_m*Pi
                     auto const mc = computeMaxwellConjugateMicroPotential(
                         S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
-                        p_conf_mc, Pi_gate_mc, rho_mc);
+                        p_conf_mc, Pi_gate_mc, rho_mc, /*n_S=*/n_S_mc);
                     mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                 }

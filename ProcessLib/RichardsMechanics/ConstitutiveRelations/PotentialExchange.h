@@ -234,7 +234,8 @@ struct MaxwellConjugateMicroPotentialData
 
 inline MaxwellConjugateMicroPotentialData computeMaxwellConjugateMicroPotential(
     double const S1, double const dS1_dnl, double const eps_v,
-    double const p_conf, double const Pi, double const rho_lR)
+    double const p_conf, double const Pi, double const rho_lR,
+    double const n_S)
 {
     if (!(rho_lR > 0.0))
     {
@@ -242,6 +243,24 @@ inline MaxwellConjugateMicroPotentialData computeMaxwellConjugateMicroPotential(
             "computeMaxwellConjugateMicroPotential requires rho_lR > 0, got "
             "{:g}.",
             rho_lR);
+    }
+    // n_S = 1 - phi_M = REV macro-solid (aggregate) fraction. mu_lR is a
+    // SPECIFIC potential [J/kg]; its thermodynamic conjugate is the micro liquid
+    // mass per REV volume m_l = rho_lR * phi_m = rho_lR * (1 - phi_M) * n_l, with
+    // d m_l / d n_l = rho_lR * n_S. The eigenstress half is already REV-referenced
+    // (sigma_sw = -(1 - phi_M)*n_l*Pi), so the conjugate half must divide by the
+    // REV micro-liquid mass density rho_lR * n_S, NOT rho_lR alone. Omitting n_S
+    // under-references the term by (1 - phi_M): the two cross-partials
+    // d sigma_sw,m/d m_l and d mu_lR_mech/d eps_v then differ by (1 - phi_M),
+    // the integrability condition d sigma/d m_l = d mu_lR/d eps fails, and the
+    // (sigma, mu_lR) response is non-conservative (loop integral != 0). See
+    // DSM/MAXWELL_CONJUGATE_REV_REFERENCING.md.
+    if (!(n_S > 0.0))
+    {
+        OGS_FATAL(
+            "computeMaxwellConjugateMicroPotential requires n_S = 1 - phi_M > 0, "
+            "got {:g}.",
+            n_S);
     }
     MaxwellConjugateMicroPotentialData out;
     // Sharp gate (B1): the term switches on only once the confining pressure
@@ -254,9 +273,15 @@ inline MaxwellConjugateMicroPotentialData computeMaxwellConjugateMicroPotential(
     {
         return out;
     }
-    out.mu_lR_mech = S1 * eps_v / rho_lR;                // J/kg
-    out.dmu_lR_mech_deps_v = S1 / rho_lR;                // J/kg per unit strain
-    out.dmu_lR_mech_dnl = dS1_dnl * eps_v / rho_lR;      // J/kg per unit n_l
+    // REV-referenced measure: divide by rho_lR * n_S (per-REV micro-liquid mass
+    // density), not rho_lR. This scales the conjugate UP by 1/(1 - phi_M), the
+    // reciprocal of the (1 - phi_M) the eigenstress carries -> the pair derives
+    // from one Psi (energy-conserving). phi_M is frozen at the GP (B1), so
+    // d n_S / d rho_lR = 0 and the rho_lR-derivative keeps its form.
+    double const rho_rev = rho_lR * n_S;                 // kg/m^3, per-REV measure
+    out.mu_lR_mech = S1 * eps_v / rho_rev;               // J/kg
+    out.dmu_lR_mech_deps_v = S1 / rho_rev;               // J/kg per unit strain
+    out.dmu_lR_mech_dnl = dS1_dnl * eps_v / rho_rev;     // J/kg per unit n_l
     out.dmu_lR_mech_drho_lR = -out.mu_lR_mech / rho_lR;  // (J/kg)/(kg/m^3)
     return out;
 }
