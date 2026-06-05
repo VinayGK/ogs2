@@ -90,6 +90,7 @@
                 <micro_solid_density_reference>2780.0</micro_solid_density_reference>
                 <!-- n_s = 1 - phi0 = 0.54645 (phi0 from measured e0=0.83, P1-3) -->
                 <micro_solid_volume_fraction_reference>0.54645</micro_solid_volume_fraction_reference>
+                <micro_solid_volume_fraction_mode>current_porosity_split</micro_solid_volume_fraction_mode>
                 <micro_liquid_density_reference>100.0</micro_liquid_density_reference>
                 <micro_liquid_density_a>1e-16</micro_liquid_density_a>
                 <micro_liquid_density_b>1.0</micro_liquid_density_b>
@@ -101,7 +102,7 @@
                 <!-- K = 44200 J/kg: Dixon (2023) MX-80 Fig.1, log-interp of approved MCC anchors
                      (26950@rho_d=1400, 71900@1600) to nominal pour density rho_d=1500 (Acta:135).
                      SINGLE shared material value across both paths. See §12.2 header FLAG. -->
-                <vdw_augmentation_prefactor>44200</vdw_augmentation_prefactor>
+                <vdw_augmentation_prefactor>56183</vdw_augmentation_prefactor>
                 <vdw_augmentation_decay_length>7.5e-7</vdw_augmentation_decay_length>
             </potential_exchange>
             <process_variables>
@@ -207,8 +208,8 @@
                     <t_initial>0.0</t_initial>
                     <!-- 0-200 d: wetting + free swell at 21 kPa. 200-240 d: oedometric loading to 20 MPa. -->
                     <t_end>20736000</t_end>
-                    <initial_dt>10</initial_dt>
-                    <minimum_dt>0.1</minimum_dt>
+                    <initial_dt>0.5</initial_dt>
+                    <minimum_dt>1e-5</minimum_dt>
                     <maximum_dt>86400</maximum_dt>
                     <number_iterations>1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25</number_iterations>
                     <multiplier>1.225 1.2 1.175 1.15 1.125 1.1 1.075 1.05 1.025 0.975 0.95 0.925 0.9 0.875 0.85 0.825 0.8 0.775 0.75 0.725 0.7 0.675 0.65 0.625</multiplier>
