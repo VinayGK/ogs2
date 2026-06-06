@@ -599,6 +599,48 @@ inline ReducedMicroLiquidDensityData computeActiveMicroLiquidDensity(
     return computeReducedMicroLiquidDensity(n_l, rho_LR, active_nS, potential_exchange_params);
 }
 
+// ── Film-pressure folding (maxwell sec.5), shared by every local micro solve ──
+// Given a BARE van-der-Waals micro potential `out` (already evaluated at this
+// n_l with the SAME rho_lR_used the vdW formula consumed), ADD the smoothly-
+// gated film delta mu_lR -> -(Pi - b*p_conf)/rho_lR in place. Strictly gated on
+// the film_pressure_coupling master flag AND a finite confining_pressure_p_conf
+// sentinel, so flag OFF or stress-not-supplied (default-constructed context,
+// e.g. the eigenstress-difference driver) leaves `out` BIT-FOR-BIT unchanged.
+//
+// This is the ONE evaluator factored out of computeActiveMicroPotential so the
+// scalar/microstate local solve, the macro exchange assembly, AND the
+// mass-storage 2x2 local solve (which builds rho_lR itself and so cannot route
+// through computeActiveMicroPotential's internal density) all fold the IDENTICAL
+// film term — equipresence across local-solve modes (increment E, 2026-06-06).
+inline void applyFilmPressureMicroPotential(
+    VanDerWaalsMicroPotentialData& out, double const n_l,
+    double const rho_lR_used, double const active_nS,
+    PotentialExchangeLocalSolveContext const& local_context,
+    PotentialExchangeParameters const& potential_exchange_params)
+{
+    if (!(potential_exchange_params.film_pressure_coupling &&
+          std::isfinite(local_context.confining_pressure_p_conf)))
+    {
+        return;  // flag OFF or NaN p_conf -> unchanged (pure vdW), bit-for-bit.
+    }
+    // Pi = -rho_lR_used * mu_lR_vdw > 0 (mirrors p_L_m and the eigenstress; the
+    // SAME density used inside the vdW formula at this call site).
+    double const Pi = -rho_lR_used * out.mu_lR;
+    double const one_minus_nl = std::max(1e-12, 1.0 - n_l);
+    double const n_S_rev =
+        std::isfinite(local_context.phi)
+            ? std::clamp((1.0 - local_context.phi) / one_minus_nl, 0.0, 1.0)
+            : active_nS;  // = 1 - phi_M (REV macro-solid fraction)
+    auto const film = computeFilmPressureMicroPotential(
+        Pi, local_context.confining_pressure_p_conf, rho_lR_used,
+        std::max(1e-16, n_S_rev), n_l, out.dmu_lR_dnl,
+        potential_exchange_params.film_pressure_gate_width,
+        local_context.biot_coefficient);
+    out.mu_lR += film.mu_lR_film_delta;
+    out.dmu_lR_dnl += film.dmu_lR_film_dnl;
+    out.dmu_lR_drho_lR += film.dmu_lR_film_drho_lR;
+}
+
 inline ReducedMicroLiquidDensityData computePreviousMicroLiquidDensity(
     double const n_l_prev, double const rho_LR,
     PotentialExchangeLocalSolveContext const& local_context,
@@ -652,13 +694,20 @@ solveReferenceMassStoragePredictorState(
             n_l, local_context, potential_exchange_params);
         auto const micro_liquid_density = computeReducedMicroLiquidDensity(
             n_l, rho_LR, active_nS, potential_exchange_params);
-        auto const micro_potential = computeVanDerWaalsMicroPotential(
+        auto micro_potential = computeVanDerWaalsMicroPotential(
             n_l, micro_liquid_density.rho_lR, active_nS,
             potential_exchange_params.micro_solid_density_reference, potential_exchange_params.hamaker_constant,
             potential_exchange_params.specific_surface,
             microPotentialSignFactorFromParameters(potential_exchange_params),
             potential_exchange_params.vdw_augmentation_prefactor,
             potential_exchange_params.vdw_augmentation_decay_length);
+        // Increment E: fold the film delta into mu_lR (and dmu_lR_dnl, which the
+        // analytic predictor Jacobian below reads through micro_potential) using
+        // the SAME micro density the vdW formula consumed. No-op when the flag is
+        // OFF / p_conf NaN -> predictor is bit-for-bit the bare-vdW path.
+        applyFilmPressureMicroPotential(micro_potential, n_l,
+                                        micro_liquid_density.rho_lR, active_nS,
+                                        local_context, potential_exchange_params);
         double const mu_LR_active = macro_potential.mu_LR;
         double const mu_lR_active = micro_potential.mu_lR;
         auto const exchange = computePotentialDrivenMassExchange(
@@ -819,12 +868,19 @@ solveReferenceMassStorageCoupledState(
     {
         double const active_nS = computeActiveMicroSolidVolumeFraction(
             n_l, local_context, potential_exchange_params);
-        auto const micro_potential = computeVanDerWaalsMicroPotential(
+        auto micro_potential = computeVanDerWaalsMicroPotential(
             n_l, rho_lR, active_nS, potential_exchange_params.micro_solid_density_reference,
             potential_exchange_params.hamaker_constant, potential_exchange_params.specific_surface,
             microPotentialSignFactorFromParameters(potential_exchange_params),
             potential_exchange_params.vdw_augmentation_prefactor,
             potential_exchange_params.vdw_augmentation_decay_length);
+        // Increment E: fold the film delta into mu_lR with the in-iteration micro
+        // density rho_lR (the 2x2 unknown the vdW formula just consumed). The 2x2
+        // local Jacobian is finite-difference over THIS lambda, so it picks up the
+        // film term in both residuals automatically. No-op when the flag is OFF /
+        // p_conf NaN -> bit-for-bit the bare-vdW path.
+        applyFilmPressureMicroPotential(micro_potential, n_l, rho_lR, active_nS,
+                                        local_context, potential_exchange_params);
         double const mu_LR_active = macro_potential.mu_LR;
         double const mu_lR_active = micro_potential.mu_lR;
         auto const exchange = computePotentialDrivenMassExchange(
@@ -1089,32 +1145,15 @@ inline VanDerWaalsMicroPotentialData computeActiveMicroPotential(
             potential_exchange_params.vdw_augmentation_decay_length, dnS_dnl);
 
     // ── Film-pressure coupling (maxwell sec.5): ONE evaluator ────────────────
-    // When the flag is ON and the confining pressure is supplied (finite
-    // sentinel), fold the smoothly-gated film delta into mu_lR HERE, so the SAME
-    // mu_lR(p_film) propagates to EVERY consumer of computeActiveMicroPotential:
-    // the scalar local n_l solve (eval_at), the p_L_m writer
-    // (computeCompatibilityMicroHydraulicOutput), and the residual/Jacobian
-    // assembly. Flag OFF or NaN p_conf -> unchanged (pure vdW), bit-for-bit.
-    if (potential_exchange_params.film_pressure_coupling &&
-        std::isfinite(local_context.confining_pressure_p_conf))
-    {
-        // Pi = -rho_lR_effective * mu_lR_vdw > 0 (mirrors p_L_m and the
-        // eigenstress; the SAME density used inside the vdW formula).
-        double const Pi = -rho_lR_effective * out.mu_lR;
-        double const one_minus_nl = std::max(1e-12, 1.0 - n_l);
-        double const n_S_rev =
-            std::isfinite(local_context.phi)
-                ? std::clamp((1.0 - local_context.phi) / one_minus_nl, 0.0, 1.0)
-                : active_nS;  // = 1 - phi_M (REV macro-solid fraction)
-        auto const film = computeFilmPressureMicroPotential(
-            Pi, local_context.confining_pressure_p_conf, rho_lR_effective,
-            std::max(1e-16, n_S_rev), n_l, out.dmu_lR_dnl,
-            potential_exchange_params.film_pressure_gate_width,
-            local_context.biot_coefficient);
-        out.mu_lR += film.mu_lR_film_delta;
-        out.dmu_lR_dnl += film.dmu_lR_film_dnl;
-        out.dmu_lR_drho_lR += film.dmu_lR_film_drho_lR;
-    }
+    // Fold the smoothly-gated film delta into mu_lR via the shared helper, so the
+    // SAME mu_lR(p_film) propagates to EVERY consumer of computeActiveMicroPotential
+    // (the scalar local n_l solve eval_at, the p_L_m writer
+    // computeCompatibilityMicroHydraulicOutput, the residual/Jacobian assembly)
+    // AND stays identical to the mass-storage 2x2 solve (increment E). Flag OFF or
+    // NaN p_conf -> the helper is a no-op (pure vdW), bit-for-bit. Uses the SAME
+    // density (rho_lR_effective) the vdW formula above consumed.
+    applyFilmPressureMicroPotential(out, n_l, rho_lR_effective, active_nS,
+                                    local_context, potential_exchange_params);
     return out;
 }
 
