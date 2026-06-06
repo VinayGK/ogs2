@@ -153,6 +153,7 @@ struct PotentialExchangeParameters
     // solid-fluid volume partitioning; one-Psi consistency) and threaded into the
     // local solve via PotentialExchangeLocalSolveContext::biot_coefficient.
     double film_pressure_gate_width = 0.0;        // smooth-gate width w [Pa]; 0 -> sharp fallback  [Vinay's call]
+    // DEPRECATED 2026-06-06: swelling stress is now (1-phi_M)*p_film; this modulus is unused.
     double film_pressure_swelling_modulus = 0.0;  // eigenstrain modulus K_sw [Pa]; 0 -> drained K  [Vinay's call]
 
     // ── Macro-porosity floor (Vinay 2026-06-06) ────────────────────────────

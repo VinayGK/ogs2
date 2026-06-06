@@ -469,6 +469,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "RichardsMechanics: {} film_pressure_gate_width must be >= 0, got {:g}.",
             context, film_pressure_gate_width);
     }
+    // DEPRECATED 2026-06-06: swelling stress is now (1-phi_M)*p_film; this modulus is unused.
     auto const film_pressure_swelling_modulus =
         config.getConfigParameter<double>(
             "film_pressure_swelling_modulus",

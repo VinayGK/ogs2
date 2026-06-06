@@ -2070,58 +2070,109 @@ TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
 {
     using KM = MathLib::KelvinVector::KelvinMatrixType<2>;
 
-    // Flag-ON film-pressure eigenstrain swelling stress (committed c1af5147ea):
-    //   delta_sigma_sw = -(1 - phi_M)*K_sw*b*(n_l - n_l_prev)*identity2,
-    // so S1 = d sigma_sw,m / d n_l = -(1 - phi_M)*K_sw*b < 0 (uptake raises the
-    // compressive swelling stress => compression DRAINS, the Maxwell-consistent
-    // sign). The mean of the Kelvin-vector increment equals its scalar
-    // coefficient (delta_sigma_sw . identity2 / 3 = coefficient, since the
-    // increment is coefficient*identity2 and identity2.identity2 = 3).
+    // Flag-ON film-pressure swelling stress (2026-06-06 PRESSURE form, Vinay's
+    // correction): the micro swelling stress is a transmitted PRESSURE over the
+    // contact fraction, NOT an elastic K_sw eigenstress:
+    //   sigma_sw(n)   = -(1 - phi_M)*(Pi(n_l) - b*p_conf),
+    //   delta_sigma_sw = -(1 - phi_M)*(Pi(n_l) - Pi(n_l_prev))*identity2
+    // (the -b*p_conf term cancels in the p_conf-fixed increment), with Pi the BARE
+    // van-der-Waals disjoining pressure Pi = -rho * mu_vdW. K_sw is GONE.
+    //
+    // This re-derives the expected increment from the SAME bare-vdW Pi the
+    // production residual recomputes (independent reconstruction here, so this is
+    // a genuine cross-check of the assembled increment, not a fit-and-verify),
+    // then confirms the n_l-derivative carries the formula's sign.
     PotentialExchangeParameters potential_exchange_params;
     potential_exchange_params.enabled = true;
     potential_exchange_params.film_pressure_coupling = true;
-    potential_exchange_params.film_pressure_swelling_modulus = 1.0e7;  // K_sw > 0
-    // Biot b is now threaded as an explicit argument (== poroelastic biot alpha),
-    // no longer a film parameter; pass b = 1 below so the expected
-    // S1 = -(1 - phi_M)*K_sw*b is unchanged.
-    // vdW params kept physical (the ON branch returns before touching them, but
-    // they document a valid configuration).
+    // K_sw is DEPRECATED and unused; leave it default (0). vdW params physical:
     potential_exchange_params.hamaker_constant = 6.0e-20;
     potential_exchange_params.specific_surface = 1000.0;
     potential_exchange_params.micro_solid_density_reference = 2650.0;
     potential_exchange_params.micro_solid_volume_fraction_reference = 0.6;
+    potential_exchange_params.micro_potential_convention =
+        MicroPotentialConvention::NegativeAttractive;  // attractive: mu_vdW < 0
 
     auto const& identity2 = MathLib::KelvinVector::Invariants<
         MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
-    KM const C_el = KM::Identity();  // isotropic stiffness arg (unused when K_sw>0)
+    KM const C_el = KM::Identity();  // unused on the film-ON branch now
 
     double const n_S = 0.63;  // = 1 - phi_M (REV macro-solid / contact-area factor)
-    double const K_sw = potential_exchange_params.film_pressure_swelling_modulus;
-    double const b = 1.0;  // eigenstrain Biot b, passed explicitly (== biot alpha)
+    double const b = 1.0;     // Biot b passed explicitly (cancels in the increment)
     double const rho_lR = 1000.0;
     double const rho_lR_prev = 1000.0;
     double const rho_LR = 1000.0;
     double const n_l_prev = 0.1;
 
-    // Mean (= isotropic trace/3) of the film eigenstress increment at n_l.
-    auto const sigma_sw_mean_at = [&](double const n_l)
+    double const sign = microPotentialSignFactor(
+        potential_exchange_params.micro_potential_convention);
+    ASSERT_LT(sign, 0.0);
+
+    // BARE vdW disjoining pressure Pi = -density * mu_vdW, density mirrored to the
+    // residual's p_L_m choice (micro rho_lR when enabled, here == rho_lR).
+    auto const bare_Pi = [&](double const n_l_eval, double const rho_lR_eval)
     {
-        auto const increment =
-            computeReferenceMicroPorositySwellingStressIncrement<2>(
-                n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
-                potential_exchange_params, /*biot_coefficient=*/b);
-        return increment.dot(identity2) / 3.0;
+        double const active_nS = computeActiveMicroSolidVolumeFraction(
+            n_l_eval, PotentialExchangeLocalSolveContext{},
+            potential_exchange_params);
+        double const mu_vdw =
+            computeVanDerWaalsMicroPotential(
+                n_l_eval, rho_lR_eval, active_nS,
+                potential_exchange_params.micro_solid_density_reference,
+                potential_exchange_params.hamaker_constant,
+                potential_exchange_params.specific_surface, sign,
+                potential_exchange_params.potential_augmentation_prefactor,
+                potential_exchange_params.potential_augmentation_exponent)
+                .mu_lR;
+        double const density =
+            potential_exchange_params.use_micro_liquid_density_for_micro_pressure
+                ? rho_lR_eval
+                : rho_LR;
+        return -density * mu_vdw;
     };
 
-    // Central FD d(sigma_sw_mean)/d(n_l) at n_l = 0.15 (n_l_prev fixed at 0.1).
-    double const n_l0 = 0.15;
+    // (1) The assembled increment equals -n_S*(Pi_curr - Pi_prev)*identity2.
+    double const n_l = 0.15;
+    auto const increment = computeReferenceMicroPorositySwellingStressIncrement<2>(
+        n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
+        potential_exchange_params, /*biot_coefficient=*/b,
+        /*p_conf=*/8.0e6);  // finite p_conf must NOT change the increment
+    double const Pi_prev = bare_Pi(n_l_prev, rho_lR_prev);
+    double const Pi_curr = bare_Pi(n_l, rho_lR);
+    double const scalar = -n_S * (Pi_curr - Pi_prev);
+    auto const expected_increment = (scalar * identity2).eval();
+    EXPECT_GT(increment.norm(), 0.0);
+    EXPECT_NEAR((increment - expected_increment).norm(), 0.0,
+                1e-10 * std::max(1.0, expected_increment.norm()));
+
+    // (2) p_conf-independence of the increment (the -b*p_conf term cancels): the
+    // NaN-default call and a large finite p_conf give the identical increment.
+    auto const increment_nan =
+        computeReferenceMicroPorositySwellingStressIncrement<2>(
+            n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
+            potential_exchange_params, /*biot_coefficient=*/b);
+    EXPECT_NEAR((increment - increment_nan).norm(), 0.0,
+                1e-12 * std::max(1.0, expected_increment.norm()));
+
+    // (3) Sign of d(sigma_sw_mean)/dn_l = -n_S*dPi/dn_l: assert WHATEVER the
+    // formula gives (no assumed swelling sign), via central FD of the assembled
+    // mean against the independently FD'd -n_S*dPi/dn_l.
+    auto const sigma_sw_mean_at = [&](double const n_l_eval)
+    {
+        return computeReferenceMicroPorositySwellingStressIncrement<2>(
+                   n_l_prev, n_l_eval, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
+                   potential_exchange_params, /*biot_coefficient=*/b)
+                   .dot(identity2) /
+               3.0;
+    };
     double const h = 1e-7;
     double const fd =
-        (sigma_sw_mean_at(n_l0 + h) - sigma_sw_mean_at(n_l0 - h)) / (2.0 * h);
-
-    // S1 = -(1 - phi_M)*K_sw*b < 0 (compression drains).
-    double const expected_S1 = -n_S * K_sw * b;  // = -0.63 * 1e7 * 1
-    EXPECT_LT(fd, 0.0);
-    EXPECT_NEAR(fd, expected_S1,
-                1e-12 + 1e-7 * std::max(std::abs(fd), std::abs(expected_S1)));
+        (sigma_sw_mean_at(n_l + h) - sigma_sw_mean_at(n_l - h)) / (2.0 * h);
+    double const dPi_dnl_fd =
+        (bare_Pi(n_l + h, rho_lR) - bare_Pi(n_l - h, rho_lR)) / (2.0 * h);
+    double const expected_slope = -n_S * dPi_dnl_fd;
+    EXPECT_NEAR(fd, expected_slope,
+                1e-3 + 1e-5 * std::max(std::abs(fd), std::abs(expected_slope)));
+    ASSERT_NE(expected_slope, 0.0);
+    EXPECT_EQ(std::signbit(fd), std::signbit(expected_slope));
 }
