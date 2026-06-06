@@ -59,8 +59,8 @@
                 <micro_potential_convention>negative_attractive</micro_potential_convention>
                 <use_micro_liquid_density_for_micro_pressure>true</use_micro_liquid_density_for_micro_pressure>
                 <!-- accumulate_swelling_contributions removed (maxwell-conjugate port): switch retired 2026-06-01; full-Pi closure accumulates the swelling eigenstress by default; all other params unchanged -->
-                <vdw_augmentation_prefactor>71900</vdw_augmentation_prefactor>
-                <vdw_augmentation_decay_length>7.5e-7</vdw_augmentation_decay_length>
+                <potential_augmentation_prefactor>71900</potential_augmentation_prefactor>
+                <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
             </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>

@@ -66,20 +66,13 @@
             <type>RICHARDS_MECHANICS</type>
             <integration_order>2</integration_order>
             <constitutive_relation>
-                <type>MFront</type>
-                <behaviour>ModCamClay_semiExpl_constE</behaviour>
-                <material_properties>
-                    <material_property name="YoungModulus" parameter="E_mcc"/>
-                    <material_property name="PoissonRatio" parameter="nu_mcc"/>
-                    <material_property name="CriticalStateLineSlope" parameter="M_csl"/>
-                    <material_property name="SwellingLineSlope" parameter="kappa_mcc"/>
-                    <material_property name="VirginConsolidationLineSlope" parameter="lambda_mcc"/>
-                    <material_property name="CharacteristicPreConsolidationPressure" parameter="pc_char_mcc"/>
-                </material_properties>
-                <initial_values>
-                    <state_variable name="PreConsolidationPressure" parameter="pc_char_mcc"/>
-                    <state_variable name="VolumeRatio" parameter="Vr0_mcc"/>
-                </initial_values>
+                <!-- LE free-swell variant 2026-06-01: MCC -> LinearElasticIsotropic to get a
+                     model A->B free-swell branch past the MCC TS1 wall. FLAG: OGS RM is
+                     small-strain; the ~80%% free-swell strain is beyond it, so A->B MAGNITUDE
+                     is under-predicted (diagnostic, not quantitative). -->
+                <type>LinearElasticIsotropic</type>
+                <youngs_modulus>E_mcc</youngs_modulus>
+                <poissons_ratio>nu_mcc</poissons_ratio>
             </constitutive_relation>
             <micro_porosity>
                 <mass_exchange_coefficient>1e-13</mass_exchange_coefficient>
@@ -97,6 +90,7 @@
                 <micro_solid_density_reference>2780.0</micro_solid_density_reference>
                 <!-- n_s = 1 - phi0 = 0.54645 (phi0 from measured e0=0.83, P1-3) -->
                 <micro_solid_volume_fraction_reference>0.54645</micro_solid_volume_fraction_reference>
+                <micro_solid_volume_fraction_mode>current_porosity_split</micro_solid_volume_fraction_mode>
                 <micro_liquid_density_reference>100.0</micro_liquid_density_reference>
                 <micro_liquid_density_a>1e-16</micro_liquid_density_a>
                 <micro_liquid_density_b>1.0</micro_liquid_density_b>
@@ -108,8 +102,10 @@
                 <!-- K = 44200 J/kg: Dixon (2023) MX-80 Fig.1, log-interp of approved MCC anchors
                      (26950@rho_d=1400, 71900@1600) to nominal pour density rho_d=1500 (Acta:135).
                      SINGLE shared material value across both paths. See §12.2 header FLAG. -->
-                <potential_augmentation_prefactor>44200</potential_augmentation_prefactor>
+                <potential_augmentation_prefactor>56183</potential_augmentation_prefactor>
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
+                <!-- ILLUSTRATIVE PLACEHOLDER phi_M,min (Vinay call 2026-06-06): residual inter-aggregate macroporosity. NOT from a cited source yet (CLAUDE.md 1.1) - pending Ferrari / Seiphoori / Bosch EPFL MX-80 MIP. Used here only to DEMONSTRATE the smooth film-to-bulk macro-porosity floor + drain; replace with the cited value before any quantitative result. -->
+                <macro_porosity_floor>0.08</macro_porosity_floor>
             </potential_exchange>
             <process_variables>
                 <pressure>pressure</pressure>
@@ -129,11 +125,6 @@
                 <secondary_variable name="micro_water_content"/>
                 <secondary_variable name="micro_porosity"/>
                 <secondary_variable name="micro_exchange_source"/>
-                <secondary_variable name="ElasticStrain"/>
-                <secondary_variable name="EquivalentPlasticStrain"/>
-                <secondary_variable name="PreConsolidationPressure"/>
-                <secondary_variable name="PlasticVolumetricStrain"/>
-                <secondary_variable name="VolumeRatio"/>
             </secondary_variables>
             <specific_body_force>0 0</specific_body_force>
             <initial_stress>sigma0</initial_stress>
@@ -219,8 +210,8 @@
                     <t_initial>0.0</t_initial>
                     <!-- 0-200 d: wetting + free swell at 21 kPa. 200-240 d: oedometric loading to 20 MPa. -->
                     <t_end>20736000</t_end>
-                    <initial_dt>10</initial_dt>
-                    <minimum_dt>0.1</minimum_dt>
+                    <initial_dt>0.5</initial_dt>
+                    <minimum_dt>1e-5</minimum_dt>
                     <maximum_dt>86400</maximum_dt>
                     <number_iterations>1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25</number_iterations>
                     <multiplier>1.225 1.2 1.175 1.15 1.125 1.1 1.075 1.05 1.025 0.975 0.95 0.925 0.9 0.875 0.85 0.825 0.8 0.775 0.75 0.725 0.7 0.675 0.65 0.625</multiplier>
@@ -229,7 +220,7 @@
         </processes>
         <output>
             <type>VTK</type>
-            <prefix>beacon_t33_path1_P1-3</prefix>
+            <prefix>beacon_t33_path1_P1-3_LE</prefix>
             <suffix>_ts_{:timestep}_t_{:time}</suffix>
             <!-- end-of-wetting (20d), saturation (100d, 200d=point B), then each loading step;
                  point C ~3.24 MPa (t=19332000), point D 20 MPa (t=20304000). -->
@@ -250,11 +241,6 @@
                 <variable>micro_porosity</variable>
                 <variable>micro_exchange_source</variable>
                 <variable>epsilon</variable>
-                <variable>ElasticStrain</variable>
-                <variable>EquivalentPlasticStrain</variable>
-                <variable>PreConsolidationPressure</variable>
-                <variable>PlasticVolumetricStrain</variable>
-                <variable>VolumeRatio</variable>
             </variables>
         </output>
     </time_loop>

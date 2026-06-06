@@ -17,7 +17,7 @@
                        INTERPOLATION of approved MCC anchors 26950 J/kg @rho_d=1400 and 71900 @1600
                        to rho_d=1500 kg/m3 (the Task-3.3 as-poured density, Acta Table 1).
         target sigma : ~8 MPa (Dixon block-MX-80 locus at rho_d=1500; DERIVED by interpolation)
-        fitted K     : 44200 J/kg (vdw_augmentation_prefactor) — DERIVED, log-interp.
+        fitted K     : 44200 J/kg (potential_augmentation_prefactor) — DERIVED, log-interp.
         *** GUARDRAIL §5/§12.1 FLAG (2026-05-31): K anchored to the Dixon BLOCK swelling locus
             (the only §12.1-permitted MX-80 anchor besides Villar). The MEASURED granular Task-3.3
             swelling pressure is 3.2-3.6 MPa (Acta Geotech 2022, Ferrari et al. Fig 5/6;
@@ -108,8 +108,8 @@
                 <!-- accumulate_swelling_contributions removed (maxwell-conjugate port): switch retired 2026-06-01; full-Pi closure accumulates the swelling eigenstress by default; all other params unchanged -->
                 <!-- K = 44200 J/kg: Dixon (2023) MX-80 Fig.1, log-interp of approved MCC anchors
                      (26950@1400, 71900@1600) to rho_d=1500. See §12.2 header FLAG. -->
-                <vdw_augmentation_prefactor>44200</vdw_augmentation_prefactor>
-                <vdw_augmentation_decay_length>7.5e-7</vdw_augmentation_decay_length>
+                <potential_augmentation_prefactor>44200</potential_augmentation_prefactor>
+                <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
             </potential_exchange>
             <process_variables>
                 <pressure>pressure</pressure>
