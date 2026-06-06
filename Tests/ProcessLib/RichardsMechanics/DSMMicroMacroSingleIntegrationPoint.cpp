@@ -1851,3 +1851,265 @@ TEST(RichardsMechanics, PotentialExchangeTangentRepresentativeStates)
             << state.name;
     }
 }
+
+// ── Film-pressure micro potential (maxwell sec.5, flag ON; committed c1af5147ea)
+// ─────────────────────────────────────────────────────────────────────────────
+// The three tests below exercise the FLAG-ON film-pressure physics that
+// computeFilmPressureMicroPotential / the eigenstrain swelling branch add:
+//   mu_lR = mu_lR_vdw + delta,  delta = +g * b * p_conf / rho_lR,
+//   so when the gate is open (g = 1) and saturated, mu_lR = -(Pi - b*p_conf)/rho_lR.
+// They mirror the existing TEST(RichardsMechanics, ...) idiom: construct
+// PotentialExchangeParameters, call the helpers directly, EXPECT_NEAR.
+//
+// CRITICAL two-nS distinction (audit-flagged): the vdW core consumes the
+// DISJOINING aggregate fraction nS_vdw = 1 - n_l (computeActive..., not used
+// here directly but mirrored numerically as nS_vdw = 0.9), whereas the film
+// helper's n_S argument is the AGGREGATE REV fraction n_S_agg = 1 - phi_M, used
+// ONLY for the gate threshold Pi_gate = n_S_agg * n_l * Pi. The two carry
+// DISTINCT numeric values throughout (nS_vdw = 0.9 vs n_S_agg = 0.63).
+
+TEST(RichardsMechanics, DSMFilmPressureHelperTangents)
+{
+    // Gate-open state: p_conf >> Pi_gate with a finite smooth-gate width, so the
+    // smoothstep saturates (g = 1, dg/dx = 0). With g pinned at 1 the film delta
+    // D = b*p_conf/rho_lR and its p_conf- and rho_lR-tangents are exact, so the
+    // central finite differences must match the analytic partials to round-off.
+    double const n_S_agg = 0.63;  // = 1 - phi_M (gate threshold only)
+    double const n_l = 0.1;
+    double const Pi = 5.0e6;                          // disjoining pressure [Pa]
+    // Pi_gate = n_S_agg * n_l * Pi = 0.315e6 Pa; p_conf >> Pi_gate below.
+    double const p_conf = 8.0e6;                       // >> Pi_gate => x >> 0
+    double const w = 1.0e3;                            // gate width [Pa], x >> w
+    double const rho_lR = 1000.0;
+    double const b = 1.0;
+
+    // vdW core slope dmu_vdW/dn_l for the cubic mu_vdW = -Pi/rho_lR: the helper
+    // only uses it inside dPi_gate/dn_l (the n_l-partial), which is multiplied by
+    // dg/dx = 0 in the gate-saturated region, so it does NOT affect the two
+    // tangents tested here. Passed as a representative value for completeness.
+    double const mu_vdw = -Pi / rho_lR;               // = -5000 J/kg
+    double const dmu_lR_vdw_dnl = -3.0 * mu_vdw / n_l;  // vdW cubic slope
+
+    auto const film = computeFilmPressureMicroPotential(
+        Pi, p_conf, rho_lR, n_S_agg, n_l, dmu_lR_vdw_dnl, w, b);
+
+    // The gate must be saturated: g = 1, gate_open true.
+    EXPECT_NEAR(film.gate_value, 1.0, 1e-15);
+    EXPECT_TRUE(film.gate_open);
+    // Film delta D = g * b * p_conf / rho_lR = 8e6 / 1000 = 8000 J/kg.
+    EXPECT_NEAR(film.mu_lR_film_delta, b * p_conf / rho_lR,
+                1e-9 * std::abs(b * p_conf / rho_lR));
+
+    // Central FD of mu_lR_film_delta w.r.t. p_conf == dmu_lR_film_dp_conf.
+    {
+        double const h = 1.0;  // Pa
+        double const plus =
+            computeFilmPressureMicroPotential(Pi, p_conf + h, rho_lR, n_S_agg,
+                                              n_l, dmu_lR_vdw_dnl, w, b)
+                .mu_lR_film_delta;
+        double const minus =
+            computeFilmPressureMicroPotential(Pi, p_conf - h, rho_lR, n_S_agg,
+                                              n_l, dmu_lR_vdw_dnl, w, b)
+                .mu_lR_film_delta;
+        double const fd = (plus - minus) / (2.0 * h);
+        EXPECT_NEAR(fd, film.dmu_lR_film_dp_conf,
+                    1e-12 + 1e-6 * std::max(std::abs(fd),
+                                            std::abs(film.dmu_lR_film_dp_conf)));
+    }
+
+    // Central FD of mu_lR_film_delta w.r.t. rho_lR == dmu_lR_film_drho_lR.
+    {
+        double const h = 1e-4 * rho_lR;
+        double const plus =
+            computeFilmPressureMicroPotential(Pi, p_conf, rho_lR + h, n_S_agg,
+                                              n_l, dmu_lR_vdw_dnl, w, b)
+                .mu_lR_film_delta;
+        double const minus =
+            computeFilmPressureMicroPotential(Pi, p_conf, rho_lR - h, n_S_agg,
+                                              n_l, dmu_lR_vdw_dnl, w, b)
+                .mu_lR_film_delta;
+        double const fd = (plus - minus) / (2.0 * h);
+        EXPECT_NEAR(fd, film.dmu_lR_film_drho_lR,
+                    1e-12 + 1e-6 * std::max(std::abs(fd),
+                                            std::abs(film.dmu_lR_film_drho_lR)));
+    }
+    // NOTE: we deliberately do NOT FD over n_l. The helper's dmu_lR_film_dnl is
+    // the gate-threshold partial at FIXED Pi; a real n_l perturbation would also
+    // move Pi (Pi = Pi(n_l)), so the in-helper partial is not a total derivative
+    // and is out of scope for a single-argument FD here.
+}
+
+TEST(RichardsMechanics, DSMFilmPressureDrain)
+{
+    // Build a genuine attractive vdW micro potential (mu_vdw < 0), form
+    // Pi = -rho_lR*mu_vdw > 0, then sweep the confining pressure p_conf and
+    // confirm the film delta drives mu_lR up (monotone, non-decreasing) and
+    // flips the exchange from uptake (p_conf = 0) to drain (large p_conf).
+    //
+    // Magnitude self-consistency (NOT calibration): the spec's narrative needs
+    // the micro vdW potential DRIER than the near-saturated macro reference
+    // (mu_vdw < mu_LR = -1 J/kg) so that p_conf = 0 is genuine UPTAKE, and a
+    // confining pressure large enough that the film term b*p_conf/rho_lR lifts
+    // mu_lR ABOVE mu_LR (DRAIN). A 4000 m^2/g specific surface (the same value
+    // used in DSMMicroMacroCurrentPorositySplitMicroSolidFractionMode above) at
+    // n_l = 0.05 gives mu_vdw = -26 J/kg (Pi = 26 kPa) — squarely in that
+    // regime. specific_surface here only sets the test's energy scale; it is a
+    // documented vdW material input, not a fitted quantity.
+    PotentialExchangeParameters potential_exchange_params;
+    potential_exchange_params.enabled = true;
+    potential_exchange_params.hamaker_constant = 6.0e-20;
+    potential_exchange_params.specific_surface = 4000.0;
+    potential_exchange_params.micro_solid_density_reference = 2650.0;
+    potential_exchange_params.micro_potential_convention =
+        MicroPotentialConvention::NegativeAttractive;
+
+    double const n_l = 0.05;
+    double const rho_lR = 1000.0;
+    double const nS_vdw = 1.0 - n_l;   // = 0.95, DISJOINING fraction (vdW core)
+    double const n_S_agg = 0.63;       // = 1 - phi_M, gate threshold only
+    double const b = 1.0;
+    // The two nS values are DISTINCT (0.95 vs 0.63): the vdW core consumes the
+    // disjoining fraction nS_vdw = 1 - n_l, the film gate uses the aggregate
+    // n_S_agg = 1 - phi_M (audit-flagged two-nS distinction).
+
+    double const sign = microPotentialSignFactor(
+        potential_exchange_params.micro_potential_convention);
+    ASSERT_LT(sign, 0.0);  // NegativeAttractive => sign = -1
+
+    double const mu_vdw =
+        computeVanDerWaalsMicroPotential(
+            n_l, rho_lR, nS_vdw,
+            potential_exchange_params.micro_solid_density_reference,
+            potential_exchange_params.hamaker_constant,
+            potential_exchange_params.specific_surface, sign,
+            /*vdw_augmentation_prefactor=*/0.0,
+            /*vdw_augmentation_decay_length=*/0.0)
+            .mu_lR;
+    ASSERT_LT(mu_vdw, 0.0);  // attractive: mu_vdw < 0
+
+    double const Pi = -rho_lR * mu_vdw;  // disjoining pressure > 0
+    ASSERT_GT(Pi, 0.0);
+    double const Pi_gate = n_S_agg * n_l * Pi;
+
+    // vdW cubic slope passed to the film helper (only enters dmu_lR_film_dnl,
+    // unused by the assertions here).
+    double const dmu_lR_vdw_dnl = -3.0 * mu_vdw / n_l;
+
+    auto const mu_lR_at = [&](double const p_conf)
+    {
+        double const delta =
+            computeFilmPressureMicroPotential(Pi, p_conf, rho_lR, n_S_agg, n_l,
+                                              dmu_lR_vdw_dnl,
+                                              /*gate_width_w=*/Pi_gate, b)
+                .mu_lR_film_delta;
+        return mu_vdw + delta;  // mu_lR = mu_lR_vdw + film delta
+    };
+
+    // Sweep: p_conf = 0 and Pi_gate sit AT/below the gate threshold (g = 0, the
+    // committed sharp-to-smooth gate is OFF there), so they share the bare vdW
+    // value; the remaining points are gate-open and strictly climb. The last
+    // point (50 kPa) is large enough to cross mu_LR into the drain regime.
+    std::array<double, 5> const p_conf_seq = {
+        0.0, Pi_gate, 2.0 * Pi_gate, 5.0e3, 5.0e4};
+    std::array<double, 5> mu_lR_seq{};
+    for (std::size_t i = 0; i < p_conf_seq.size(); ++i)
+    {
+        mu_lR_seq[i] = mu_lR_at(p_conf_seq[i]);
+    }
+
+    // (i) Non-decreasing across the WHOLE sweep: rising confinement never lowers
+    // mu_lR. (ii) STRICTLY increasing across every gate-OPEN step (i >= 2): once
+    // p_conf > Pi_gate the film term grows with p_conf. The flat segment
+    // mu_lR_seq[0] == mu_lR_seq[1] is the gate-closed plateau (g = 0 for
+    // p_conf <= Pi_gate) — the committed gate physics, NOT a defect, so we do
+    // not (and cannot) assert a strict increase across it.
+    for (std::size_t i = 1; i < mu_lR_seq.size(); ++i)
+    {
+        EXPECT_GE(mu_lR_seq[i], mu_lR_seq[i - 1]);  // non-decreasing
+    }
+    EXPECT_DOUBLE_EQ(mu_lR_seq[0], mu_lR_seq[1]);  // gate-closed plateau
+    for (std::size_t i = 2; i < mu_lR_seq.size(); ++i)
+    {
+        EXPECT_GT(mu_lR_seq[i], mu_lR_seq[i - 1]);  // strict once gate open
+    }
+
+    // Exchange sign convention (computePotentialDrivenMassExchange):
+    //   rho_l_hat = alpha_M * (mu_LR - mu_lR).
+    // For a near-saturated macro mu_LR = -1.0 J/kg, draining the micro requires
+    // mu_lR > mu_LR (so rho_l_hat < 0); uptake at p_conf = 0 needs mu_lR < mu_LR.
+    double const alpha_M_eff = 1.0e-9;
+    double const mu_LR = -1.0;  // J/kg, near-saturated macro
+
+    // At p_conf = 0: mu_lR = mu_vdw (= -26 J/kg) < mu_LR => uptake (> 0).
+    {
+        auto const exch = computePotentialDrivenMassExchange(
+            alpha_M_eff, mu_LR, mu_lR_seq[0]);
+        EXPECT_LT(mu_lR_seq[0], mu_LR);
+        EXPECT_GT(exch.rho_l_hat, 0.0);  // uptake
+    }
+    // At the largest p_conf: mu_lR has risen above mu_LR => drain (< 0).
+    {
+        auto const exch = computePotentialDrivenMassExchange(
+            alpha_M_eff, mu_LR, mu_lR_seq.back());
+        EXPECT_GT(mu_lR_seq.back(), mu_LR);
+        EXPECT_LT(exch.rho_l_hat, 0.0);  // drain
+    }
+}
+
+TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
+{
+    using KM = MathLib::KelvinVector::KelvinMatrixType<2>;
+
+    // Flag-ON film-pressure eigenstrain swelling stress (committed c1af5147ea):
+    //   delta_sigma_sw = -(1 - phi_M)*K_sw*b*(n_l - n_l_prev)*identity2,
+    // so S1 = d sigma_sw,m / d n_l = -(1 - phi_M)*K_sw*b < 0 (uptake raises the
+    // compressive swelling stress => compression DRAINS, the Maxwell-consistent
+    // sign). The mean of the Kelvin-vector increment equals its scalar
+    // coefficient (delta_sigma_sw . identity2 / 3 = coefficient, since the
+    // increment is coefficient*identity2 and identity2.identity2 = 3).
+    PotentialExchangeParameters potential_exchange_params;
+    potential_exchange_params.enabled = true;
+    potential_exchange_params.film_pressure_coupling = true;
+    potential_exchange_params.film_pressure_swelling_modulus = 1.0e7;  // K_sw > 0
+    potential_exchange_params.film_pressure_biot_b = 1.0;
+    // vdW params kept physical (the ON branch returns before touching them, but
+    // they document a valid configuration).
+    potential_exchange_params.hamaker_constant = 6.0e-20;
+    potential_exchange_params.specific_surface = 1000.0;
+    potential_exchange_params.micro_solid_density_reference = 2650.0;
+    potential_exchange_params.micro_solid_volume_fraction_reference = 0.6;
+
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    KM const C_el = KM::Identity();  // isotropic stiffness arg (unused when K_sw>0)
+
+    double const n_S = 0.63;  // = 1 - phi_M (REV macro-solid / contact-area factor)
+    double const K_sw = potential_exchange_params.film_pressure_swelling_modulus;
+    double const b = potential_exchange_params.film_pressure_biot_b;
+    double const rho_lR = 1000.0;
+    double const rho_lR_prev = 1000.0;
+    double const rho_LR = 1000.0;
+    double const n_l_prev = 0.1;
+
+    // Mean (= isotropic trace/3) of the film eigenstress increment at n_l.
+    auto const sigma_sw_mean_at = [&](double const n_l)
+    {
+        auto const increment =
+            computeReferenceMicroPorositySwellingStressIncrement<2>(
+                n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
+                potential_exchange_params);
+        return increment.dot(identity2) / 3.0;
+    };
+
+    // Central FD d(sigma_sw_mean)/d(n_l) at n_l = 0.15 (n_l_prev fixed at 0.1).
+    double const n_l0 = 0.15;
+    double const h = 1e-7;
+    double const fd =
+        (sigma_sw_mean_at(n_l0 + h) - sigma_sw_mean_at(n_l0 - h)) / (2.0 * h);
+
+    // S1 = -(1 - phi_M)*K_sw*b < 0 (compression drains).
+    double const expected_S1 = -n_S * K_sw * b;  // = -0.63 * 1e7 * 1
+    EXPECT_LT(fd, 0.0);
+    EXPECT_NEAR(fd, expected_S1,
+                1e-12 + 1e-7 * std::max(std::abs(fd), std::abs(expected_S1)));
+}
