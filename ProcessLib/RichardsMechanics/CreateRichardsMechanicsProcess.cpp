@@ -453,6 +453,39 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "RichardsMechanics: {} use_micro_liquid_density_for_micro_pressure=false selected; micro pressure will use bulk rho_LR instead of confined rho_lR.",
             context);
     }
+
+    // ── Film-pressure coupling (maxwell beamer sec.5); default OFF ─────────
+    auto const film_pressure_coupling = config.getConfigParameter<bool>(
+        "film_pressure_coupling",
+        defaults ? defaults->film_pressure_coupling : false);
+    auto const film_pressure_biot_b = config.getConfigParameter<double>(
+        "film_pressure_biot_b",
+        defaults ? defaults->film_pressure_biot_b : 1.0);
+    auto const film_pressure_gate_width = config.getConfigParameter<double>(
+        "film_pressure_gate_width",
+        defaults ? defaults->film_pressure_gate_width : 0.0);
+    if (!(film_pressure_gate_width >= 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} film_pressure_gate_width must be >= 0, got {:g}.",
+            context, film_pressure_gate_width);
+    }
+    auto const film_pressure_swelling_modulus =
+        config.getConfigParameter<double>(
+            "film_pressure_swelling_modulus",
+            defaults ? defaults->film_pressure_swelling_modulus : 0.0);
+    if (!(film_pressure_swelling_modulus >= 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} film_pressure_swelling_modulus must be >= 0, got {:g}.",
+            context, film_pressure_swelling_modulus);
+    }
+    if (film_pressure_coupling)
+    {
+        WARN(
+            "RichardsMechanics: {} film_pressure_coupling=true (maxwell sec.5): mu_lR carries the effective-stress film term; eigenstrain swelling; smooth gate. Experimental -- verify with the Maxwell-symmetry + stress-direction GP tests before trusting gate-open results.",
+            context);
+    }
     return PotentialExchangeParameters{
         enabled,
         pressure_tolerance,
@@ -473,7 +506,11 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         local_jacobian_perturbation,
         vdw_augmentation_prefactor,
         vdw_augmentation_decay_length,
-        use_micro_liquid_density_for_micro_pressure};
+        use_micro_liquid_density_for_micro_pressure,
+        film_pressure_coupling,
+        film_pressure_biot_b,
+        film_pressure_gate_width,
+        film_pressure_swelling_modulus};
 }
 
 template <int DisplacementDim>

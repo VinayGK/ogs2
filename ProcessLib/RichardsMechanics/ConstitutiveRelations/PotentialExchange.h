@@ -286,6 +286,134 @@ inline MaxwellConjugateMicroPotentialData computeMaxwellConjugateMicroPotential(
     return out;
 }
 
+// ── Film-pressure micro potential (maxwell beamer sec.5, consolidated form) ──
+// SUPERSEDES the strain-view computeMaxwellConjugateMicroPotential above when
+// the film_pressure_coupling flag is ON. The two halves (disjoining + the
+// mechanical Maxwell partner) fuse into ONE potential of the *film pressure*
+// p_film = Pi - b*p_conf:
+//
+//   mu_lR = -(Pi - b*p_conf) / rho_lR = -p_film / rho_lR,
+//
+// with Pi = -rho_lR*mu_lR_vdw > 0 (disjoining) and p_conf = -tr(sigma_eff)/3 > 0
+// in compression (confining; OGS sigma_eff tension-positive). The vdW helper
+// already returns mu_lR_vdw = -Pi/rho_lR, so this routine returns ONLY the FILM
+// DELTA to ADD on top of mu_lR_vdw:
+//
+//   delta = mu_lR_film - mu_lR_vdw = +g * b * p_conf / rho_lR,
+//
+// where g is a C1 activation (smooth gate) of x = (p_conf - Pi_gate),
+// Pi_gate = phi_m*Pi = n_S*n_l*Pi (option-1 REV-consistent threshold, decision
+// #4 2026-06-02), of width w = film_pressure_gate_width. As p_conf rises past
+// Pi_gate, mu_lR rises -> rho_l_hat = alpha*(mu_LR - mu_lR) turns negative ->
+// the micro DRAINS (the smooth replacement of the sharp Macaulay snap).
+//
+//   w == 0  -> g = Heaviside(x)  (sharp; reproduces the old gate SHAPE exactly).
+//   w  > 0  -> g = smoothstep cubic t^2*(3-2t), t = x/w  (C1: g' = 0 at both
+//              ends), so the drain emerges continuously.
+//
+// Derivatives (the film delta D = g(x)*b*p_conf/rho_lR; p_conf and rho_lR are
+// independent of n_l in this partial, x depends on n_l only through Pi_gate):
+//   dD/dp_conf = g'(x)*b*p_conf/rho_lR + g*b/rho_lR
+//   dD/dn_l    = g'(x)*(-dPi_gate/dn_l)*b*p_conf/rho_lR,
+//                dPi_gate/dn_l = n_S*(Pi + n_l*dPi_dnl)
+//   dD/drho_lR = -D/rho_lR
+//
+// Equipresence note: the (1 - phi_M) contact-area factor that the eigenstress
+// carries CANCELS the per-REV-mass referencing of mu_lR (sec.5 slide "Contact
+// area and density"), so the SPECIFIC potential mu_lR = -p_film/rho_lR carries
+// NO explicit (1-phi_M) and divides by the intrinsic rho_lR — exactly mirroring
+// the disjoining term mu_lR_vdw = -Pi/rho_lR it augments. n_S enters ONLY
+// through the gate threshold Pi_gate = phi_m*Pi. (Contrast the strain-view
+// helper above, whose conjugate divides by rho_lR*n_S because its driver S1 is
+// the REV-scaled eigenstress slope.)
+struct FilmPressureMicroPotentialData
+{
+    double mu_lR_film_delta = 0.0;        // J/kg            (add to mu_lR_vdw)
+    double dmu_lR_film_dnl = 0.0;         // J/kg            per unit n_l
+    double dmu_lR_film_drho_lR = 0.0;     // (J/kg)/(kg/m^3)
+    double dmu_lR_film_dp_conf = 0.0;     // (J/kg)/Pa
+    double gate_value = 0.0;              // g in [0, 1]
+    bool gate_open = false;              // g > 0
+};
+
+inline FilmPressureMicroPotentialData computeFilmPressureMicroPotential(
+    double const Pi, double const p_conf, double const rho_lR,
+    double const n_S, double const n_l, double const dmu_lR_vdw_dnl,
+    double const gate_width_w, double const biot_b)
+{
+    (void)dmu_lR_vdw_dnl;  // reserved (the film delta's n_l-dependence is via the
+                           // gate threshold only; vdW's own dmu_lR_dnl is folded
+                           // separately at the call site).
+    if (!(rho_lR > 0.0))
+    {
+        OGS_FATAL(
+            "computeFilmPressureMicroPotential requires rho_lR > 0, got {:g}.",
+            rho_lR);
+    }
+    if (!(n_S > 0.0))
+    {
+        OGS_FATAL(
+            "computeFilmPressureMicroPotential requires n_S = 1 - phi_M > 0, "
+            "got {:g}.",
+            n_S);
+    }
+    FilmPressureMicroPotentialData out;
+
+    // dPi/dn_l from the vdW chain: Pi = -rho_lR*mu_lR_vdw, density-agnostic form
+    // (matches the assembly-site convention dPi_dnl = (Pi/mu_lR)*dmu_lR_dnl).
+    double const mu_lR_vdw =
+        (rho_lR > 0.0) ? -Pi / rho_lR : 0.0;  // mu_lR_vdw = -Pi/rho_lR
+    double const dPi_dnl =
+        (std::abs(mu_lR_vdw) > 1e-300) ? (Pi / mu_lR_vdw) * dmu_lR_vdw_dnl : 0.0;
+
+    // REV-consistent gate threshold Pi_gate = phi_m*Pi = n_S*n_l*Pi.
+    double const Pi_gate = n_S * n_l * Pi;
+    double const dPi_gate_dnl = n_S * (Pi + n_l * dPi_dnl);
+    double const x = p_conf - Pi_gate;  // gate argument [Pa]
+
+    // C1 activation g(x) and dg/dx.
+    double g = 0.0;
+    double dg_dx = 0.0;
+    if (!(gate_width_w > 0.0))
+    {
+        // Sharp fallback (w == 0): Heaviside step. dg/dx = 0 a.e. (the delta at
+        // x = 0 is not represented — the constitutive choice of a sharp gate).
+        g = (x >= 0.0) ? 1.0 : 0.0;
+        dg_dx = 0.0;
+    }
+    else if (x <= 0.0)
+    {
+        g = 0.0;
+        dg_dx = 0.0;
+    }
+    else if (x >= gate_width_w)
+    {
+        g = 1.0;
+        dg_dx = 0.0;
+    }
+    else
+    {
+        double const t = x / gate_width_w;          // in (0, 1)
+        g = t * t * (3.0 - 2.0 * t);                // smoothstep, C1
+        dg_dx = 6.0 * t * (1.0 - t) / gate_width_w;  // g'(x)
+    }
+
+    out.gate_value = g;
+    out.gate_open = (g > 0.0);
+
+    // Film delta D = g * b * p_conf / rho_lR  (= +b*p_conf/rho_lR when gate open
+    // and saturated; turns mu_lR -Pi/rho_lR into -(Pi - b*p_conf)/rho_lR).
+    double const D = g * biot_b * p_conf / rho_lR;
+    out.mu_lR_film_delta = D;
+    // dx/dp_conf = +1, dx/dn_l = -dPi_gate/dn_l.
+    out.dmu_lR_film_dp_conf =
+        dg_dx * biot_b * p_conf / rho_lR + g * biot_b / rho_lR;
+    out.dmu_lR_film_dnl =
+        dg_dx * (-dPi_gate_dnl) * biot_b * p_conf / rho_lR;
+    out.dmu_lR_film_drho_lR = -D / rho_lR;
+    return out;
+}
+
 struct PotentialDrivenMassExchangeData
 {
     double rho_l_hat = 0.0;

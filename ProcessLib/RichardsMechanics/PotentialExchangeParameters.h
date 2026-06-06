@@ -139,5 +139,17 @@ struct PotentialExchangeParameters
     // Optional consistency switches for the hierarchical DSM branch.
     // Default micro-pressure density is the confined micro-liquid density.
     bool use_micro_liquid_density_for_micro_pressure = true;
+
+    // ── Film-pressure coupling (maxwell beamer sec.5) ──────────────────────
+    // Master gate for the equipresent stress-coupled micro potential
+    // mu_lR(p_film = p_disj + sigma'). Default OFF preserves the existing path
+    // bit-for-bit. When true: mu_lR carries the effective-stress (film) term in
+    // ALL local solves and the macro exchange, the swelling stress becomes the
+    // eigenstrain form (S1 < 0 -> compression drains), and the sharp gate is
+    // replaced by a C1 activation of width film_pressure_gate_width.
+    bool film_pressure_coupling = false;
+    double film_pressure_biot_b = 1.0;            // Biot b in eps_sw = b*theta_l  [Vinay's call]
+    double film_pressure_gate_width = 0.0;        // smooth-gate width w [Pa]; 0 -> sharp fallback  [Vinay's call]
+    double film_pressure_swelling_modulus = 0.0;  // eigenstrain modulus K_sw [Pa]; 0 -> drained K  [Vinay's call]
 };
 }  // namespace ProcessLib::RichardsMechanics

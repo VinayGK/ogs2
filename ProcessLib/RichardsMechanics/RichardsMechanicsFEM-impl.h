@@ -45,6 +45,32 @@ inline bool isPotentialExchangeEnabled(
                                          : nullptr);
 }
 
+// Film-pressure coupling (maxwell sec.5) requires the exchange to be enabled
+// AND the film_pressure_coupling master flag set. Default OFF -> false, so the
+// old vdW/eigenstress path runs unchanged bit-for-bit.
+inline bool isFilmPressureCouplingEnabled(
+    PotentialExchangeParameters const* const potential_exchange_parameters)
+{
+    return isPotentialExchangeEnabled(potential_exchange_parameters) &&
+           potential_exchange_parameters->film_pressure_coupling;
+}
+
+// Drained bulk modulus K [Pa] from a Kelvin stiffness tensor: for any isotropic
+// C, m^T C m = 9K with m = identity2, so K = identity2 . (C identity2) / 9. This
+// is exactly d sigma'_m / d eps_v, the stiffness the film-pressure coupling
+// needs for both the eigenstrain swelling stress (increment C, K_sw == 0 -> use
+// this drained K) and the p-u tangent (increment D). Using ONE formula keeps
+// the two sides of the Maxwell pair on the SAME K.
+template <int DisplacementDim>
+inline double drainedBulkModulusFromStiffness(
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C)
+{
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(
+            DisplacementDim)>::identity2;
+    return identity2.dot(C * identity2) / 9.0;
+}
+
 inline double getPotentialPressureTolerance(
     PotentialExchangeParameters const* const potential_exchange_parameters)
 {
@@ -281,6 +307,13 @@ struct PotentialExchangeLocalSolveContext
     double phi_m_prev = 0.0;
     double volumetric_strain = 0.0;
     double volumetric_strain_prev = 0.0;
+    // Confining pressure p_conf = -tr(sigma_eff)/3 [Pa] (>0 in compression, OGS
+    // tension-positive). Film-pressure coupling only (maxwell sec.5). NaN
+    // sentinel = "stress not supplied" -> the film term self-disables, so a
+    // default-constructed context (e.g. the eigenstress-difference driver, which
+    // has no stress in scope) gets NO film term. Set explicitly at the call
+    // sites that have EffectiveStressData available.
+    double confining_pressure_p_conf = std::numeric_limits<double>::quiet_NaN();
 };
 
 inline double boundedMicroWaterContentCeiling(
@@ -1012,12 +1045,41 @@ inline VanDerWaalsMicroPotentialData computeActiveMicroPotential(
             ? computeReducedMicroLiquidDensity(n_l, rho_lR, active_nS, potential_exchange_params)
                   .rho_lR
             : rho_lR;
-    return computeVanDerWaalsMicroPotential(
+    auto out = computeVanDerWaalsMicroPotential(
         n_l, rho_lR_effective, active_nS, potential_exchange_params.micro_solid_density_reference,
         potential_exchange_params.hamaker_constant, potential_exchange_params.specific_surface,
         microPotentialSignFactorFromParameters(potential_exchange_params),
             potential_exchange_params.vdw_augmentation_prefactor,
             potential_exchange_params.vdw_augmentation_decay_length);
+
+    // ── Film-pressure coupling (maxwell sec.5): ONE evaluator ────────────────
+    // When the flag is ON and the confining pressure is supplied (finite
+    // sentinel), fold the smoothly-gated film delta into mu_lR HERE, so the SAME
+    // mu_lR(p_film) propagates to EVERY consumer of computeActiveMicroPotential:
+    // the scalar local n_l solve (eval_at), the p_L_m writer
+    // (computeCompatibilityMicroHydraulicOutput), and the residual/Jacobian
+    // assembly. Flag OFF or NaN p_conf -> unchanged (pure vdW), bit-for-bit.
+    if (potential_exchange_params.film_pressure_coupling &&
+        std::isfinite(local_context.confining_pressure_p_conf))
+    {
+        // Pi = -rho_lR_effective * mu_lR_vdw > 0 (mirrors p_L_m and the
+        // eigenstress; the SAME density used inside the vdW formula).
+        double const Pi = -rho_lR_effective * out.mu_lR;
+        double const one_minus_nl = std::max(1e-12, 1.0 - n_l);
+        double const n_S_rev =
+            std::isfinite(local_context.phi)
+                ? std::clamp((1.0 - local_context.phi) / one_minus_nl, 0.0, 1.0)
+                : active_nS;  // = 1 - phi_M (REV macro-solid fraction)
+        auto const film = computeFilmPressureMicroPotential(
+            Pi, local_context.confining_pressure_p_conf, rho_lR_effective,
+            std::max(1e-16, n_S_rev), n_l, out.dmu_lR_dnl,
+            potential_exchange_params.film_pressure_gate_width,
+            potential_exchange_params.film_pressure_biot_b);
+        out.mu_lR += film.mu_lR_film_delta;
+        out.dmu_lR_dnl += film.dmu_lR_film_dnl;
+        out.dmu_lR_drho_lR += film.dmu_lR_film_drho_lR;
+    }
+    return out;
 }
 
 inline CompatibilityMicroHydraulicOutputData
@@ -1491,10 +1553,10 @@ computeReferenceMicroPorositySwellingStressIncrement(
     using KV = MathLib::KelvinVector::KelvinVectorType<DisplacementDim>;
     auto const& params = potential_exchange_params;
 
-    // C_el is no longer used: the legacy beta_sw slope branch (the only
-    // consumer of the elastic stiffness here) has been removed. The signature
-    // is kept for call-site compatibility.
-    (void)C_el;
+    // C_el: used ONLY by the film-pressure eigenstrain branch (increment C) to
+    // supply the drained bulk modulus K when film_pressure_swelling_modulus == 0.
+    // The legacy beta_sw slope branch that previously consumed it was removed;
+    // the OFF path below does not touch C_el.
 
     KV delta_sigma_sw = KV::Zero();
     double const delta_n_l = n_l - n_l_prev;
@@ -1503,6 +1565,37 @@ computeReferenceMicroPorositySwellingStressIncrement(
     {
         return delta_sigma_sw;
     }
+
+    // ── Film-pressure eigenstrain swelling stress (maxwell sec.5, flag ON) ───
+    // SUPERSEDES the shipped disjoining eigenstress sigma_sw = -phi_m*Pi when
+    // film_pressure_coupling is ON. Volume-additive swelling: eps_sw^m = b*n_l
+    // (each unit of interlayer water adds its own volume), so the swelling
+    // stress is the eigenstrain form
+    //   sigma_sw = -(1 - phi_M)*K_sw*eps_sw^m = -(1 - phi_M)*K_sw*b*n_l,
+    // tension-positive, with the (1 - phi_M) contact-area factor. Its increment:
+    //   delta_sigma_sw = -(1 - phi_M)*K_sw*b*(n_l - n_l_prev)*identity2.
+    // S1 = d sigma_sw,m / d n_l = -(1 - phi_M)*K_sw*b < 0  => uptake RAISES the
+    // compressive swelling stress => compression DRAINS (the Maxwell-consistent
+    // sign; the shipped -phi_m*Pi form has S1 > 0 and draws water IN under load).
+    // K_sw = film_pressure_swelling_modulus if > 0, else the drained bulk
+    // modulus K from C_el (= d sigma'_m/d eps_v), so the eigenstrain shares the
+    // SAME stiffness as the p-u tangent (increment D).
+    if (potential_exchange_params.film_pressure_coupling)
+    {
+        auto const& identity2_film = MathLib::KelvinVector::Invariants<
+            MathLib::KelvinVector::kelvin_vector_dimensions(
+                DisplacementDim)>::identity2;
+        double const K_sw =
+            (potential_exchange_params.film_pressure_swelling_modulus > 0.0)
+                ? potential_exchange_params.film_pressure_swelling_modulus
+                : drainedBulkModulusFromStiffness<DisplacementDim>(C_el);
+        double const b = potential_exchange_params.film_pressure_biot_b;
+        // n_S passed in is the REV macro-solid fraction (1 - phi_M).
+        delta_sigma_sw.noalias() +=
+            -n_S * K_sw * b * delta_n_l * identity2_film;
+        return delta_sigma_sw;
+    }
+    (void)C_el;  // OFF path: C_el unused (matches the pre-film behaviour).
 
     // Fail loud: the full p^disj swelling law has no fallback branch, so the
     // vdW micro-potential parameters MUST be physical. (computeVanDerWaals-
@@ -2662,12 +2755,28 @@ void RichardsMechanicsLocalAssembler<
                         ->phi;
                 auto const phi_m_prev =
                     **std::get<PrevState<MicroPorosity>>(this->prev_states_[ip]);
+                // Confining pressure p_conf = -tr(sigma_eff)/3 (>0 in
+                // compression). Threaded into the context ONLY when film-pressure
+                // coupling is ON, so computeActiveMicroPotential folds the SAME
+                // mu_lR(p_film) used by the n_l solve. Flag OFF -> NaN -> no film
+                // term -> bit-for-bit identical to the pre-film code.
+                bool const film_pressure_coupling =
+                    potential_exchange_params_ptr->film_pressure_coupling;
+                double const p_conf_assembly =
+                    film_pressure_coupling
+                        ? -std::get<ProcessLib::ConstitutiveRelations::
+                                        EffectiveStressData<DisplacementDim>>(
+                               this->current_states_[ip])
+                               .sigma_eff.dot(identity2) /
+                              3.0
+                        : std::numeric_limits<double>::quiet_NaN();
                 PotentialExchangeLocalSolveContext const local_solve_context{
                     .phi = phi,
                     .phi_M_prev = transport_porosity_prev,
                     .phi_m_prev = phi_m_prev,
                     .volumetric_strain = variables.volumetric_strain,
-                    .volumetric_strain_prev = variables_prev.volumetric_strain};
+                    .volumetric_strain_prev = variables_prev.volumetric_strain,
+                    .confining_pressure_p_conf = p_conf_assembly};
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
                     *potential_exchange_params_ptr);
@@ -2691,6 +2800,13 @@ void RichardsMechanicsLocalAssembler<
                 // See ProcessLib/RichardsMechanics/DSM/
                 // MAXWELL_CONJUGATE_IMPLEMENTATION.md. EXACTLY zero below the
                 // gate, so gate-closed runs are unchanged bit-for-bit.
+                //
+                // Film-pressure coupling (maxwell sec.5): when the flag is ON,
+                // computeActiveMicroPotential ALREADY folded the film term into
+                // mu_lR above (the consolidated mu_lR(p_film) supersedes this
+                // strain-view S1*eps_v block), so SKIP this inline block to
+                // avoid double-counting. Flag OFF -> this block runs unchanged.
+                if (!film_pressure_coupling)
                 {
                     double const Pi_mc = p_L_m;  // Pa, disjoining = -rho*mu_lR > 0
                     double const p_conf_mc =
@@ -2964,13 +3080,24 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
     auto const phi_m_prev_value =
         **std::get<PrevState<MicroPorosity>>(state_previous);
 
+    // Film-pressure coupling: supply the confining pressure p_conf =
+    // -tr(sigma_eff)/3 so the n_l local solve sees the film term. Threaded only
+    // when the flag is ON; otherwise the NaN sentinel keeps the term disabled.
+    double const p_conf_micro_solve =
+        isFilmPressureCouplingEnabled(potential_exchange_parameters)
+            ? -std::get<ProcessLib::ConstitutiveRelations::EffectiveStressData<
+                   DisplacementDim>>(state_current)
+                   .sigma_eff.dot(identity2) /
+                  3.0
+            : std::numeric_limits<double>::quiet_NaN();
     updateMicroscaleHydraulicState<DisplacementDim>(
         state_current, state_previous, p_cap_ip, rho_LR, mu, dt, variables, variables_prev,
         {.phi = phi,
          .phi_M_prev = transport_porosity_prev_value,
          .phi_m_prev = phi_m_prev_value,
          .volumetric_strain = variables.volumetric_strain,
-         .volumetric_strain_prev = variables_prev.volumetric_strain},
+         .volumetric_strain_prev = variables_prev.volumetric_strain,
+         .confining_pressure_p_conf = p_conf_micro_solve},
         micro_porosity_parameters, potential_exchange_parameters);
     updatePorositySplitState<DisplacementDim>(
         state_current, state_previous, phi, variables, variables_prev,
@@ -3527,12 +3654,27 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     this->prev_states_[ip]);
                 auto const phi_m_prev =
                     **std::get<PrevState<MicroPorosity>>(this->prev_states_[ip]);
+                // Film-pressure coupling (maxwell sec.5): thread p_conf into the
+                // context so computeActiveMicroPotential folds the SAME
+                // mu_lR(p_film) the residual path uses. Flag OFF -> NaN -> no
+                // film term -> bit-for-bit identical Jacobian.
+                bool const film_pressure_coupling =
+                    potential_exchange_params_ptr->film_pressure_coupling;
+                double const p_conf_assembly =
+                    film_pressure_coupling
+                        ? -std::get<ProcessLib::ConstitutiveRelations::
+                                        EffectiveStressData<DisplacementDim>>(
+                               this->current_states_[ip])
+                               .sigma_eff.dot(identity2) /
+                              3.0
+                        : std::numeric_limits<double>::quiet_NaN();
                 PotentialExchangeLocalSolveContext const local_solve_context{
                     .phi = phi,
                     .phi_M_prev = transport_porosity_prev,
                     .phi_m_prev = phi_m_prev,
                     .volumetric_strain = variables.volumetric_strain,
-                    .volumetric_strain_prev = variables_prev.volumetric_strain};
+                    .volumetric_strain_prev = variables_prev.volumetric_strain,
+                    .confining_pressure_p_conf = p_conf_assembly};
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
                     *potential_exchange_params_ptr);
@@ -3554,6 +3696,13 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 // Maxwell partner of the swelling eigenstress (one Psi). Sharp
                 // gate p'>=Pi; freeze phi (B1). ==0 below the gate (gate-closed
                 // runs unchanged bit-for-bit). Mirrors the assemble() path.
+                //
+                // Film-pressure coupling (maxwell sec.5): when ON, mu_lR ALREADY
+                // carries the film term (folded in computeActiveMicroPotential),
+                // so SKIP this strain-view block to avoid double-counting; the
+                // film p-u tangent is added in the dedicated ON branch below.
+                // Flag OFF -> this block runs unchanged (bit-for-bit Jacobian).
+                if (!film_pressure_coupling)
                 {
                     double const Pi_mc = p_L_m;  // Pa, disjoining = -rho*mu_lR > 0
                     double const p_conf_mc =
@@ -3610,6 +3759,69 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             identity2.transpose() * B * w;
                     }
                 }
+                // ── Film-pressure p-u tangent (maxwell sec.5, increment D-i) ──
+                // The drain block K_{n_l u}: with mu_lR = -(Pi - b*p_conf)/rho_lR,
+                //   dmu_lR/deps_v = (dmu_lR/dp_conf)*(dp_conf/deps_v)
+                //                 = (g*b/rho_lR)*(-K) = -(K/rho_lR)*g*b,
+                // since p_conf = -sigma'_m and dsigma'_m/deps_v = K (drained bulk
+                // modulus). Then d rho_L_hat/d u = alpha_M*(dmu_lR/deps_v)*m^T B,
+                // assembled with the SAME sign (-=) as the K[p,p] exchange block.
+                // This is the transpose partner of the eigenstress block
+                // K_{u n_l} = S1 = -(1-phi_M)*K_sw*b (one Psi -> symmetric
+                // tangent). ==0 when the smooth gate is closed (g==0), so a run
+                // that never opens the gate keeps a film-free Jacobian.
+                if (film_pressure_coupling && mu > 0.0)
+                {
+                    double const Pi_film = p_L_m;  // disjoining = -rho*mu_lR > 0
+                    double const one_minus_nl_film =
+                        std::max(1e-12, 1.0 - n_l);
+                    double const n_S_film = std::clamp(
+                        (1.0 - phi) / one_minus_nl_film, 0.0, 1.0);
+                    double const rho_film =
+                        (std::isfinite(rho_lR_exchange_input) &&
+                         rho_lR_exchange_input > 0.0)
+                            ? rho_lR_exchange_input
+                            : rho_LR;
+                    // Recover the gate value g at this state (same evaluator as
+                    // computeActiveMicroPotential used for mu_lR above).
+                    auto const film = computeFilmPressureMicroPotential(
+                        Pi_film, p_conf_assembly, rho_film,
+                        std::max(1e-16, n_S_film), n_l,
+                        micro_potential.dmu_lR_dnl,
+                        potential_exchange_params_ptr->film_pressure_gate_width,
+                        potential_exchange_params_ptr->film_pressure_biot_b);
+                    if (film.gate_open)
+                    {
+                        // Drained (elastic) bulk modulus from the reconstructed
+                        // elastic tangent -- the SAME K the eigenstrain swelling
+                        // stress uses (increment C), so the p-u and u-p blocks
+                        // are a true transpose pair. (Reconstruct C_el exactly as
+                        // the enable_dsm_swelling_up_jacobian block does below.)
+                        auto const C_el_film =
+                            ip_data_[ip].computeElasticTangentStiffness(
+                                variables, t, x_position, dt,
+                                this->solid_material_,
+                                *this->material_states_[ip]
+                                     .material_state_variables);
+                        double const K_drained =
+                            drainedBulkModulusFromStiffness<DisplacementDim>(
+                                C_el_film);
+                        double const b_film =
+                            potential_exchange_params_ptr->film_pressure_biot_b;
+                        // dmu_lR/deps_v = -(K/rho_lR)*g*b.
+                        double const dmu_lR_film_deps_v =
+                            -(K_drained / rho_film) * film.gate_value * b_film;
+                        double const alpha_M_eff_film =
+                            alpha_bar * rho_LR / mu;
+                        local_Jac
+                            .template block<pressure_size, displacement_size>(
+                                pressure_index, displacement_index)
+                            .noalias() -=
+                            N_p.transpose() *
+                            (alpha_M_eff_film * dmu_lR_film_deps_v) *
+                            identity2.transpose() * B * w;
+                    }
+                }
                 use_fd_jacobian_for_direct_macro_derivative =
                     potential_exchange_params_ptr
                         ->use_fd_jacobian_for_exchange;
@@ -3646,6 +3858,21 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     // computePotentialExchangeUpdate fallback (line ~217). The
                     // dominant contribution is the implicit n_l(p_L) chain
                     // dmu_lR_dnl * dn_l_dpL.
+                    // Film-pressure coupling (maxwell sec.5, increment D-ii):
+                    // micro_potential.dmu_lR_dnl and .dmu_lR_drho_lR ALREADY
+                    // carry the film contributions (folded in
+                    // computeActiveMicroPotential, B3), so this single line
+                    // captures BOTH film p_L channels: (i) the implicit
+                    // n_l(p_L) chain through the gate (dmu_lR_film_dnl*dn_l_dpL,
+                    // since dmu_lR_dnl includes the gate's dPi_gate/dn_l term)
+                    // and (ii) the rho_lR(p_L) channel
+                    // dmu_lR_film_drho_lR*drho_lR_dpL (here rho_lR == bulk rho_LR
+                    // in ScalarReferenceStorage mode, so the bulk drho_LR_dpL is
+                    // the right pairing, matching the vdW convention above). NOT
+                    // included (by design): the direct p_conf(p_L) channel via
+                    // Bishop effective stress -- that lagged u-p coupling is left
+                    // to the consistent-tangent block (enable_dsm_swelling_up_
+                    // jacobian, default OFF) per the spec.
                     dmu_lR_vdw_dpL = micro_potential.dmu_lR_dnl * dn_l_dpL +
                                      micro_potential.dmu_lR_drho_lR *
                                          drho_LR_dpL;
@@ -4090,6 +4317,18 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             **std::get<PrevState<MicroPorosity>>(
                 this->prev_states_[ip]);
 
+        // Film-pressure coupling: supply p_conf = -tr(sigma_eff)/3 to the n_l
+        // local solve (assemble path). NaN sentinel keeps the term off when the
+        // flag is OFF.
+        double const p_conf_micro_solve =
+            isFilmPressureCouplingEnabled(
+                this->getPotentialExchangeParameters())
+                ? -std::get<ProcessLib::ConstitutiveRelations::
+                                EffectiveStressData<DisplacementDim>>(
+                       this->current_states_[ip])
+                       .sigma_eff.dot(identity2) /
+                      3.0
+                : std::numeric_limits<double>::quiet_NaN();
         updateMicroscaleHydraulicState<DisplacementDim>(
             this->current_states_[ip], this->prev_states_[ip], p_cap_ip,
             rho_LR, mu, dt, variables, variables_prev,
@@ -4097,7 +4336,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
              .phi_M_prev = transport_porosity_prev_value,
              .phi_m_prev = phi_m_prev_value,
              .volumetric_strain = variables.volumetric_strain,
-             .volumetric_strain_prev = variables_prev.volumetric_strain},
+             .volumetric_strain_prev = variables_prev.volumetric_strain,
+             .confining_pressure_p_conf = p_conf_micro_solve},
             this->process_data_.micro_porosity_parameters,
             this->getPotentialExchangeParameters());
         updatePorositySplitState<DisplacementDim>(
