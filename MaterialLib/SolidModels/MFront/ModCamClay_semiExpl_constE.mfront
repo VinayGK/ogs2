@@ -31,7 +31,7 @@
 @Epsilon 1e-14;                 // tolerance of local stress integration algorithm
 @MaximumNumberOfIterations 200; // for local local stress integration algorithm
 @ModellingHypotheses{".+"};     // supporting all stress and strain states
-@Algorithm NewtonRaphson;       //_NumericalJacobian;_LevenbergMarquardt
+@Algorithm LevenbergMarquardt;  // 2026-06-06: was NewtonRaphson; LM more robust to ill-conditioned return-map (gap-closure yield spike). Response-neutral (same root). Revert via git.
 
 @Brick StandardElasticity;
 @RequireStiffnessTensor<UnAltered>;

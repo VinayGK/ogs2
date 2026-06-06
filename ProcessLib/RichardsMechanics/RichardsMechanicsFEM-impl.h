@@ -1287,38 +1287,15 @@ inline double computeImplicitNlDpL(
         return 0.0;
     }
 
-    if (potential_exchange_params.local_nonlinear_solve_mode ==
-        LocalNonlinearSolveMode::ScalarReferenceMassStorage)
-    {
-        constexpr double rho_floor = 1e-16;
-        double const perturbation =
-            std::max(potential_exchange_params.local_jacobian_perturbation, 1e-8) *
-            std::max(1.0, std::abs(p_L_ip));
-
-        auto const eval_at = [&](double const p_L_eval,
-                                 double const rho_LR_eval)
-        {
-            auto const macro_potential_eval = computeYoungLaplaceMacroPotential(
-                p_L_eval, rho_LR_eval, potential_exchange_params.pressure_tolerance);
-            auto const n_l_update_eval = solveImplicitMicroWaterContent(
-                n_l_prev, dt, rho_LR_eval, alpha_bar, mu,
-                macro_potential_eval, local_context, potential_exchange_params);
-            return n_l_update_eval.n_l;
-        };
-
-        double const rho_plus =
-            std::max(rho_floor, rho_LR + drho_LR_dpL * perturbation);
-        double const n_l_plus = eval_at(p_L_ip + perturbation, rho_plus);
-        double const rho_minus = rho_LR - drho_LR_dpL * perturbation;
-        if (rho_minus > rho_floor)
-        {
-            double const n_l_minus =
-                eval_at(p_L_ip - perturbation, rho_minus);
-            return (n_l_plus - n_l_minus) / (2.0 * perturbation);
-        }
-        double const n_l_center = eval_at(p_L_ip, rho_LR);
-        return (n_l_plus - n_l_center) / perturbation;
-    }
+    // P2 fix (2026-06-06): ScalarReferenceMassStorage previously used a
+    // finite-difference dn_l/dp_L here (perturbing the full coupled solve by
+    // h ~ 1e-8*|p_L|). At a dry IC the two perturbed coupled solves barely move
+    // -> catastrophic cancellation -> random-sign ~3e-13 noise -> corrupts the
+    // global pressure-block diagonal (drho_L_hat_dpL_direct, ~line 3824) ->
+    // step-1 macro-pressure blow-up. Fall through to the ANALYTIC tangent below
+    // (shared with ScalarReferenceStorage). This is TANGENT-ONLY: the converged
+    // mass-conserving forward solve is unchanged; only the Newton Jacobian gets
+    // a clean, correctly-signed value. (Old FD path recoverable via git.)
 
     double const dalpha_M_effective_dpL = alpha_bar / mu * drho_LR_dpL;
     double const dmu_first_dpL_fixed_n =
@@ -1336,7 +1313,9 @@ inline double computeImplicitNlDpL(
 
     double dr_dn_l = 1.0 - dt_safe * drho_l_hat_dn_l / rho_LR;
     if (potential_exchange_params.local_nonlinear_solve_mode ==
-        LocalNonlinearSolveMode::ScalarReferenceStorage)
+            LocalNonlinearSolveMode::ScalarReferenceStorage ||
+        potential_exchange_params.local_nonlinear_solve_mode ==
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
     {
         double const volumetric_strain_rate =
             (local_context.volumetric_strain -
