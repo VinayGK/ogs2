@@ -133,8 +133,8 @@ struct PotentialExchangeParameters
     // mu_lR_aug = sign * K * exp(-h / lambda)
     // Zero prefactor (default) disables augmentation and preserves
     // existing behaviour.
-    double vdw_augmentation_prefactor = 0.0;     // K      [J/kg], must be >= 0
-    double vdw_augmentation_decay_length = 0.0;  // lambda [m],    must be > 0 if K > 0
+    double potential_augmentation_prefactor = 0.0;     // K      [J/kg], must be >= 0
+    double potential_augmentation_exponent = 0.0;  // lambda [m],    must be > 0 if K > 0
 
     // Optional consistency switches for the hierarchical DSM branch.
     // Default micro-pressure density is the confined micro-liquid density.
@@ -154,5 +154,18 @@ struct PotentialExchangeParameters
     // local solve via PotentialExchangeLocalSolveContext::biot_coefficient.
     double film_pressure_gate_width = 0.0;        // smooth-gate width w [Pa]; 0 -> sharp fallback  [Vinay's call]
     double film_pressure_swelling_modulus = 0.0;  // eigenstrain modulus K_sw [Pa]; 0 -> drained K  [Vinay's call]
+
+    // ── Macro-porosity floor (Vinay 2026-06-06) ────────────────────────────
+    // phi_M,min (REV macro porosity). Prevents the macro pore from collapsing
+    // into the interlayer: the interlayer water n_l is capped at
+    // n_l_cap = (phi - macro_porosity_floor)/(1 - macro_porosity_floor), so the
+    // hierarchical split phi_M = (phi - n_l)/(1 - n_l) >= macro_porosity_floor.
+    // Beyond the cap the film is saturated and further water stays bulk (macro):
+    // porosity- and water-conserving (phi = phi_M + phi_m held; the capped micro
+    // uptake remains in the macro mass balance). Value source: EPFL MIP bimodal
+    // pore structure (Seiphoori 2014 / Acta 2022) [Vinay's call]. 0 (default) ->
+    // no floor -> bit-for-bit unchanged.
+    double macro_porosity_floor = 0.0;
+    double macro_floor_cutoff_width = 0.0;  // film-to-bulk cutoff width in n_l [-]; 0 -> default 5% of n_l_cap [Vinay's call]
 };
 }  // namespace ProcessLib::RichardsMechanics

@@ -42,7 +42,7 @@ recipe for this branch from a fresh `master`. It must stay current.
 **Update DSM_NATIVE_HIERARCHICAL_PATCH_RECIPE.md before committing whenever:**
 - Any hunk in `RichardsMechanicsFEM-impl.h` or `PotentialExchange.h` changes.
 - The DSMMicroMacro unit tests change (step 8 section + passing count).
-- Any PRJ `hamaker_constant`, `vdw_augmentation_prefactor` (K), or pre-consolidation
+- Any PRJ `hamaker_constant`, `potential_augmentation_prefactor` (K), or pre-consolidation
   pressure (`pc_char_mcc` / `InitialPreConsolidationPressure`, the MCC cap `pc`) value changes.
 - A new benchmark model is added to the canonical LE set.
 - Build flags or the verification `ctest` invocation changes.

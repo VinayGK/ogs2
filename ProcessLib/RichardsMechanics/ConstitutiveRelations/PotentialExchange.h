@@ -88,19 +88,19 @@ struct VanDerWaalsMicroPotentialData
 //   Consistent with p_L_m = -rho_lR * mu_lR  [Pa]  (impl.h lines 276, 1044)
 //
 // Optional lumped exponential augmentation (activated when
-// vdw_augmentation_prefactor > 0):
+// potential_augmentation_prefactor > 0):
 // h = n_l / (nS * rho_SR * Sa)               mean water film thickness [m]
 // mu_lR_aug = K * exp(-h / lambda)
-//   K      = vdw_augmentation_prefactor    [J/kg]  augmentation amplitude (calibrate to Villar)
-//   lambda = vdw_augmentation_decay_length [m]     characteristic film thickness (calibrate)
+//   K      = potential_augmentation_prefactor    [J/kg]  augmentation amplitude (calibrate to Villar)
+//   lambda = potential_augmentation_exponent [m]     characteristic film thickness (calibrate)
 // Total: mu_lR = sign * (mu_lR_vdW + mu_lR_aug)   — ADDITIVE, augmentation never replaces vdW
 // Setting K = 0 (default) reduces exactly to the pure vdW form.
 inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     double const n_l, double const rho_lR, double const nS, double const rho_SR,
     double const hamaker_constant, double const specific_surface,
     double const potential_sign_factor = 1.0,
-    double const vdw_augmentation_prefactor = 0.0,
-    double const vdw_augmentation_decay_length = 0.0,
+    double const potential_augmentation_prefactor = 0.0,
+    double const potential_augmentation_exponent = 0.0,
     double const dnS_dnl = 0.0)
 {
     if (!(n_l > 0.0))
@@ -139,21 +139,21 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
             "got {:g}.",
             specific_surface);
     }
-    if (!(vdw_augmentation_prefactor >= 0.0))
+    if (!(potential_augmentation_prefactor >= 0.0))
     {
         OGS_FATAL(
             "computeVanDerWaalsMicroPotential requires "
-            "vdw_augmentation_prefactor >= 0, got {:g}.",
-            vdw_augmentation_prefactor);
+            "potential_augmentation_prefactor >= 0, got {:g}.",
+            potential_augmentation_prefactor);
     }
-    if (vdw_augmentation_prefactor > 0.0 &&
-        !(vdw_augmentation_decay_length > 0.0))
+    if (potential_augmentation_prefactor > 0.0 &&
+        !(potential_augmentation_exponent > 0.0))
     {
         OGS_FATAL(
             "computeVanDerWaalsMicroPotential requires "
-            "vdw_augmentation_decay_length > 0 when "
-            "vdw_augmentation_prefactor > 0, got {:g}.",
-            vdw_augmentation_decay_length);
+            "potential_augmentation_exponent > 0 when "
+            "potential_augmentation_prefactor > 0, got {:g}.",
+            potential_augmentation_exponent);
     }
 
     constexpr double pi = 3.141592653589793238462643383279502884;
@@ -193,12 +193,12 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     // Lumped exponential force augmentation:
     // h = n_l / (nS * rho_SR * Sa)  [mean water film thickness, m]
     // mu_lR_aug = sign * K * exp(-h / lambda)
-    if (vdw_augmentation_prefactor > 0.0)
+    if (potential_augmentation_prefactor > 0.0)
     {
-        double const xi = n_l / (vdw_augmentation_decay_length * nS *
+        double const xi = n_l / (potential_augmentation_exponent * nS *
                                  rho_SR * specific_surface);
         double const mu_aug =
-            potential_sign_factor * vdw_augmentation_prefactor *
+            potential_sign_factor * potential_augmentation_prefactor *
             std::exp(-xi);
 
         out.mu_lR += mu_aug;

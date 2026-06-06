@@ -74,7 +74,7 @@ by which load past `Π` drives water out of the interlayer.
   from **one** `Ψ`, so the partner's coefficient is fixed by the existing swelling
   closure — **no new constant**.
 - **But re-verify `K`.** The change re-touches the saturated swelling-pressure
-  equilibrium, so `vdw_augmentation_prefactor` (`K`) must be re-calibrated per
+  equilibrium, so `potential_augmentation_prefactor` (`K`) must be re-calibrated per
   density vs Dixon afterwards (expect `K` to **drop** — the now-explicit term
   takes over part of `K`'s lumped-proxy job; cf. the full-`p^disj` shift, ~13 %).
 - **Exact algebra against the current code.** Derive against the **Π-eigenstress**

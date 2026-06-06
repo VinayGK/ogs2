@@ -250,7 +250,7 @@ The derivative `dmu_lR_drho_lR` is now non-zero (was erroneously 0.0):
 ```
 `2.2e-20 J` is the Israelachvili & Adams (1978) SFA mica-water-mica value,
 standard smectite proxy. **Do NOT calibrate `hamaker_constant`** — it is a
-material constant. Only `vdw_augmentation_prefactor` (K) is calibrated.
+material constant. Only `potential_augmentation_prefactor` (K) is calibrated.
 
 **K recalibration after this step** (Villar bisection):
 ```
@@ -347,9 +347,9 @@ Every `ANCHORS_MS33_Model*/` PRJ file must have:
 
 K values per dry density (calibrated to Villar targets, Model I):
 ```
-dd1400: <vdw_augmentation_prefactor>7654.9</vdw_augmentation_prefactor>
-dd1600: <vdw_augmentation_prefactor>29984.9</vdw_augmentation_prefactor>
-dd1800: <vdw_augmentation_prefactor>118582.6</vdw_augmentation_prefactor>
+dd1400: <potential_augmentation_prefactor>7654.9</potential_augmentation_prefactor>
+dd1600: <potential_augmentation_prefactor>29984.9</potential_augmentation_prefactor>
+dd1800: <potential_augmentation_prefactor>118582.6</potential_augmentation_prefactor>
 ```
 
 MCC pre-consolidation cap `pc` (MCC models only: `*_mcc_native`, `*_mcc`) — parameter
@@ -363,7 +363,7 @@ dd1600: 12.0e6   (12 MPa)  <- also ModelIII / ModelIV(bentonite) / ModelVII (dd1
 dd1800: 24.0e6   (24 MPa)
 ```
 **K consistency (2026-05-29):** MCC_NATIVE K was aligned to the LE submission's agreed
-EMDD≡rho_d calibration (`vdw_augmentation_prefactor` = 26950/71900/214400 for dd1400/1600/1800;
+EMDD≡rho_d calibration (`potential_augmentation_prefactor` = 26950/71900/214400 for dd1400/1600/1800;
 III/IV/VII use the dd1600 value 71900). It previously carried the stale EMDD=0.8*rho_d K
 (5500/13050/31280 -> 1.12/2.61/6.09 MPa). With the consistent EMDD≡rho_d K the developed
 swelling stress vs the CIMNE caps gives:
@@ -382,7 +382,7 @@ ModelIV's pellet zone (rho_d=900) shares the single `pc_char_mcc`; CIMNE has no 
 base DSM params (parsed in `CreateRichardsMechanicsProcess.cpp` via `parsePotentialExchangeParameters`
 with the base as defaults; the local assembler picks per material id in `LocalAssemblerInterface.h`).
 ModelIV now uses this to differentiate the pellet zone (material id 1): `n_s=0.324` (=1-phi0_pellet),
-`initial_micro_water_content=6.59e-4`, lower `vdw_augmentation_prefactor`. Result: heterogeneous
+`initial_micro_water_content=6.59e-4`, lower `potential_augmentation_prefactor`. Result: heterogeneous
 swelling (clay ~2.45 vs pellet ~0.1 MPa) + partial density homogenisation. NOTE: ModelIV currently
 runs at a **demo** base K=13050 (EMDD=0.8, runnable); the EMDD≡rho_d K=71900 makes the multi-element
 gap/pellet models (III, IV) impractically slow (III crawled to step 9371). Pellet K_pellet=1200 is a

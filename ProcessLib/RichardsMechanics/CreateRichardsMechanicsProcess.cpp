@@ -420,26 +420,26 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             context, local_jacobian_perturbation);
     }
 
-    auto const vdw_augmentation_prefactor = config.getConfigParameter<double>(
-        "vdw_augmentation_prefactor",
-        defaults ? defaults->vdw_augmentation_prefactor : 0.0);
-    if (!(vdw_augmentation_prefactor >= 0.0))
+    auto const potential_augmentation_prefactor = config.getConfigParameter<double>(
+        "potential_augmentation_prefactor",
+        defaults ? defaults->potential_augmentation_prefactor : 0.0);
+    if (!(potential_augmentation_prefactor >= 0.0))
     {
         OGS_FATAL(
-            "RichardsMechanics: {} vdw_augmentation_prefactor must be >= 0, got {:g}.",
-            context, vdw_augmentation_prefactor);
+            "RichardsMechanics: {} potential_augmentation_prefactor must be >= 0, got {:g}.",
+            context, potential_augmentation_prefactor);
     }
 
-    auto const vdw_augmentation_decay_length = config.getConfigParameter<double>(
-        "vdw_augmentation_decay_length",
-        defaults ? defaults->vdw_augmentation_decay_length : 0.0);
-    if (vdw_augmentation_prefactor > 0.0 &&
-        !(vdw_augmentation_decay_length > 0.0))
+    auto const potential_augmentation_exponent = config.getConfigParameter<double>(
+        "potential_augmentation_exponent",
+        defaults ? defaults->potential_augmentation_exponent : 0.0);
+    if (potential_augmentation_prefactor > 0.0 &&
+        !(potential_augmentation_exponent > 0.0))
     {
         OGS_FATAL(
-            "RichardsMechanics: {} vdw_augmentation_decay_length must be > 0 when "
-            "vdw_augmentation_prefactor > 0, got {:g}.",
-            context, vdw_augmentation_decay_length);
+            "RichardsMechanics: {} potential_augmentation_exponent must be > 0 when "
+            "potential_augmentation_prefactor > 0, got {:g}.",
+            context, potential_augmentation_exponent);
     }
 
     auto const use_micro_liquid_density_for_micro_pressure =
@@ -479,6 +479,27 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "RichardsMechanics: {} film_pressure_swelling_modulus must be >= 0, got {:g}.",
             context, film_pressure_swelling_modulus);
     }
+
+    // Macro-porosity floor phi_M,min: keeps the macro pore from collapsing into
+    // the interlayer (n_l capped at (phi-floor)/(1-floor)); 0 -> no floor.
+    auto const macro_porosity_floor = config.getConfigParameter<double>(
+        "macro_porosity_floor",
+        defaults ? defaults->macro_porosity_floor : 0.0);
+    if (!(macro_porosity_floor >= 0.0 && macro_porosity_floor < 1.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} macro_porosity_floor must be in [0, 1), got {:g}.",
+            context, macro_porosity_floor);
+    }
+    auto const macro_floor_cutoff_width = config.getConfigParameter<double>(
+        "macro_floor_cutoff_width",
+        defaults ? defaults->macro_floor_cutoff_width : 0.0);
+    if (!(macro_floor_cutoff_width >= 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} macro_floor_cutoff_width must be >= 0, got {:g}.",
+            context, macro_floor_cutoff_width);
+    }
     if (film_pressure_coupling)
     {
         WARN(
@@ -503,12 +524,14 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         use_fd_jacobian_for_exchange,
         fd_jacobian_perturbation,
         local_jacobian_perturbation,
-        vdw_augmentation_prefactor,
-        vdw_augmentation_decay_length,
+        potential_augmentation_prefactor,
+        potential_augmentation_exponent,
         use_micro_liquid_density_for_micro_pressure,
         film_pressure_coupling,
         film_pressure_gate_width,
-        film_pressure_swelling_modulus};
+        film_pressure_swelling_modulus,
+        macro_porosity_floor,
+        macro_floor_cutoff_width};
 }
 
 template <int DisplacementDim>

@@ -50,7 +50,7 @@ initial micro water content is set to the 99 MPa-equilibrium value.
                        median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
         dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27), rho_d=1600 kg/m3
         target sigma : 14.161 MPa
-        fitted K     : 85312.6 J/kg (vdw_augmentation_prefactor)
+        fitted K     : 85312.6 J/kg (potential_augmentation_prefactor)
       Material parameters (source per group): as Model I dd1600; elastic E,nu: EURAD-2 MS33
         Table TH-G [TODO(Vinay): confirm]; retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780;
         cavitation 1.4e8 Or-Tuller 2002; A_Hamaker 2.2e-20 Israelachvili & Adams 1978; lambda=7.5e-7
@@ -102,11 +102,11 @@ initial micro water content is set to the 99 MPa-equilibrium value.
                 <!-- K [Villar-calibrated; SUPERSEDED 2026-06-01 -> Dixon recalibrated value below] at rho_d=1600 kg/m³ via Pi-path;
                      Π uses bulk ρ_LR (Gibbs–Duhem consistent); steps 2+3, 2026-05-21 -->
                 <!-- K recalibrated 2026-06-01: dt-converged Dixon(2023) reference K (P* basis); prev value 71900 -->
-                <vdw_augmentation_prefactor>85312.6</vdw_augmentation_prefactor>
+                <potential_augmentation_prefactor>85312.6</potential_augmentation_prefactor>
                 <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
                      (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
                       Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
-                <vdw_augmentation_decay_length>7.5e-7</vdw_augmentation_decay_length>
+                <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
             </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>

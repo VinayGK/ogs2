@@ -980,8 +980,8 @@ TEST(RichardsMechanics, DSMMicroMacroMicroPorositySwellingStressIncrement)
     // O(1) over the n_l range used here, making the augmentation a genuine,
     // non-negligible part of mu_lR (~0.6-0.8 of the total) rather than a term
     // suppressed to ~0 by a tiny decay length.
-    potential_exchange_params.vdw_augmentation_prefactor = 1.0e-2;
-    potential_exchange_params.vdw_augmentation_decay_length = 1e-7;
+    potential_exchange_params.potential_augmentation_prefactor = 1.0e-2;
+    potential_exchange_params.potential_augmentation_exponent = 1e-7;
 
     auto const& identity2 = MathLib::KelvinVector::Invariants<
         MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
@@ -1008,8 +1008,8 @@ TEST(RichardsMechanics, DSMMicroMacroMicroPorositySwellingStressIncrement)
                 potential_exchange_params.micro_solid_density_reference,
                 potential_exchange_params.hamaker_constant,
                 potential_exchange_params.specific_surface, sign,
-                potential_exchange_params.vdw_augmentation_prefactor,
-                potential_exchange_params.vdw_augmentation_decay_length)
+                potential_exchange_params.potential_augmentation_prefactor,
+                potential_exchange_params.potential_augmentation_exponent)
                 .mu_lR;
         double const density =
             potential_exchange_params.use_micro_liquid_density_for_micro_pressure
@@ -1125,8 +1125,8 @@ TEST(RichardsMechanics, DSMMicroMacroSwellingStressFullDisjoiningSign)
     potential_exchange_params.specific_surface = 1000.0;
     potential_exchange_params.micro_solid_density_reference = 2650.0;
     potential_exchange_params.micro_solid_volume_fraction_reference = 0.6;
-    potential_exchange_params.vdw_augmentation_prefactor = 0.0;  // OFF
-    potential_exchange_params.vdw_augmentation_decay_length = 0.0;
+    potential_exchange_params.potential_augmentation_prefactor = 0.0;  // OFF
+    potential_exchange_params.potential_augmentation_exponent = 0.0;
     // Leave the default PositiveReduced convention (sign = +1) so the test does
     // NOT bake in a swelling sign: the asserted sign comes purely from the
     // formula below.
@@ -1167,8 +1167,8 @@ TEST(RichardsMechanics, DSMMicroMacroSwellingStressFullDisjoiningSign)
                 potential_exchange_params.micro_solid_density_reference,
                 potential_exchange_params.hamaker_constant,
                 potential_exchange_params.specific_surface, sign,
-                /*vdw_augmentation_prefactor=*/0.0,
-                /*vdw_augmentation_decay_length=*/0.0)
+                /*potential_augmentation_prefactor=*/0.0,
+                /*potential_augmentation_exponent=*/0.0)
                 .mu_lR;
         double const density =
             potential_exchange_params.use_micro_liquid_density_for_micro_pressure
@@ -1992,8 +1992,8 @@ TEST(RichardsMechanics, DSMFilmPressureDrain)
             potential_exchange_params.micro_solid_density_reference,
             potential_exchange_params.hamaker_constant,
             potential_exchange_params.specific_surface, sign,
-            /*vdw_augmentation_prefactor=*/0.0,
-            /*vdw_augmentation_decay_length=*/0.0)
+            /*potential_augmentation_prefactor=*/0.0,
+            /*potential_augmentation_exponent=*/0.0)
             .mu_lR;
     ASSERT_LT(mu_vdw, 0.0);  // attractive: mu_vdw < 0
 
