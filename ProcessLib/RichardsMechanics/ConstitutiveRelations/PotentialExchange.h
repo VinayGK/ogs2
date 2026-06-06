@@ -100,7 +100,8 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     double const hamaker_constant, double const specific_surface,
     double const potential_sign_factor = 1.0,
     double const vdw_augmentation_prefactor = 0.0,
-    double const vdw_augmentation_decay_length = 0.0)
+    double const vdw_augmentation_decay_length = 0.0,
+    double const dnS_dnl = 0.0)
 {
     if (!(n_l > 0.0))
     {
@@ -180,6 +181,10 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     out.mu_lR = potential_sign_factor * prefactor * (nS * nS * nS) *
                 (rho_SR * rho_SR * rho_SR) / (n_l * n_l * n_l * rho_lR);
 
+    // PARTIAL derivatives (nS held fixed). The TOTAL d mu_lR/d n_l under
+    // current_porosity_split (nS = 1 - n_l LIVE) additionally picks up the
+    // dmu_lR_dnS * dnS/dnl chain, applied after the augmentation contributions
+    // below via the dnS_dnl multiplier (F2, 2026-06-06; tangent-only).
     out.dmu_lR_dnl = -3.0 * out.mu_lR / n_l;
     out.dmu_lR_drho_lR = -out.mu_lR / rho_lR;  // non-zero after /rho_lR fix
     out.dmu_lR_dnS = 3.0 * out.mu_lR / nS;
@@ -203,6 +208,16 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
         out.dmu_lR_dnS += mu_aug * xi / nS;
         out.dmu_lR_drho_SR += mu_aug * xi / rho_SR;
     }
+
+    // ── F2 (2026-06-06, tangent-only): live-nS chain for dmu_lR/dnl ──────────
+    // Under current_porosity_split nS = 1 - n_l is a function of n_l, so the
+    // TOTAL derivative is dmu_lR/dnl + dmu_lR/dnS * dnS/dnl. The caller passes
+    // dnS_dnl = -1 in that mode (and 0 in reference mode, where nS is constant
+    // -> NO change, exact). out.dmu_lR_dnS here is the COMPLETE partial (vdW core
+    // 3*mu/nS plus any augmentation term), so the chain is consistent across
+    // both contributions. Tangent-only: the converged forward solve uses a
+    // finite-difference Jacobian and is unaffected.
+    out.dmu_lR_dnl += out.dmu_lR_dnS * dnS_dnl;
 
     return out;
 }

@@ -1415,7 +1415,16 @@ TEST(RichardsMechanics, DSMMicroMacroScalarMassStorageLocalSolveReferencePath)
         LocalNonlinearSolveMode::ScalarReferenceMassStorage;
     potential_exchange_params.initial_micro_water_content = 0.03;
 
-    double const p_L = 0.0;
+    // Probe an UNSATURATED state (p_L < 0). p_L = 0 with pressure_tolerance = 0
+    // sits exactly on the Young-Laplace saturated/unsaturated kink, where
+    // computeYoungLaplaceMacroPotential is C0 (dmu_LR/dp_L jumps 1/rho_LR -> 0):
+    // a central-difference FD reference straddling the kink returns ~half the
+    // one-sided tangent, and the FD step h ~ 1e-8*|p_L| collapses to 1e-8 there
+    // (catastrophic cancellation). Both pathologies are artifacts of the probe
+    // point, not of computeImplicitNlDpL; probe at a genuine unsaturated state
+    // (1 MPa suction) where the residual is smooth in p_L and h ~ 1e-2 keeps the
+    // FD well-conditioned. [Vinay's call: scenario is an unsaturated GP.]
+    double const p_L = -1.0e6;
     double const n_l_prev = 0.03;
     double const dt = 100.0;
     double const rho_LR = 1000.0;
@@ -1457,7 +1466,8 @@ TEST(RichardsMechanics, DSMMicroMacroScalarMassStorageLocalSolveReferencePath)
         {.phi = phi,
          .volumetric_strain = volumetric_strain,
          .volumetric_strain_prev = volumetric_strain_prev},
-        potential_exchange_params);
+        potential_exchange_params, /*n_l_converged=*/ogs_update.n_l,
+        /*rho_lR_micro=*/ogs_update.rho_lR);
     auto const reference_dn_l_dpL = [&]()
     {
         double const h = 1e-8 * std::max(1.0, std::abs(p_L));
@@ -2071,7 +2081,9 @@ TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
     potential_exchange_params.enabled = true;
     potential_exchange_params.film_pressure_coupling = true;
     potential_exchange_params.film_pressure_swelling_modulus = 1.0e7;  // K_sw > 0
-    potential_exchange_params.film_pressure_biot_b = 1.0;
+    // Biot b is now threaded as an explicit argument (== poroelastic biot alpha),
+    // no longer a film parameter; pass b = 1 below so the expected
+    // S1 = -(1 - phi_M)*K_sw*b is unchanged.
     // vdW params kept physical (the ON branch returns before touching them, but
     // they document a valid configuration).
     potential_exchange_params.hamaker_constant = 6.0e-20;
@@ -2085,7 +2097,7 @@ TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
 
     double const n_S = 0.63;  // = 1 - phi_M (REV macro-solid / contact-area factor)
     double const K_sw = potential_exchange_params.film_pressure_swelling_modulus;
-    double const b = potential_exchange_params.film_pressure_biot_b;
+    double const b = 1.0;  // eigenstrain Biot b, passed explicitly (== biot alpha)
     double const rho_lR = 1000.0;
     double const rho_lR_prev = 1000.0;
     double const rho_LR = 1000.0;
@@ -2097,7 +2109,7 @@ TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
         auto const increment =
             computeReferenceMicroPorositySwellingStressIncrement<2>(
                 n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
-                potential_exchange_params);
+                potential_exchange_params, /*biot_coefficient=*/b);
         return increment.dot(identity2) / 3.0;
     };
 

@@ -256,6 +256,10 @@ inline PotentialExchangeUpdateData computePotentialExchangeUpdate(
 struct ImplicitMicroWaterContentUpdateData
 {
     double n_l = 0.0;
+    // Converged micro liquid density (ScalarReferenceMassStorage mode only;
+    // NaN otherwise). Threaded into computeImplicitNlDpL so the F1 REV-mass
+    // tangent can evaluate the EOS partials at the converged state.
+    double rho_lR = std::numeric_limits<double>::quiet_NaN();
     VanDerWaalsMicroPotentialData micro_potential;
     PotentialDrivenMassExchangeData exchange;
     bool converged = true;
@@ -314,6 +318,15 @@ struct PotentialExchangeLocalSolveContext
     // has no stress in scope) gets NO film term. Set explicitly at the call
     // sites that have EffectiveStressData available.
     double confining_pressure_p_conf = std::numeric_limits<double>::quiet_NaN();
+    // Poroelastic Biot coefficient (= poroelastic Biot alpha, the SAME solid-
+    // fluid volume partitioning) threaded from the medium MPL biot_coefficient
+    // property. Used as the eigenstrain Biot b in the film-pressure coupling
+    // (one-Psi consistency; previously a separate film_pressure_biot_b scalar).
+    // Default 1.0 -> sensible incompressible-grain fallback for default-
+    // constructed contexts (the GP eigenstress-difference driver and tests that
+    // do not set it explicitly). Set at the assembly / micro-solve context sites
+    // from the evaluated MPL biot_coefficient.
+    double biot_coefficient = 1.0;
 };
 
 inline double boundedMicroWaterContentCeiling(
@@ -548,7 +561,21 @@ inline ReducedMicroLiquidDensityData computeReducedMicroLiquidDensity(
         std::pow(omega_l, b_rho - 1.0);
     double const dg_drho =
         1.0 + common * (n_l_safe / denominator);
-    double const dg_dn = common * (rho_lR / denominator);
+    // dg/dn_l with nS FROZEN: common * domega/dn_l|_{nS} = common*(rho_lR/denom).
+    double dg_dn = common * (rho_lR / denominator);
+    // F2 (2026-06-06, tangent-only): under current_porosity_split nS = 1 - n_l is
+    // LIVE, so the EOS slaved drho_lR/dn_l picks up the domega/dnS*(dnS/dnl)
+    // chain. domega/dnS = -omega/nS, dnS/dnl = -1 -> chain = +omega/nS, added to
+    // domega/dn_l, i.e. dg_dn += common*(omega_l/nS). Reference mode: nS constant
+    // -> NO change (exact). This makes the returned drho_lR_dnl the SAME slaved
+    // derivative the forward 2x2 FD solve sees (active_nS recomputed per n_l),
+    // which F1 relies on. Tangent-only: the forward EOS Newton uses an analytic
+    // 1D self-Jacobian dg_drho (unchanged) and converges to the same rho_lR.
+    if (potential_exchange_params.micro_solid_volume_fraction_mode ==
+        MicroSolidVolumeFractionMode::CurrentPorositySplit)
+    {
+        dg_dn += common * (omega_l / nS_safe);
+    }
     double const drho_lR_dnl =
         (std::isfinite(dg_drho) && std::abs(dg_drho) > 1e-20)
             ? -dg_dn / dg_drho
@@ -1045,12 +1072,21 @@ inline VanDerWaalsMicroPotentialData computeActiveMicroPotential(
             ? computeReducedMicroLiquidDensity(n_l, rho_lR, active_nS, potential_exchange_params)
                   .rho_lR
             : rho_lR;
+    // F2: under current_porosity_split active_nS = 1 - n_l is LIVE, so the vdW
+    // dmu_lR/dnl total derivative picks up the dmu_lR_dnS*(dnS/dnl) chain with
+    // dnS/dnl = -1. In reference mode nS is constant -> dnS_dnl = 0 (exact, no
+    // change). Tangent-only: forward solves use FD Jacobians.
+    double const dnS_dnl =
+        potential_exchange_params.micro_solid_volume_fraction_mode ==
+                MicroSolidVolumeFractionMode::CurrentPorositySplit
+            ? -1.0
+            : 0.0;
     auto out = computeVanDerWaalsMicroPotential(
         n_l, rho_lR_effective, active_nS, potential_exchange_params.micro_solid_density_reference,
         potential_exchange_params.hamaker_constant, potential_exchange_params.specific_surface,
         microPotentialSignFactorFromParameters(potential_exchange_params),
             potential_exchange_params.vdw_augmentation_prefactor,
-            potential_exchange_params.vdw_augmentation_decay_length);
+            potential_exchange_params.vdw_augmentation_decay_length, dnS_dnl);
 
     // ── Film-pressure coupling (maxwell sec.5): ONE evaluator ────────────────
     // When the flag is ON and the confining pressure is supplied (finite
@@ -1074,7 +1110,7 @@ inline VanDerWaalsMicroPotentialData computeActiveMicroPotential(
             Pi, local_context.confining_pressure_p_conf, rho_lR_effective,
             std::max(1e-16, n_S_rev), n_l, out.dmu_lR_dnl,
             potential_exchange_params.film_pressure_gate_width,
-            potential_exchange_params.film_pressure_biot_b);
+            local_context.biot_coefficient);
         out.mu_lR += film.mu_lR_film_delta;
         out.dmu_lR_dnl += film.dmu_lR_film_dnl;
         out.dmu_lR_drho_lR += film.dmu_lR_film_drho_lR;
@@ -1195,6 +1231,7 @@ inline ImplicitMicroWaterContentUpdateData solveImplicitMicroWaterContent(
             dt_safe, rho_LR, alpha_bar, mu, macro_potential,
             local_context, potential_exchange_params);
         out.n_l = coupled_update.n_l;
+        out.rho_lR = coupled_update.rho_lR;
         out.micro_potential = coupled_update.micro_potential;
         out.exchange = coupled_update.exchange;
         out.converged = coupled_update.converged;
@@ -1340,7 +1377,9 @@ inline double computeImplicitNlDpL(
     VanDerWaalsMicroPotentialData const& micro_potential,
     PotentialDrivenMassExchangeData const& exchange,
     PotentialExchangeLocalSolveContext const& local_context,
-    PotentialExchangeParameters const& potential_exchange_params)
+    PotentialExchangeParameters const& potential_exchange_params,
+    double const n_l_converged = std::numeric_limits<double>::quiet_NaN(),
+    double const rho_lR_micro = std::numeric_limits<double>::quiet_NaN())
 {
     requirePositiveViscosity("computeImplicitNlDpL", mu);
     double const dt_safe = std::isfinite(dt) && dt > 0.0 ? dt : 0.0;
@@ -1349,15 +1388,128 @@ inline double computeImplicitNlDpL(
         return 0.0;
     }
 
-    // P2 fix (2026-06-06): ScalarReferenceMassStorage previously used a
+    // ── F1 (2026-06-06, tangent-only): ScalarReferenceMassStorage REV-mass
+    // residual linearization ───────────────────────────────────────────────
+    // The previous shared analytic below linearized the n_l-NORMALIZED residual
+    // r = (n_l - n_l_prev) - dt*rho_l_hat/rho_LR - dt*eps_v_rate*n_l. But in
+    // ScalarReferenceMassStorage mode solveReferenceMassStorageCoupledState
+    // actually solves the REV-MASS residual
+    //   r1 = rho_l*(1 - dt*eps_v_rate) - rho_l_prev - dt*rho_l_hat,
+    //   rho_l = phi_m*rho_lR,  phi_m = (1-phi)/(1-n_l)*n_l,
+    // with rho_lR a 2nd unknown slaved to n_l by the density EOS residual r2=0.
+    // dn_l/dp_L from the n_l-normalized form is therefore inconsistent with the
+    // solved system (it greens the wrong test). Rebuild the tangent on the REV
+    // residual with rho_lR eliminated along r2=0 (1x1 reduction; the EOS already
+    // returns the slaved drho_lR/dn_l). TANGENT-ONLY: the converged forward
+    // solve is untouched; only the Newton Jacobian is made consistent. The
+    // converged (n_l, rho_lR) are threaded in by the caller; micro_potential /
+    // exchange are the values evaluated at that converged state.
+    if (potential_exchange_params.local_nonlinear_solve_mode ==
+        LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+    {
+        double const eps_v_rate =
+            (local_context.volumetric_strain -
+             local_context.volumetric_strain_prev) /
+            dt_safe;
+        double const time_factor = 1.0 - dt_safe * eps_v_rate;
+
+        // Converged n_l (fall back to n_l_prev only if the caller omitted it).
+        double const n_l =
+            std::max(1e-16, std::isfinite(n_l_converged) ? n_l_converged
+                                                         : n_l_prev);
+        // Active micro-solid fraction (LIVE = 1 - n_l in CurrentPorositySplit,
+        // constant in Reference) and the EOS at the converged state.
+        double const nS = computeActiveMicroSolidVolumeFraction(
+            n_l, local_context, potential_exchange_params);
+        auto const eos = computeReducedMicroLiquidDensity(
+            n_l, rho_LR, nS, potential_exchange_params);
+        double const rho_lR = (std::isfinite(rho_lR_micro) && rho_lR_micro > 0.0)
+                                  ? rho_lR_micro
+                                  : eos.rho_lR;
+
+        // REV macro porosity phi (current step): prefer ctx.phi, else prev sum.
+        double const phi = std::isfinite(local_context.phi)
+                               ? std::clamp(local_context.phi, 0.0, 1.0 - 1e-12)
+                               : std::clamp(local_context.phi_M_prev +
+                                                local_context.phi_m_prev,
+                                            0.0, 1.0 - 1e-12);
+        double const c = 1.0 - phi;
+        double const one_minus_n_l = std::max(1e-12, 1.0 - n_l);
+        double const f = n_l / one_minus_n_l;
+        double const f_prime = 1.0 / (one_minus_n_l * one_minus_n_l);
+        double const phi_m = c * f;
+
+        // Total drho_l/dn_l along the EOS-slaved manifold (rho_l = c*f*rho_lR):
+        //   drho_l/dn_l = c*( f'*rho_lR + f*drho_lR/dn_l ).
+        double const drho_l_dn_l =
+            c * (f_prime * rho_lR + f * eos.drho_lR_dnl);
+
+        // Total dmu_lR/dn_l along the manifold (micro_potential carries the
+        // partial dmu_lR_dnl and the rho_lR channel dmu_lR_drho_lR).
+        double const dmu_lR_dn_l_tot =
+            micro_potential.dmu_lR_dnl +
+            micro_potential.dmu_lR_drho_lR * eos.drho_lR_dnl;
+        double const drho_l_hat_dn_l =
+            exchange.drho_l_hat_dmu_lR * dmu_lR_dn_l_tot;
+
+        double const dr_dn_l =
+            drho_l_dn_l * time_factor - dt_safe * drho_l_hat_dn_l;
+        if (!(std::isfinite(dr_dn_l) && std::abs(dr_dn_l) > 1e-20))
+        {
+            return 0.0;
+        }
+
+        // p_L channel at fixed n_l. rho_lR varies with p_L only through the bulk
+        // rho_LR appearing additively in the EOS: g = rho_lR - rho_LR -
+        // rho_l0*exp(-a*omega^b) = 0 (omega = n_l*rho_lR/(nS*rho_SR), no rho_LR),
+        // so drho_lR/drho_LR|_{fixed n_l} = -dg/drho_LR / dg/drho_lR = 1/dg_drho.
+        double drho_lR_dpL_fixed_n = 0.0;
+        if (drho_LR_dpL != 0.0)
+        {
+            double const rho_SR = std::max(
+                1e-16, potential_exchange_params.micro_solid_density_reference);
+            double const a_rho =
+                std::max(1e-16, potential_exchange_params.micro_liquid_density_a);
+            double const b_rho =
+                std::max(1e-16, potential_exchange_params.micro_liquid_density_b);
+            double const denom = std::max(1e-16, nS) * rho_SR;
+            double const common = (rho_lR - rho_LR) * a_rho * b_rho *
+                                  std::pow(std::max(1e-16, eos.omega_l),
+                                           b_rho - 1.0);
+            double const dg_drho =
+                1.0 + common * (std::max(1e-16, n_l) / denom);
+            drho_lR_dpL_fixed_n =
+                (std::isfinite(dg_drho) && std::abs(dg_drho) > 1e-20)
+                    ? drho_LR_dpL / dg_drho
+                    : 0.0;
+        }
+
+        double const dalpha_M_dpL = alpha_bar / mu * drho_LR_dpL;
+        double const dmu_LR_dpL = macro_potential.dmu_LR_dpLR +
+                                  macro_potential.dmu_LR_drho_LR * drho_LR_dpL;
+        double const dmu_lR_dpL_fixed_n =
+            micro_potential.dmu_lR_drho_lR * drho_lR_dpL_fixed_n;
+        double const drho_l_hat_dpL_fixed_n =
+            exchange.drho_l_hat_dalpha_M * dalpha_M_dpL +
+            exchange.drho_l_hat_dmu_LR * dmu_LR_dpL +
+            exchange.drho_l_hat_dmu_lR * dmu_lR_dpL_fixed_n;
+
+        double const drho_l_dpL_fixed_n = phi_m * drho_lR_dpL_fixed_n;
+        double const dr_dpL =
+            drho_l_dpL_fixed_n * time_factor - dt_safe * drho_l_hat_dpL_fixed_n;
+        return -dr_dpL / dr_dn_l;
+    }
+
+    // ── ScalarExchange / ScalarReferenceStorage: n_l-normalized residual ─────
+    // (unchanged; F1 above leaves these modes bit-for-bit.)
+    // P2 fix (2026-06-06): ScalarReferenceStorage previously used a
     // finite-difference dn_l/dp_L here (perturbing the full coupled solve by
     // h ~ 1e-8*|p_L|). At a dry IC the two perturbed coupled solves barely move
     // -> catastrophic cancellation -> random-sign ~3e-13 noise -> corrupts the
     // global pressure-block diagonal (drho_L_hat_dpL_direct, ~line 3824) ->
-    // step-1 macro-pressure blow-up. Fall through to the ANALYTIC tangent below
-    // (shared with ScalarReferenceStorage). This is TANGENT-ONLY: the converged
-    // mass-conserving forward solve is unchanged; only the Newton Jacobian gets
-    // a clean, correctly-signed value. (Old FD path recoverable via git.)
+    // step-1 macro-pressure blow-up. Fall through to the ANALYTIC tangent below.
+    // This is TANGENT-ONLY: the converged mass-conserving forward solve is
+    // unchanged; only the Newton Jacobian gets a clean, correctly-signed value.
 
     double const dalpha_M_effective_dpL = alpha_bar / mu * drho_LR_dpL;
     double const dmu_first_dpL_fixed_n =
@@ -1548,7 +1700,8 @@ computeReferenceMicroPorositySwellingStressIncrement(
     double const n_S, double const rho_lR, double const rho_lR_prev,
     double const rho_LR,
     MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el,
-    PotentialExchangeParameters const& potential_exchange_params)
+    PotentialExchangeParameters const& potential_exchange_params,
+    double const biot_coefficient = 1.0)
 {
     using KV = MathLib::KelvinVector::KelvinVectorType<DisplacementDim>;
     auto const& params = potential_exchange_params;
@@ -1589,7 +1742,10 @@ computeReferenceMicroPorositySwellingStressIncrement(
             (potential_exchange_params.film_pressure_swelling_modulus > 0.0)
                 ? potential_exchange_params.film_pressure_swelling_modulus
                 : drainedBulkModulusFromStiffness<DisplacementDim>(C_el);
-        double const b = potential_exchange_params.film_pressure_biot_b;
+        // Eigenstrain Biot b == poroelastic Biot alpha (one-Psi consistency):
+        // threaded from the medium biot_coefficient at the production call site;
+        // defaults to 1 for the GP tests / default-constructed callers.
+        double const b = biot_coefficient;
         // n_S passed in is the REV macro-solid fraction (1 - phi_M).
         delta_sigma_sw.noalias() +=
             -n_S * K_sw * b * delta_n_l * identity2_film;
@@ -1708,11 +1864,12 @@ computeSwellingStressIncrement(
     double const n_S, double const rho_lR,
     double const rho_lR_prev, double const rho_LR,
     MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el,
-    PotentialExchangeParameters const& potential_exchange_params)
+    PotentialExchangeParameters const& potential_exchange_params,
+    double const biot_coefficient = 1.0)
 {
     return computeReferenceMicroPorositySwellingStressIncrement<DisplacementDim>(
         n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
-        potential_exchange_params);
+        potential_exchange_params, biot_coefficient);
 }
 
 template <int DisplacementDim>
@@ -1725,7 +1882,8 @@ inline void updateSwellingState(
     MPL::VariableArray& variables, MPL::VariableArray& variables_prev,
     ParameterLib::SpatialPosition const& x_position, double const t,
     double const dt,
-    PotentialExchangeParameters const* const potential_exchange_parameters)
+    PotentialExchangeParameters const* const potential_exchange_parameters,
+    double const biot_coefficient = 1.0)
 {
     if (!isPotentialExchangeEnabled(potential_exchange_parameters))
     {
@@ -1761,7 +1919,7 @@ inline void updateSwellingState(
     sigma_sw.sigma_sw +=
         computeSwellingStressIncrement<DisplacementDim>(
             n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
-            potential_exchange_params);
+            potential_exchange_params, biot_coefficient);
 
     auto const& identity2 = MathLib::KelvinVector::Invariants<
         MathLib::KelvinVector::kelvin_vector_dimensions(
@@ -2776,7 +2934,8 @@ void RichardsMechanicsLocalAssembler<
                     .phi_m_prev = phi_m_prev,
                     .volumetric_strain = variables.volumetric_strain,
                     .volumetric_strain_prev = variables_prev.volumetric_strain,
-                    .confining_pressure_p_conf = p_conf_assembly};
+                    .confining_pressure_p_conf = p_conf_assembly,
+                    .biot_coefficient = alpha};
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
                     *potential_exchange_params_ptr);
@@ -3097,7 +3256,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
          .phi_m_prev = phi_m_prev_value,
          .volumetric_strain = variables.volumetric_strain,
          .volumetric_strain_prev = variables_prev.volumetric_strain,
-         .confining_pressure_p_conf = p_conf_micro_solve},
+         .confining_pressure_p_conf = p_conf_micro_solve,
+         .biot_coefficient = alpha},
         micro_porosity_parameters, potential_exchange_parameters);
     updatePorositySplitState<DisplacementDim>(
         state_current, state_previous, phi, variables, variables_prev,
@@ -3110,7 +3270,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
     updateSwellingState<DisplacementDim>(
         solid_phase, rho_LR, C_el, state_current, state_previous, variables,
         variables_prev, x_position, t, dt,
-        potential_exchange_parameters);
+        potential_exchange_parameters, /*biot_coefficient=*/alpha);
 
     // Gate 1/2 fix for DSM micro-porosity mode: enforce phi_m <= phi_total and
     // phi_M = phi_total - phi_m >= 0 in constitutive state.
@@ -3674,7 +3834,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     .phi_m_prev = phi_m_prev,
                     .volumetric_strain = variables.volumetric_strain,
                     .volumetric_strain_prev = variables_prev.volumetric_strain,
-                    .confining_pressure_p_conf = p_conf_assembly};
+                    .confining_pressure_p_conf = p_conf_assembly,
+                    .biot_coefficient = alpha};
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
                     *potential_exchange_params_ptr);
@@ -3789,7 +3950,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         std::max(1e-16, n_S_film), n_l,
                         micro_potential.dmu_lR_dnl,
                         potential_exchange_params_ptr->film_pressure_gate_width,
-                        potential_exchange_params_ptr->film_pressure_biot_b);
+                        /*biot_b=*/alpha);
                     if (film.gate_open)
                     {
                         // Drained (elastic) bulk modulus from the reconstructed
@@ -3806,8 +3967,9 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         double const K_drained =
                             drainedBulkModulusFromStiffness<DisplacementDim>(
                                 C_el_film);
-                        double const b_film =
-                            potential_exchange_params_ptr->film_pressure_biot_b;
+                        // Eigenstrain Biot b == poroelastic Biot alpha (threaded
+                        // from the medium biot_coefficient; one-Psi consistency).
+                        double const b_film = alpha;
                         // dmu_lR/deps_v = -(K/rho_lR)*g*b.
                         double const dmu_lR_film_deps_v =
                             -(K_drained / rho_film) * film.gate_value * b_film;
@@ -3842,11 +4004,19 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     auto const exchange = computePotentialDrivenMassExchange(
                         alpha_M_effective, macro_potential.mu_LR,
                         micro_potential.mu_lR);
+                    // F1: thread the converged (n_l, micro rho_lR) so the
+                    // ScalarReferenceMassStorage branch linearizes the REV-mass
+                    // residual at the converged state. rho_lR_exchange_input is
+                    // the converged micro liquid density (set above when
+                    // use_micro_liquid_density_for_micro_pressure, i.e. always in
+                    // mass-storage mode); NaN -> the helper recomputes via EOS.
                     double const dn_l_dpL = computeImplicitNlDpL(
                         n_l_prev, p_L_ip, dt, rho_LR, drho_LR_dpL, alpha_bar, mu,
                         macro_potential, micro_potential, exchange,
                         local_solve_context,
-                        *potential_exchange_params_ptr);
+                        *potential_exchange_params_ptr,
+                        /*n_l_converged=*/n_l,
+                        /*rho_lR_micro=*/rho_lR_exchange_input);
 
                     // Full total derivative of the vdW micro potential w.r.t.
                     // pL. NOTE (on-disk): dmu_lR_drho_lR is NON-zero here
@@ -4337,7 +4507,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
              .phi_m_prev = phi_m_prev_value,
              .volumetric_strain = variables.volumetric_strain,
              .volumetric_strain_prev = variables_prev.volumetric_strain,
-             .confining_pressure_p_conf = p_conf_micro_solve},
+             .confining_pressure_p_conf = p_conf_micro_solve,
+             .biot_coefficient = alpha},
             this->process_data_.micro_porosity_parameters,
             this->getPotentialExchangeParameters());
         updatePorositySplitState<DisplacementDim>(
@@ -4349,7 +4520,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         updateSwellingState<DisplacementDim>(
             solid_phase, rho_LR, C_el, this->current_states_[ip],
             this->prev_states_[ip], variables, variables_prev, x_position, t,
-            dt, this->getPotentialExchangeParameters());
+            dt, this->getPotentialExchangeParameters(),
+            /*biot_coefficient=*/alpha);
 
         // Gate 1/2 fix for DSM micro-porosity mode: enforce phi_m <= phi_total
         // and phi_M = phi_total - phi_m >= 0. When the

@@ -458,9 +458,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
     auto const film_pressure_coupling = config.getConfigParameter<bool>(
         "film_pressure_coupling",
         defaults ? defaults->film_pressure_coupling : false);
-    auto const film_pressure_biot_b = config.getConfigParameter<double>(
-        "film_pressure_biot_b",
-        defaults ? defaults->film_pressure_biot_b : 1.0);
+    // NOTE: the eigenstrain Biot b is unified with the poroelastic
+    // biot_coefficient MPL property (no separate film_pressure_biot_b param).
     auto const film_pressure_gate_width = config.getConfigParameter<double>(
         "film_pressure_gate_width",
         defaults ? defaults->film_pressure_gate_width : 0.0);
@@ -508,7 +507,6 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         vdw_augmentation_decay_length,
         use_micro_liquid_density_for_micro_pressure,
         film_pressure_coupling,
-        film_pressure_biot_b,
         film_pressure_gate_width,
         film_pressure_swelling_modulus};
 }

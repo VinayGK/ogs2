@@ -148,7 +148,10 @@ struct PotentialExchangeParameters
     // eigenstrain form (S1 < 0 -> compression drains), and the sharp gate is
     // replaced by a C1 activation of width film_pressure_gate_width.
     bool film_pressure_coupling = false;
-    double film_pressure_biot_b = 1.0;            // Biot b in eps_sw = b*theta_l  [Vinay's call]
+    // NOTE: the eigenstrain Biot b is NO LONGER a separate film parameter. It is
+    // unified with the poroelastic biot_coefficient MPL medium property (same
+    // solid-fluid volume partitioning; one-Psi consistency) and threaded into the
+    // local solve via PotentialExchangeLocalSolveContext::biot_coefficient.
     double film_pressure_gate_width = 0.0;        // smooth-gate width w [Pa]; 0 -> sharp fallback  [Vinay's call]
     double film_pressure_swelling_modulus = 0.0;  // eigenstrain modulus K_sw [Pa]; 0 -> drained K  [Vinay's call]
 };
