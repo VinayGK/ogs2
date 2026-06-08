@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+EURAD-2 MS33 Theoretical Benchmarking — Model VII
+Free swelling, loading and unloading
+BGR / DSM native hierarchical vdW-augmented model
+
+Reference configuration: rho_d=1600 kg/m³, phi0=0.424460, K=71900 J/kg (Dixon 2023 Fig.1, EMDD=rho_d, 14.161 MPa; supersedes earlier 27371.90)
+Geometry: 50mm diam × 70mm height axisymmetric cylinder (r=0–0.025m, z=0–0.070m)
+
+Free swelling under constant axial stress = 0.2 MPa (1-D oedometer-like):
+  Left  (r=0): u_r = 0  (axis of symmetry)
+  Right (r=0.025): u_r FREE  (no radial confinement → free lateral swelling)
+  Bottom (z=0): u_z = 0 (fixed base), pressure BC (suction ramp)
+  Top   (z=0.07): Neumann (applied axial stress, time-varying)
+
+Loading/unloading path per MSXX Table Loading_unloading_path:
+  0   – 17280000 s (200 d): saturation under 0.2 MPa
+  17280000 – 17712000 s (200–205 d): hold at 0.2 MPa
+  17712000 – 18144000 s (205–210 d): ramp to 0.4 MPa
+  18144000 – 18576000 s (210–215 d): ramp to 1.0 MPa
+  18576000 – 19008000 s (215–220 d): ramp to 2.5 MPa
+  19008000 – 19440000 s (220–225 d): ramp to 5.0 MPa
+  19440000 – 19872000 s (225–230 d): unload to 2.5 MPa
+  19872000 – 20304000 s (230–235 d): unload to 1.0 MPa
+  20304000 – 20736000 s (235–240 d): unload to 0.4 MPa
+
+Traction sign convention: compression = negative (σ_zz < 0 → traction t_z < 0).
+Curve traction_ramp gives the Neumann z-traction on the top face.
+
+IC note: Initial suction is kept benchmark-compliant at 100 MPa.
+For consistency with the benchmark-aligned Pi-path initialization used in Models I/III/IV,
+initial micro water content is set to the 99 MPa-equilibrium value.
+-->
+<OpenGeoSysProject>
+    <!--
+      DSM provenance (CLAUDE.md §12.2). Authoritative; supersedes any older inline
+      "Villar" calibration wording elsewhere in this file.
+      Benchmark family : MS LE  (gating regression standard, §12.3)
+      Geometry / BC    : axisym cylinder 50 mm diam x 70 mm; FREE radial swelling (right face
+                         u_r free), fixed base, time-varying axial traction (load/unload path
+                         to 240 d); bottom suction ramp 100->0 MPa / 20 d. Source: EURAD-2 MS33
+                         spec (Table Loading_unloading_path).
+      Constitutive note : delivered in LINEAR ELASTIC. MCC fails at the cam-clay dry-side tension
+                         apex under free swelling (documented limit); sigma0 from the
+                         free-boundary rule sigma0 = alpha*chi*p_L,initial.
+      Calibration anchor:
+        source       : Dixon (2023)   [CLAUDE.md 12.1-compliant]
+        locator      : Dixon et al. (2023), "Measured swelling, hydraulic and thermal
+                       properties of MX-80 bentonite", Applied Clay Science 241:106998;
+                       median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
+        dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27), rho_d=1600 kg/m3
+        target sigma : 14.161 MPa
+        fitted K     : 85312.6 J/kg (potential_augmentation_prefactor)
+      Material parameters (source per group): as Model I dd1600; elastic E,nu: EURAD-2 MS33
+        Table TH-G [TODO(Vinay): confirm]; retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780;
+        cavitation 1.4e8 Or-Tuller 2002; A_Hamaker 2.2e-20 Israelachvili & Adams 1978; lambda=7.5e-7
+        co-calibrated; micro EOS / Tuller geom / specific_surface 523 m2/g [TODO(Vinay): primary
+        locators]; alpha_M phenomenological.
+      NOTE: swelling pressure K-governed (BishopsSaturationCutoff=1).
+    -->
+    <meshes>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_left.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_right.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_bottom.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_top.vtu</mesh>
+    </meshes>
+    <processes>
+        <process>
+            <name>RM</name>
+            <type>RICHARDS_MECHANICS</type>
+            <integration_order>2</integration_order>
+            <micro_porosity>
+                <mass_exchange_coefficient>1e-13</mass_exchange_coefficient>
+                <nonlinear_solver>
+                    <maximum_iterations>100</maximum_iterations>
+                    <residuum_tolerance>1e-8</residuum_tolerance>
+                    <increment_tolerance>1e-20</increment_tolerance>
+                </nonlinear_solver>
+            </micro_porosity>
+            <potential_exchange>
+                <enabled>true</enabled>
+                <pressure_tolerance>1e-12</pressure_tolerance>
+                <hamaker_constant>2.2e-20</hamaker_constant>
+                <specific_surface>523.0</specific_surface>
+                <micro_solid_density_reference>2780.0</micro_solid_density_reference>
+                <!-- n_s = 1 - phi0 = 0.575540 -->
+                <micro_solid_volume_fraction_reference>0.5755395683453237</micro_solid_volume_fraction_reference>
+                <!-- rho_l0=100 → rho_lR = 100·exp(-1e-16·ω) + 1000 ≈ 1100 kg/m³
+                     (1W-hydration-state interlayer water; MD: Boek & Sprik 2003, Marry et al. 2008) -->
+                <micro_liquid_density_reference>100.0</micro_liquid_density_reference>
+                <micro_liquid_density_a>1e-16</micro_liquid_density_a>
+                <micro_liquid_density_b>1.0</micro_liquid_density_b>
+                <!-- n_l0 from vdW equilibrium at ~99 MPa suction (benchmark-compliant start). -->
+                <initial_micro_water_content>1.1699e-3</initial_micro_water_content>
+                <local_nonlinear_solve_mode>scalar_micro_macro_mass_storage_mode</local_nonlinear_solve_mode>
+                <!-- fd_jacobian_for_exchange omitted: default false (analytic Jacobian). -->
+                <micro_potential_convention>negative_attractive</micro_potential_convention>
+                <!-- micro_water_content_swelling_slope omitted: default 0.0 (Pi-only swelling;
+                     set >0 to add phenomenological n_l coupling). -->
+                <use_micro_liquid_density_for_micro_pressure>true</use_micro_liquid_density_for_micro_pressure>
+                <!-- K [Villar-calibrated; SUPERSEDED 2026-06-01 -> Dixon recalibrated value below] at rho_d=1600 kg/m³ via Pi-path;
+                     Π uses bulk ρ_LR (Gibbs–Duhem consistent); steps 2+3, 2026-05-21 -->
+                <!-- K recalibrated 2026-06-01: dt-converged Dixon(2023) reference K (P* basis); prev value 71900 -->
+                <!-- MS33 batch 2026-06-07 (Vinay): K=108000 (MX-80 K, calibrated on Model I dd1600
+                     constant-volume Dixon). Applied here as a PREDICTION/transfer to this BVP, NOT a fit.
+                     Prev value 85312.6 (superseded, not deleted). -->
+                <potential_augmentation_prefactor>108000</potential_augmentation_prefactor>
+                <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
+                     (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
+                      Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
+                <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
+                <!-- MS33 batch 2026-06-07 (Vinay): film-pressure coupling ON (maxwell sec.5);
+                     macro-porosity floor 0.08. -->
+                <film_pressure_coupling>true</film_pressure_coupling>
+                <macro_porosity_floor>0.08</macro_porosity_floor>
+            </potential_exchange>
+            <constitutive_relation>
+                <type>LinearElasticIsotropic</type>
+                <youngs_modulus>E</youngs_modulus>
+                <poissons_ratio>nu</poissons_ratio>
+            </constitutive_relation>
+            <process_variables>
+                <pressure>pressure</pressure>
+                <displacement>displacement</displacement>
+            </process_variables>
+            <secondary_variables>
+                <secondary_variable name="sigma"/>
+                <secondary_variable name="swelling_stress"/>
+                <secondary_variable name="epsilon"/>
+                <secondary_variable name="saturation"/>
+                <secondary_variable name="porosity"/>
+                <secondary_variable name="transport_porosity"/>
+                <secondary_variable name="dry_density_solid"/>
+                <secondary_variable name="intrinsic_permeability"/>
+                <secondary_variable name="relative_permeability"/>
+                <!-- micro_saturation removed: Pi-path model has no capillary micro-saturation;
+                     the adsorbed water content is tracked by micro_water_content (n_l) instead -->
+                <secondary_variable name="micro_pressure"/>
+                <secondary_variable name="micro_water_content"/>
+                <secondary_variable name="micro_porosity"/>
+                <secondary_variable name="micro_exchange_source"/>
+            </secondary_variables>
+            <specific_body_force>0 0</specific_body_force>
+            <initial_stress>sigma0</initial_stress>
+            <mass_lumping>true</mass_lumping>
+        </process>
+    </processes>
+    <media>
+        <medium id="0">
+            <phases>
+                <phase>
+                    <type>AqueousLiquid</type>
+                    <properties>
+                        <property><name>viscosity</name><type>Constant</type><value>1e-3</value></property>
+                        <property><name>density</name><type>Constant</type><value>1000.0</value></property>
+                    </properties>
+                </phase>
+                <phase>
+                    <type>Solid</type>
+                    <properties>
+                        <property><name>density</name><type>Constant</type><value>2780.0</value></property>
+                        <!-- swelling_stress_rate (SaturationDependentSwelling, pressures=0) removed:
+                             Pi-path swelling is driven by disjoining pressure Pi, not phenomenological S_L coupling.
+                             swelling_stress_active remains true via isPotentialExchangeEnabled. -->
+                    </properties>
+                </phase>
+            </phases>
+            <properties>
+                <!-- transport_porosity (TransportPorosityFromMassBalance) removed:
+                     phi_M is computed by the hierarchical split phi_M=(phi-n_l)/(1-n_l) in
+                     computeTransportPorosityUpdate. Sentinel no longer needed after C++ else-branch fix. -->
+                <property><name>biot_coefficient</name><type>Constant</type><value>1.0</value></property>
+                <property>
+                    <name>permeability</name>
+                    <type>KozenyCarman</type>
+                    <initial_permeability>k0</initial_permeability>
+                    <initial_porosity>phi0</initial_porosity>
+                </property>
+                <property>
+                    <name>porosity</name>
+                    <type>PorosityFromMassBalance</type>
+                    <initial_porosity>phi0</initial_porosity>
+                    <minimal_porosity>0</minimal_porosity>
+                    <maximal_porosity>1</maximal_porosity>
+                </property>
+                <property><name>reference_temperature</name><type>Constant</type><value>293.15</value></property>
+                <property>
+                    <!-- Benchmark-spec relative permeability: k_r = S_e^3 (RelativePermeabilityGeneralizedPower,
+                         enhancement A=1, exponent n=3). Restored from the parity-branch VG(exp=0.01) per
+                         Vinay 2026-05-29: the deliverable must use the spec relperm, not the numerical
+                         parity choice. NOTE (hiccup): with the Tuller macro (S_L->0 at high suction) S_e^3
+                         is floored at min_relative_permeability=1e-2 (Vinay 2026-05-29) so the drained
+                         macro cannot give a singular k_rel=0 at step 1. -->
+                    <name>relative_permeability</name>
+                    <type>RelativePermeabilityGeneralizedPower</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <min_relative_permeability>1e-2</min_relative_permeability>
+                    <enhancement_factor>1.0</enhancement_factor>
+                    <exponent>3</exponent>
+                </property>
+                <property>
+                    <!-- Tuller macro retention ported from dsm_mfront_hierarchical (parity prjs);
+                         params: area_factor=1.0, shapefactor=0.8584073464102069, char_pore_size=1e-5 m,
+                         surface_tension=0.0715 N/m (water). cavitation_pressure=1.4e8 Pa = homogeneous-
+                         nucleation tensile strength of water (Or & Tuller 2002 WRR 38(5) 1061); NOTE
+                         (audit): not present in dsm_mfront_hierarchical; inert at <=100 MPa suction. -->
+                    <name>saturation</name>
+                    <type>SaturationTuller</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <area_factor_tuller>1.0</area_factor_tuller>
+                    <pore_area_shapefactor_tuller>0.8584073464102069</pore_area_shapefactor_tuller>
+                    <characteristic_pore_size>1e-5</characteristic_pore_size>
+                    <surface_tension>0.0715</surface_tension>
+                    <cavitation_pressure>1.4e8</cavitation_pressure>
+                </property>
+                <!-- saturation_micro (VGM, p_b=2.7e8) removed: vestigial in Pi-path mode.
+                     micro_pressure = Pi = rho_lR*K*exp(-xi) (disjoining pressure).
+                     micro_water_content = n_l (adsorbed water per unit solid volume). -->
+                <property><name>bishops_effective_stress</name><type>BishopsSaturationCutoff</type><cutoff_value>1</cutoff_value></property>
+            </properties>
+        </medium>
+    </media>
+    <time_loop>
+        <processes>
+            <process ref="RM">
+                <nonlinear_solver>basic_newton</nonlinear_solver>
+                <convergence_criterion>
+                    <type>PerComponentDeltaX</type>
+                    <norm_type>NORM2</norm_type>
+                    <!-- RIG 2026-06-07: per-component RELTOL TRAP fix. Old: abstols 1 1e-12 1e-12 / reltols 1e-6 1e-6 1e-6.
+                         The displacement reltol 1e-6 is unsatisfiable on a symmetry-near-zero comp (|x|~3e-13 m -> bound ~3e-19 m),
+                         and the 1e-12 m abstol is at noise level -> that comp never converges -> dt -> floor.
+                         FIX: displacement = ABSTOL-ONLY at 1e-10 m (reltol 0). Justification: domain r/h ~ 25-70 mm, element ~O(1-3 mm),
+                         swelling disp ~O(1e-4..1e-3 m); 1e-10 m is ~1e-6..1e-7 relative on the loaded comps (tight) yet ~1e3x above the
+                         symmetry-noise floor (~3e-13 m) so the near-zero comp is satisfiable. Pressure UNCHANGED (abstol 1 Pa + reltol 1e-6;
+                         |p|~1e8 -> active rel bound ~100 Pa, well-posed, never near-zero). Per-component check is OR(abs,rel); reltol=0 disables
+                         the rel branch (checkRelativeTolerance returns |dx|<0 == false). -->
+                    <abstols>1 1e-10 1e-10</abstols>
+                    <reltols>1e-6 0 0</reltols>
+                </convergence_criterion>
+                <time_discretization><type>BackwardEuler</type></time_discretization>
+                <time_stepping>
+                    <type>IterationNumberBasedTimeStepping</type>
+                    <t_initial>0.0</t_initial>
+                    <!-- 240 days = 20736000 s (200 d saturation + 40 d load/unload) -->
+                    <t_end>20736000</t_end>
+                    <initial_dt>10</initial_dt>
+                    <minimum_dt>0.1</minimum_dt>
+                    <maximum_dt>86400</maximum_dt>
+                    <number_iterations>1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25</number_iterations>
+                    <multiplier>1.225 1.2 1.175 1.15 1.125 1.1 1.075 1.05 1.025 0.975 0.95 0.925 0.9 0.875 0.85 0.825 0.8 0.775 0.75 0.725 0.7 0.675 0.65 0.625</multiplier>
+                </time_stepping>
+            </process>
+        </processes>
+        <output>
+            <type>VTK</type>
+            <prefix>wf2_modelVII_LE</prefix>
+            <suffix>_ts_{:timestep}_t_{:time}</suffix>
+            <!-- Output at: 20d (ramp end), 100d, 200d (end saturation), each loading step, each unloading step -->
+            <fixed_output_times>86400 432000 864000 1296000 1728000 4320000 8640000 12960000 17280000 17712000 18144000 18576000 19008000 19440000 19872000 20304000 20736000</fixed_output_times>
+            <variables>
+                <variable>pressure</variable>
+                <variable>displacement</variable>
+                <variable>sigma</variable>
+                <variable>swelling_stress</variable>
+                <variable>saturation</variable>
+                <variable>porosity</variable>
+                <variable>transport_porosity</variable>
+                <variable>dry_density_solid</variable>
+                <variable>intrinsic_permeability</variable>
+                <variable>relative_permeability</variable>
+                <variable>micro_pressure</variable>
+                <!-- micro_saturation removed: not physical in Pi-path model -->
+                <variable>micro_water_content</variable>
+                <variable>micro_porosity</variable>
+                <variable>micro_exchange_source</variable>
+                <variable>epsilon</variable>
+            </variables>
+        </output>
+    </time_loop>
+    <parameters>
+        <!-- Initial stress: Biot-consistent with benchmark suction level.
+             At 100 MPa suction, S_w≈0.3292, chi≈0.3292, p_L=-1e8:
+             sigma0_eff_rr = sigma0_eff_θθ = α*χ*p_L ≈ -1.5e5 Pa
+             sigma0_eff_zz = α*χ*p_L + σ_Neumann ≈ -1.5e5 Pa -->
+        <parameter><name>sigma0</name><type>Function</type>
+            <expression>-1.5e5</expression><expression>-1.5e5</expression>
+            <expression>-1.5e5</expression><expression>0</expression>
+        </parameter>
+        <parameter><name>E</name><type>Constant</type><value>52e6</value></parameter>
+        <parameter><name>nu</name><type>Constant</type><value>0.3</value></parameter>
+        <!-- phi0 = 1 - 1600/2780 = 0.424460 -->
+        <parameter><name>phi0</name><type>Constant</type><value>0.4244604316546763</value></parameter>
+        <!-- phi_tr0 removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
+             Initial phi_M is computed from phi0 and initial_micro_water_content by the hierarchical split. -->
+        <!-- k0 at phi0=0.4245 from Kozeny-Carman -->
+        <parameter><name>k0</name><type>Constant</type><value>5.8703e-21</value></parameter>
+        <parameter><name>displacement0</name><type>Constant</type><values>0 0</values></parameter>
+        <!-- Initial suction = 100 MPa (benchmark specification) -->
+        <parameter><name>pressure_ic</name><type>Constant</type><value>-1e8</value></parameter>
+        <parameter><name>zero</name><type>Constant</type><value>0.0</value></parameter>
+        <!-- Pressure BC scale = 1 -->
+        <parameter><name>p_bc_scale</name><type>Constant</type><value>1</value></parameter>
+        <parameter><name>pressure_bc</name><type>CurveScaled</type><curve>suction_ramp</curve><parameter>p_bc_scale</parameter></parameter>
+        <!-- Neumann traction scale = 1 -->
+        <parameter><name>traction_scale</name><type>Constant</type><value>1</value></parameter>
+        <parameter><name>traction_top</name><type>CurveScaled</type><curve>traction_ramp</curve><parameter>traction_scale</parameter></parameter>
+    </parameters>
+    <process_variables>
+        <process_variable>
+            <name>displacement</name>
+            <components>2</components>
+            <order>1</order>
+            <initial_condition>displacement0</initial_condition>
+            <boundary_conditions>
+                <!-- Axis of symmetry: u_r = 0 -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_left</mesh><type>Dirichlet</type><component>0</component><parameter>zero</parameter></boundary_condition>
+                <!-- Fixed base: u_z = 0 -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_bottom</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
+                <!-- Top face: applied axial traction (compression = negative) -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_top</mesh><type>Neumann</type><component>1</component><parameter>traction_top</parameter></boundary_condition>
+                <!-- Right face (r=0.025): FREE  (no BC → natural Neumann = zero traction) -->
+            </boundary_conditions>
+        </process_variable>
+        <process_variable>
+            <name>pressure</name>
+            <components>1</components>
+            <order>1</order>
+            <initial_condition>pressure_ic</initial_condition>
+            <boundary_conditions>
+                <!-- Hydration from bottom (0–200 days), then drained at 0 Pa (200–240 days) -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_bottom</mesh><type>Dirichlet</type><parameter>pressure_bc</parameter></boundary_condition>
+            </boundary_conditions>
+        </process_variable>
+    </process_variables>
+    <nonlinear_solvers>
+        <nonlinear_solver><name>basic_newton</name><type>Newton</type><max_iter>60</max_iter><linear_solver>ls</linear_solver></nonlinear_solver>
+    </nonlinear_solvers>
+    <linear_solvers>
+        <linear_solver><name>ls</name><eigen><solver_type>SparseLU</solver_type><scaling>true</scaling></eigen></linear_solver>
+    </linear_solvers>
+    <curves>
+        <curve>
+            <name>suction_ramp</name>
+            <!-- Suction ramp 100→0 MPa in 20 days; constant 0 for remaining 220 days. -->
+            <!-- DIFFUSIVE-HYDRATION FIX (wf2 2026-06-08): replaced hard 100->0 MPa / 20-d Dirichlet ramp
+             (the SaturationTuller air-entry Sw 0->1 snap that spiked film-coupling p-norm ~60 GPa)
+             with the CTU-CU teams measured BOTTOM (hydration-face) suction history from
+             Model_VII_CTU_CU.xlsx sheet Model_VII col AM (Cordinates 0,0,10): 100 MPa at t=0,
+             9.466 MPa at day 20, saturating diffusively over ~200 d. Suction floored at 0.001 MPa
+             so the boundary node never abruptly saturates. Pa, negative=suction; t in seconds. -->
+            <coords>0 86400 172800 259200 345600 432000 518400 604800 691200 777600 864000 950400 1.0368e+06 1.1232e+06 1.2096e+06 1.296e+06 1.3824e+06 1.4688e+06 1.5552e+06 1.6416e+06 1.728e+06 1.8144e+06 1.9008e+06 1.9872e+06 2.0736e+06 2.16e+06 2.2464e+06 2.3328e+06 2.4192e+06 2.5056e+06 2.592e+06 2.6784e+06 2.7648e+06 2.8512e+06 2.9376e+06 3.024e+06 3.1104e+06 3.1968e+06 3.2832e+06 3.3696e+06 3.456e+06 3.5424e+06 3.6288e+06 3.7152e+06 3.8016e+06 3.888e+06 3.9744e+06 4.0608e+06 4.1472e+06 4.2336e+06 4.32e+06 4.4064e+06 4.4928e+06 4.5792e+06 4.6656e+06 4.752e+06 4.8384e+06 4.9248e+06 5.0112e+06 5.0976e+06 5.184e+06 5.2704e+06 5.3568e+06 5.4432e+06 5.5296e+06 5.616e+06 5.7024e+06 5.7888e+06 5.8752e+06 5.9616e+06 6.048e+06 6.1344e+06 6.2208e+06 6.3072e+06 6.3936e+06 6.48e+06 6.5664e+06 6.6528e+06 6.7392e+06 6.8256e+06 6.912e+06 6.9984e+06 7.0848e+06 7.1712e+06 7.2576e+06 7.344e+06 7.4304e+06 7.5168e+06 7.6032e+06 7.6896e+06 7.776e+06 7.8624e+06 7.9488e+06 8.0352e+06 8.1216e+06 8.208e+06 8.2944e+06 8.3808e+06 8.4672e+06 8.5536e+06 8.64e+06 8.7264e+06 8.8128e+06 8.8992e+06 8.9856e+06 9.072e+06 9.1584e+06 9.2448e+06 9.3312e+06 9.4176e+06 9.504e+06 9.5904e+06 9.6768e+06 9.7632e+06 9.8496e+06 9.936e+06 1.00224e+07 1.01088e+07 1.01952e+07 1.02816e+07 1.0368e+07 1.04544e+07 1.05408e+07 1.06272e+07 1.07136e+07 1.08e+07 1.08864e+07 1.09728e+07 1.10592e+07 1.11456e+07 1.1232e+07 1.13184e+07 1.14048e+07 1.14912e+07 1.15776e+07 1.1664e+07 1.17504e+07 1.18368e+07 1.19232e+07 1.20096e+07 1.2096e+07 1.21824e+07 1.22688e+07 1.23552e+07 1.24416e+07 1.2528e+07 1.26144e+07 1.27008e+07 1.27872e+07 1.28736e+07 1.296e+07 1.30464e+07 1.31328e+07 1.32192e+07 1.33056e+07 1.3392e+07 1.34784e+07 1.35648e+07 1.36512e+07 1.37376e+07 1.3824e+07 1.39104e+07 1.39968e+07 1.40832e+07 1.41696e+07 1.4256e+07 1.43424e+07 1.44288e+07 1.45152e+07 1.46016e+07 1.4688e+07 1.47744e+07 1.48608e+07 1.49472e+07 1.50336e+07 1.512e+07 1.52064e+07 1.52928e+07 1.53792e+07 1.54656e+07 1.5552e+07 1.56384e+07 1.57248e+07 1.58112e+07 1.58976e+07 1.5984e+07 1.60704e+07 1.61568e+07 1.62432e+07 1.63296e+07 1.6416e+07 1.65024e+07 1.65888e+07 1.66752e+07 1.67616e+07 1.6848e+07 1.69344e+07 1.70208e+07 1.71072e+07 1.71936e+07 1.728e+07 1.73664e+07 1.74528e+07 1.75392e+07 1.76256e+07 1.7712e+07 1.77984e+07 1.78848e+07 1.79712e+07 1.80576e+07 1.8144e+07 1.82304e+07 1.83168e+07 1.84032e+07 1.84896e+07 1.8576e+07 1.86624e+07 1.87488e+07 1.88352e+07 1.89216e+07 1.9008e+07 1.90944e+07 1.91808e+07 1.92672e+07 1.93536e+07 1.944e+07 1.95264e+07 1.96128e+07 1.96992e+07 1.97856e+07 1.9872e+07 1.99584e+07 2.00448e+07 2.01312e+07 2.02176e+07 2.0304e+07 2.03904e+07 2.04768e+07 2.05632e+07 2.06496e+07 2.0736e+07</coords>
+            <values>-1e+08 -9.86323e+07 -9.58508e+07 -9.24606e+07 -8.86955e+07 -8.46628e+07 -8.04246e+07 -7.60217e+07 -7.1483e+07 -6.68306e+07 -6.20813e+07 -5.72487e+07 -5.23428e+07 -4.73701e+07 -4.2333e+07 -3.72283e+07 -3.20465e+07 -2.677e+07 -2.13651e+07 -1.57424e+07 -9.46632e+06 -4.90638e+06 -3.33082e+06 -2.57391e+06 -2.12704e+06 -1.83074e+06 -1.6179e+06 -1.45631e+06 -1.32869e+06 -1.22476e+06 -1.13812e+06 -1.06448e+06 -1.00079e+06 -944939 -895260 -850637 -810114 -772989 -738708 -706849 -677182 -649482 -623532 -599160 -576228 -554648 -534302 -515105 -496963 -479812 -463590 -448227 -433671 -419867 -406772 -394349 -382563 -371364 -360704 -350552 -340911 -331708 -322937 -314574 -306590 -298970 -291678 -284698 -278009 -271613 -265480 -259583 -253929 -248492 -243260 -238221 -233375 -228699 -224187 -219846 -215637 -211584 -207645 -203850 -200169 -196595 -193140 -189780 -186515 -183359 -180285 -177303 -174394 -171566 -168811 -166125 -163511 -160967 -158475 -156047 -153675 -151362 -149095 -146884 -144724 -142611 -140536 -138501 -136506 -134556 -132648 -130779 -128943 -127139 -125372 -123633 -121925 -120252 -118603 -116983 -115392 -113814 -112248 -110695 -109148 -107602 -106029 -104364 -102538 -100601 -98706.9 -96865.5 -95072.2 -93334 -91650.5 -90019.5 -88438.7 -86904.5 -85412.9 -83960.7 -82543.1 -81156.8 -79798.8 -78466.9 -77159.3 -75873.3 -74608.4 -73363.8 -72137.7 -70929.8 -69738.7 -68564.8 -67406.5 -66263.6 -65135.5 -64021.6 -62921.4 -61834.4 -60759.6 -59697.3 -58646 -57606.2 -56576.6 -55557.2 -54547.1 -53546.2 -52553.6 -51569.2 -50592.4 -49622.7 -48659.6 -47702.8 -46751.7 -45806 -44865.2 -43929.2 -42997.6 -42069.8 -41145.4 -40223.7 -39303 -38383.2 -37462.4 -36539.6 -35612.9 -34681.8 -33744.8 -32800.4 -31847.3 -30883.3 -29907 -28915.6 -27905.7 -26873.4 -25814.4 -24721.7 -23587.3 -22399.3 -21141.4 -19788.5 -18300.1 -16600.3 -14522.6 -11548.5 -3242.76 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000 -1000</values>
+        </curve>
+        <curve>
+            <name>traction_ramp</name>
+            <!-- Axial traction on top face (negative = compression, OGS sign convention).
+                 Piecewise constant steps per benchmark Table Loading_unloading_path.
+                 Ramp to each level within 5-day window then hold for 5 days total:
+                   0         – 17280000 s: -0.2 MPa (saturation phase)
+                   17712000  – 18144000 s: -0.4 MPa
+                   18144000  – 18576000 s: -1.0 MPa
+                   18576000  – 19008000 s: -2.5 MPa
+                   19008000  – 19440000 s: -5.0 MPa
+                   19440000  – 19872000 s: -2.5 MPa
+                   19872000  – 20304000 s: -1.0 MPa
+                   20304000  – 20736000 s: -0.4 MPa
+            -->
+            <coords>0        17280000 17712000 18144000 18576000 19008000 19440000 19872000 20304000 20736000</coords>
+            <values>-2e5 -2e5 -4e5 -1e6 -2.5e6 -5e6 -2.5e6 -1e6 -4e5 -4e5</values>
+        </curve>
+    </curves>
+</OpenGeoSysProject>

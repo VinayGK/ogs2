@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+  <Collection>
+    <DataSet timestep="0" group="" part="0" file="wf_ms33_modelII_friction_top_ts_0_t_0.000000.vtu"/>
+    <DataSet timestep="432000" group="" part="0" file="wf_ms33_modelII_friction_top_ts_93_t_432000.000000.vtu"/>
+    <DataSet timestep="864000" group="" part="0" file="wf_ms33_modelII_friction_top_ts_123_t_864000.000000.vtu"/>
+    <DataSet timestep="1296000" group="" part="0" file="wf_ms33_modelII_friction_top_ts_151_t_1296000.000000.vtu"/>
+    <DataSet timestep="1728000" group="" part="0" file="wf_ms33_modelII_friction_top_ts_204_t_1728000.000000.vtu"/>
+    <DataSet timestep="2160000" group="" part="0" file="wf_ms33_modelII_friction_top_ts_250_t_2160000.000000.vtu"/>
+    <DataSet timestep="2592000" group="" part="0" file="wf_ms33_modelII_friction_top_ts_316_t_2592000.000000.vtu"/>
+    <DataSet timestep="3024000" group="" part="0" file="wf_ms33_modelII_friction_top_ts_373_t_3024000.000000.vtu"/>
+  </Collection>
+</VTKFile>

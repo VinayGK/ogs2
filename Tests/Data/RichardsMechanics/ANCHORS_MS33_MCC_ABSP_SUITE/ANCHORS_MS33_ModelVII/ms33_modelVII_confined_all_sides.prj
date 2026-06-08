@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!-- PROBLEMATIC 2026-06-07: MFront ModCamClay_semiExpl (MCC) return-map diverges (status -1) at the high-suction DSM IC; not run. MCC abandoned in favour of the LE suite. -->
+<!--
+EURAD-2 MS33 Theoretical Benchmarking — Model VII (MCC variant)
+Confined-all-sides (constant-volume) BVP, MFront ModCamClay_semiExpl_constE.
+BGR / DSM native hierarchical vdW-augmented model.
+
+CREATED 2026-06-07 (MS33 batch, Vinay): cloned from the LE confined_all_sides
+PRJ (../../ANCHORS_MS33_ModelVII/ms33_modelVII_confined_all_sides.prj) with the
+LinearElasticIsotropic solid replaced by MFront ModCamClay_semiExpl_constE.
+MCC parameters reused from the MCC_ABSP ModelVII freeswelling PRJ
+(CSL=1.0, kappa=2.0e-2, lambda=2.9e-2, p_c0=1e9, v0=1.7375). K=108000,
+film_pressure_coupling=true, macro_porosity_floor=0.08 (MS33 batch).
+
+Reference configuration: rho_d=1600 kg/m3, phi0=0.424460.
+Geometry: 50mm diam x 70mm height axisymmetric cylinder (r=0-0.025m, z=0-0.070m).
+All sides confined (constant volume): left u_r=0, right u_r=0, bottom u_z=0,
+top u_z=0; pressure BC (suction ramp) on bottom.
+-->
+<OpenGeoSysProject>
+    <!--
+      DSM provenance (CLAUDE.md 12.2). Authoritative.
+      Benchmark family : MS MCC (experimental ModelVII BC variant; NOT ctest-registered).
+      Geometry / BC    : axisymmetric cylinder (50 mm diam x 70 mm), all-sides confined /
+                         constant-volume; rho_d=1600. Source: EURAD-2 MS33 spec (ModelVII).
+      Calibration anchor (inherited from ms33_modelI_dd1600.prj):
+        source       : Dixon (2023)  [CLAUDE.md 12.1-compliant]
+        dataset row  : MX-80 Fig.1 median, EMDD == rho_d (ANCHORS MS agreement 2026-05-27), rho_d=1600 kg/m3
+        fitted K     : 108000 J/kg (potential_augmentation_prefactor). MS33 batch 2026-06-07 (Vinay):
+                       MX-80 K (calibrated on Model I dd1600 constant-volume Dixon) transferred to this
+                       BVP -> the developed pressure is a PREDICTION, not a fit.
+      Material parameters: per ms33_modelI_dd1600.prj (EURAD-2 MS33 spec, dd1600);
+                           A_Hamaker=2.2e-20 J (Israelachvili & Adams 1978); lambda co-calibrated with K.
+                           MCC: CSL=1.0, SwellingLineSlope=2.0e-2, VirginConsolidationLineSlope=2.9e-2,
+                           InitialPreConsolidationPressure=1e9, InitialVolumeRatio=1.7375 (reused from
+                           MCC_ABSP ModelVII freeswelling).
+      MS33 batch 2026-06-07: film_pressure_coupling=true, macro_porosity_floor=0.08 (Vinay).
+    -->
+    <meshes>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_left.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_right.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_bottom.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_top.vtu</mesh>
+    </meshes>
+    <processes>
+        <process>
+            <name>RM</name>
+            <type>RICHARDS_MECHANICS</type>
+            <integration_order>2</integration_order>
+            <micro_porosity>
+                <mass_exchange_coefficient>1e-13</mass_exchange_coefficient>
+                <nonlinear_solver>
+                    <maximum_iterations>100</maximum_iterations>
+                    <residuum_tolerance>1e-8</residuum_tolerance>
+                    <increment_tolerance>1e-20</increment_tolerance>
+                </nonlinear_solver>
+            </micro_porosity>
+            <potential_exchange>
+                <enabled>true</enabled>
+                <pressure_tolerance>1e-12</pressure_tolerance>
+                <hamaker_constant>2.2e-20</hamaker_constant>
+                <specific_surface>523.0</specific_surface>
+                <micro_solid_density_reference>2780.0</micro_solid_density_reference>
+                <!-- n_s = 1 - phi0 = 0.575540 -->
+                <micro_solid_volume_fraction_reference>0.5755395683453237</micro_solid_volume_fraction_reference>
+                <!-- rho_l0=100 -> rho_lR = 100*exp(-1e-16*w) + 1000 ~ 1100 kg/m3
+                     (1W-hydration-state interlayer water; MD: Boek & Sprik 2003, Marry et al. 2008) -->
+                <micro_liquid_density_reference>100.0</micro_liquid_density_reference>
+                <micro_liquid_density_a>1e-16</micro_liquid_density_a>
+                <micro_liquid_density_b>1.0</micro_liquid_density_b>
+                <!-- n_l0 from vdW equilibrium at ~99 MPa suction (benchmark-compliant start). -->
+                <initial_micro_water_content>1.1699e-3</initial_micro_water_content>
+                <local_nonlinear_solve_mode>scalar_micro_macro_mass_storage_mode</local_nonlinear_solve_mode>
+                <!-- fd_jacobian_for_exchange omitted: default false (analytic Jacobian). -->
+                <micro_potential_convention>negative_attractive</micro_potential_convention>
+                <use_micro_liquid_density_for_micro_pressure>true</use_micro_liquid_density_for_micro_pressure>
+                <!-- K=108000 (MX-80, Model I dd1600 transfer; MS33 batch 2026-06-07, Vinay). -->
+                <potential_augmentation_prefactor>108000</potential_augmentation_prefactor>
+                <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
+                     (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
+                      Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 sec.13) -->
+                <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
+                <!-- MS33 batch 2026-06-07 (Vinay): film-pressure coupling ON (maxwell sec.5);
+                     macro-porosity floor 0.08. -->
+                <film_pressure_coupling>true</film_pressure_coupling>
+                <macro_porosity_floor>0.08</macro_porosity_floor>
+            </potential_exchange>
+            <constitutive_relation>
+                <type>MFront</type>
+                <behaviour>ModCamClay_semiExpl_constE</behaviour>
+                <material_properties>
+                    <material_property name="YoungModulus" parameter="E"/>
+                    <material_property name="PoissonRatio" parameter="nu"/>
+                    <material_property name="CriticalStateLineSlope" parameter="CriticalStateLineSlope"/>
+                    <material_property name="SwellingLineSlope" parameter="SwellingLineSlope"/>
+                    <material_property name="VirginConsolidationLineSlope" parameter="VirginConsolidationLineSlope"/>
+                    <material_property name="CharacteristicPreConsolidationPressure" parameter="InitialPreConsolidationPressure"/>
+                </material_properties>
+                <initial_values>
+                    <state_variable name="PreConsolidationPressure" parameter="InitialPreConsolidationPressure"/>
+                    <state_variable name="VolumeRatio" parameter="InitialVolumeRatio"/>
+                </initial_values>
+            </constitutive_relation>
+            <process_variables>
+                <pressure>pressure</pressure>
+                <displacement>displacement</displacement>
+            </process_variables>
+            <secondary_variables>
+                <secondary_variable name="sigma"/>
+                <secondary_variable name="swelling_stress"/>
+                <secondary_variable name="epsilon"/>
+                <secondary_variable name="saturation"/>
+                <secondary_variable name="porosity"/>
+                <secondary_variable name="transport_porosity"/>
+                <secondary_variable name="dry_density_solid"/>
+                <secondary_variable name="micro_pressure"/>
+                <secondary_variable name="micro_water_content"/>
+                <secondary_variable name="micro_porosity"/>
+                <secondary_variable name="micro_exchange_source"/>
+                <secondary_variable name="EquivalentPlasticStrain"/>
+                <secondary_variable name="PreConsolidationPressure"/>
+                <secondary_variable name="PlasticVolumetricStrain"/>
+                <secondary_variable name="VolumeRatio"/>
+                <secondary_variable name="ElasticStrain"/>
+            </secondary_variables>
+            <specific_body_force>0 0</specific_body_force>
+            <initial_stress>sigma0</initial_stress>
+            <mass_lumping>true</mass_lumping>
+        </process>
+    </processes>
+    <media>
+        <medium id="0">
+            <phases>
+                <phase>
+                    <type>AqueousLiquid</type>
+                    <properties>
+                        <property><name>viscosity</name><type>Constant</type><value>1e-3</value></property>
+                        <property><name>density</name><type>Constant</type><value>1000.0</value></property>
+                    </properties>
+                </phase>
+                <phase>
+                    <type>Solid</type>
+                    <properties>
+                        <property><name>density</name><type>Constant</type><value>2780.0</value></property>
+                    </properties>
+                </phase>
+            </phases>
+            <properties>
+                <property><name>biot_coefficient</name><type>Constant</type><value>1.0</value></property>
+                <property>
+                    <name>permeability</name>
+                    <type>KozenyCarman</type>
+                    <initial_permeability>k0</initial_permeability>
+                    <initial_porosity>phi0</initial_porosity>
+                </property>
+                <property>
+                    <name>porosity</name>
+                    <type>PorosityFromMassBalance</type>
+                    <initial_porosity>phi0</initial_porosity>
+                    <minimal_porosity>0</minimal_porosity>
+                    <maximal_porosity>1</maximal_porosity>
+                </property>
+                <property><name>reference_temperature</name><type>Constant</type><value>293.15</value></property>
+                <property>
+                    <name>relative_permeability</name>
+                    <type>RelativePermeabilityGeneralizedPower</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <min_relative_permeability>1e-2</min_relative_permeability>
+                    <enhancement_factor>1.0</enhancement_factor>
+                    <exponent>3</exponent>
+                </property>
+                <property>
+                    <name>saturation</name>
+                    <type>SaturationTuller</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <area_factor_tuller>1.0</area_factor_tuller>
+                    <pore_area_shapefactor_tuller>0.8584073464102069</pore_area_shapefactor_tuller>
+                    <characteristic_pore_size>1e-5</characteristic_pore_size>
+                    <surface_tension>0.0715</surface_tension>
+                    <cavitation_pressure>1.4e8</cavitation_pressure>
+                </property>
+                <property><name>bishops_effective_stress</name><type>BishopsPowerLaw</type><exponent>1</exponent></property>
+            </properties>
+        </medium>
+    </media>
+    <time_loop>
+        <processes>
+            <process ref="RM">
+                <nonlinear_solver>basic_newton</nonlinear_solver>
+                <convergence_criterion>
+                    <type>PerComponentDeltaX</type>
+                    <norm_type>NORM2</norm_type>
+                    <abstols>1 1e-12 1e-12</abstols>
+                    <reltols>1e-6 1e-6 1e-6</reltols>
+                </convergence_criterion>
+                <time_discretization><type>BackwardEuler</type></time_discretization>
+                <time_stepping>
+                    <type>IterationNumberBasedTimeStepping</type>
+                    <t_initial>0.0</t_initial>
+                    <!-- 240 days = 20736000 s (200 d saturation + 40 d load/unload) -->
+                    <t_end>20736000</t_end>
+                    <initial_dt>10</initial_dt>
+                    <minimum_dt>0.1</minimum_dt>
+                    <maximum_dt>86400</maximum_dt>
+                    <number_iterations>1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25</number_iterations>
+                    <multiplier>1.225 1.2 1.175 1.15 1.125 1.1 1.075 1.05 1.025 0.975 0.95 0.925 0.9 0.875 0.85 0.825 0.8 0.775 0.75 0.725 0.7 0.675 0.65 0.625</multiplier>
+                </time_stepping>
+            </process>
+        </processes>
+        <output>
+            <type>VTK</type>
+            <prefix>ms33_modelVII_confined_all_sides_mcc</prefix>
+            <suffix>_ts_{:timestep}_t_{:time}</suffix>
+            <fixed_output_times>1728000 8640000 17280000 17712000 18144000 18576000 19008000 19440000 19872000 20304000 20736000</fixed_output_times>
+            <variables>
+                <variable>pressure</variable>
+                <variable>displacement</variable>
+                <variable>sigma</variable>
+                <variable>swelling_stress</variable>
+                <variable>saturation</variable>
+                <variable>porosity</variable>
+                <variable>transport_porosity</variable>
+                <variable>dry_density_solid</variable>
+                <variable>micro_pressure</variable>
+                <variable>micro_water_content</variable>
+                <variable>micro_porosity</variable>
+                <variable>micro_exchange_source</variable>
+                <variable>epsilon</variable>
+            </variables>
+        </output>
+    </time_loop>
+    <parameters>
+        <!-- Initial stress: must balance the Biot pressure force (Kup*p_L in RM residual).
+             At 2 MPa suction, S_w=0.9961, chi=0.9961, p_L=-2e6:
+             sigma0_eff_rr = sigma0_eff_thth = a*chi*p_L ~ -3.292e7 Pa
+             sigma0_eff_zz = a*chi*p_L + sigma_Neumann ~ -3.312e7 Pa -->
+        <parameter><name>sigma0</name><type>Function</type>
+            <expression>-3.292e7</expression><expression>-3.312e7</expression>
+            <expression>-3.292e7</expression><expression>0</expression>
+        </parameter>
+        <parameter><name>E</name><type>Constant</type><value>52e6</value></parameter>
+        <parameter><name>nu</name><type>Constant</type><value>0.3</value></parameter>
+        <!-- phi0 = 1 - 1600/2780 = 0.424460 -->
+        <parameter><name>phi0</name><type>Constant</type><value>0.4244604316546763</value></parameter>
+        <!-- k0 at phi0=0.4245 from Kozeny-Carman -->
+        <parameter><name>k0</name><type>Constant</type><value>5.8703e-21</value></parameter>
+        <parameter><name>displacement0</name><type>Constant</type><values>0 0</values></parameter>
+        <!-- Initial suction = 100 MPa (benchmark specification) -->
+        <parameter><name>pressure_ic</name><type>Constant</type><value>-1e8</value></parameter>
+        <parameter><name>zero</name><type>Constant</type><value>0.0</value></parameter>
+        <parameter><name>p_bc_scale</name><type>Constant</type><value>1</value></parameter>
+        <parameter><name>pressure_bc</name><type>CurveScaled</type><curve>suction_ramp</curve><parameter>p_bc_scale</parameter></parameter>
+        <parameter><name>traction_scale</name><type>Constant</type><value>1</value></parameter>
+        <parameter><name>traction_top</name><type>CurveScaled</type><curve>traction_ramp</curve><parameter>traction_scale</parameter></parameter>
+        <!-- MCC parameters (reused from MCC_ABSP ModelVII freeswelling). -->
+        <parameter><name>CriticalStateLineSlope</name><type>Constant</type><value>1.0</value></parameter>
+        <parameter><name>SwellingLineSlope</name><type>Constant</type><value>2.0e-2</value></parameter>
+        <parameter><name>VirginConsolidationLineSlope</name><type>Constant</type><value>2.9e-2</value></parameter>
+        <parameter><name>InitialPreConsolidationPressure</name><type>Constant</type><value>1e9</value></parameter>
+        <parameter><name>InitialVolumeRatio</name><type>Constant</type><value>1.7375</value></parameter>
+    </parameters>
+    <process_variables>
+        <process_variable>
+            <name>displacement</name>
+            <components>2</components>
+            <order>1</order>
+            <initial_condition>displacement0</initial_condition>
+            <boundary_conditions>
+                <!-- Axis of symmetry: u_r = 0 -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_left</mesh><type>Dirichlet</type><component>0</component><parameter>zero</parameter></boundary_condition>
+                <!-- Fixed base: u_z = 0 -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_bottom</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
+                <!-- Top face fixed: u_z = 0 (constant-volume / all-sides confined) -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_top</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
+                <!-- Right face fixed: u_r = 0 (radial confinement) -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_right</mesh><type>Dirichlet</type><component>0</component><parameter>zero</parameter></boundary_condition>
+            </boundary_conditions>
+        </process_variable>
+        <process_variable>
+            <name>pressure</name>
+            <components>1</components>
+            <order>1</order>
+            <initial_condition>pressure_ic</initial_condition>
+            <boundary_conditions>
+                <!-- Hydration from bottom (0-200 days), then drained at 0 Pa (200-240 days) -->
+                <boundary_condition><mesh>ms33_cylinder_r25_h70_bottom</mesh><type>Dirichlet</type><parameter>pressure_bc</parameter></boundary_condition>
+            </boundary_conditions>
+        </process_variable>
+    </process_variables>
+    <nonlinear_solvers>
+        <nonlinear_solver><name>basic_newton</name><type>Newton</type><max_iter>60</max_iter><linear_solver>ls</linear_solver></nonlinear_solver>
+    </nonlinear_solvers>
+    <linear_solvers>
+        <linear_solver><name>ls</name><eigen><solver_type>SparseLU</solver_type><scaling>true</scaling></eigen></linear_solver>
+    </linear_solvers>
+    <curves>
+        <curve>
+            <name>suction_ramp</name>
+            <!-- Suction ramp 100->0 MPa in 20 days; constant 0 for remaining 220 days. -->
+            <coords>0 1728000 20736000</coords>
+            <values>-1e8 0 0</values>
+        </curve>
+        <curve>
+            <name>traction_ramp</name>
+            <!-- Axial traction on top face (negative = compression). Not applied here
+                 (top is Dirichlet-fixed), kept for parameter completeness. -->
+            <coords>0        17280000 17712000 18144000 18576000 19008000 19440000 19872000 20304000 20736000</coords>
+            <values>-2e5 -2e5 -4e5 -1e6 -2.5e6 -5e6 -2.5e6 -1e6 -4e5 -4e5</values>
+        </curve>
+    </curves>
+</OpenGeoSysProject>

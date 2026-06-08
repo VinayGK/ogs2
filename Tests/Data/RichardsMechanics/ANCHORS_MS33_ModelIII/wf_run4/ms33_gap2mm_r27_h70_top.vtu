@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<!--This file was created by meshio v5.3.5-->
+<UnstructuredGrid>
+<Piece NumberOfPoints="55" NumberOfCells="54">
+<Points>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAAAoBQAAWgEAAA==eJxjYICAN4E75Fpfb7SHchn+rPx4yTfJwR67eACG+K+6rD0lkyNwqE/AEK8WWef+sCoFhzkZGOKVL9UMOdbk4DC/AEPc5r5/7/S8Ihz2lmCI7/LkYdJuL8PhngoMcastJ8r2za/C4c4aDHEQL3BHHQ73N2CIzzmisKEooxGHv5owxG//BDm0GYd/WzDEpfXvqrA1tuIIhzYM8agUa6DN7TjCpwNDfNZMEOjEEW5dGOI3z30Pfry0G0d49mCIS7KE8elu6sURzn0Y4hGWIIv7cYT/BAxxH/NOx4SnmOKQeJmIIQ7hY4pD4msShnh3zvPfKz9iikPicTKGuHa7GDCIMMUh8TsFQ/z0Qtdtn/9iikPifSqGeDbQUgmWaTjSA6Y41/XFBbZc03GkE0zxVaBgFpiBI/1ginuBrBWbiSNdYYq/AiUTmVk40humOCh2LyjNxpEOMcUBkBPHCw==
+</DataArray>
+</Points>
+<Cells>
+<DataArray type="Int64" Name="connectivity" format="binary">
+AQAAAACAAABgAwAAawAAAA==eJxdxTUCggAAAEDsbsEWO8Cu/z/NQae75YLgJ8NZznGeC1zkEpe5wlWucZ0b3OQWt7nDXe5xn0OOeMBDHvGYJzzlGc855gUvecVr3vCWd7znAx854ZRPfOYLX/nGd37wk1/85s//LwHrC2U=
+</DataArray>
+<DataArray type="Int64" Name="offsets" format="binary">
+AQAAAACAAACwAQAAcAAAAA==eJwtxcEGwgAAANAkSZIkSZJkZpIkSZKZZCZJkiRJkiT9/7lD711ePvdXcNEll11x1TXX3XDTLbfdcdc99x04dOSBhx557ImnnnnuhZeOnXjltVNn3njrnfc++OiTz7746pvvfvjpl9/++OsfxooLmw==
+</DataArray>
+<DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAACwAQAAEAAAAA==eJxjZoAA5lF6SNAAjOgAow==
+</DataArray>
+</Cells>
+<PointData>
+<DataArray type="UInt64" Name="bulk_node_ids" format="binary">
+AQAAAACAAAC4AQAAZgAAAA==eJwtxTUSwgAAADBG/j/h7i1OcWlxfxN3XLIkk079ZZ1z3gUXXXLZFVddc90NN91y2x133XPg0H0PPPTIY0889cyR51546ZXX3njrnfc+OHbio08+++Krb7774adffvvjr394Lygu
+</DataArray>
+</PointData>
+<CellData>
+<DataArray type="UInt64" Name="bulk_element_ids" format="binary">
+AQAAAACAAACwAQAAZgAAAA==eJwtxTUSwgAAADBG3oQVp1DcpaW4y/837rhkSS6b+cu74KJLDlx2xVXXXHfDTbccuu2OI3fdc98DDz3y2BNPPfPcCy+98tobx068deqd9z746JPPvvjqm+9++OmX3/746x8riROE
+</DataArray>
+<DataArray type="UInt8" Name="bulk_face_ids" format="binary">
+AQAAAACAAAA2AAAADAAAAA==eJxjYiIHAAAL0ABt
+</DataArray>
+</CellData>
+</Piece>
+</UnstructuredGrid>
+</VTKFile>

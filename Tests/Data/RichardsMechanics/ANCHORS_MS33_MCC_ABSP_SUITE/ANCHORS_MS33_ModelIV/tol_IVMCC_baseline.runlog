@@ -1,0 +1,219 @@
+info: OGS started on 2026-06-07 21:57:39+0200 in serial mode.
+info: This is OpenGeoSys-6 version 6.5.8-32-gc1af5147.dirty. Log version: 2, Log level: info.
+info: OMP_NUM_THREADS is set to: 1
+info: Eigen use 1 threads
+info: Reading project file tol_IVMCC_baseline.prj.
+info: readRasters ...
+info: readRasters done
+info: FunctionParameter: sigma0
+info: ConstantParameter: E
+info: ConstantParameter: nu
+info: ConstantParameter: phi0_clay
+info: ConstantParameter: k0_clay
+info: ConstantParameter: phi0_pellet
+info: ConstantParameter: k0_pellet
+info: ConstantParameter: displacement0
+info: ConstantParameter: pressure_ic
+info: ConstantParameter: zero
+info: ConstantParameter: p_bc_scale
+info: CurveScaledParameter: pressure_bc
+info: ConstantParameter: CriticalStateLineSlope
+info: ConstantParameter: SwellingLineSlope
+info: ConstantParameter: VirginConsolidationLineSlope
+info: ConstantParameter: InitialPreConsolidationPressure
+info: ConstantParameter: InitialVolumeRatio
+info: Configure mesh 'ms33_pellets_r25_h70_left' for boundary condition or source term.
+info: Configure mesh 'ms33_pellets_r25_h70_right' for boundary condition or source term.
+info: Configure mesh 'ms33_pellets_r25_h70_bottom' for boundary condition or source term.
+info: Configure mesh 'ms33_pellets_r25_h70_top' for boundary condition or source term.
+info: No source terms for process variable 'displacement' found.
+info: Configure mesh 'ms33_pellets_r25_h70_bottom' for boundary condition or source term.
+info: No source terms for process variable 'pressure' found.
+info: ### MFRONT ########################################################
+warning: The model is defined in 2D. On the material level currently a plane strain setting is used. In particular it is not checked if axial symmetry or plane stress are assumed. Special material behaviour for these settings is currently not supported.
+info: Behaviour:      `ModCamClay_semiExpl_absP'.
+info: Hypothesis:     `PlaneStrain'.
+info: Source:         `ModCamClay_semiExpl_absP.mfront'.
+info: TFEL version:   `4.2.5-dev'.
+info: Behaviour type: `STANDARDSTRAINBASEDBEHAVIOUR'.
+info: Kinematic:      `SMALLSTRAINKINEMATIC'.
+info: Symmetry:       `ISOTROPIC'.
+info: #Mat. props.: 6 (array size 6).
+info:   --> type `SCALAR' with name `PoissonRatio', size 1, offset 0.
+info:   --> type `SCALAR' with name `CriticalStateLineSlope', size 1, offset 1.
+info:   --> type `SCALAR' with name `SwellingLineSlope', size 1, offset 2.
+info:   --> type `SCALAR' with name `VirginConsolidationLineSlope', size 1, offset 3.
+info:   --> type `SCALAR' with name `CharacteristicPreConsolidationPressure', size 1, offset 4.
+info:   --> type `SCALAR' with name `InitialVolumeRatio', size 1, offset 5.
+info: #Gradients: 1 (array size 4).
+info:   --> type `STENSOR' with name `Strain', size 4, offset 0.
+info: #Thdyn. forces: 1 (array size 4).
+info:   --> type `STENSOR' with name `Stress', size 4, offset 0.
+info: #Int. StVars.: 5 (array size 8).
+info:   --> type `STENSOR' with name `ElasticStrain', size 4, offset 0.
+info:   --> type `SCALAR' with name `EquivalentPlasticStrain', size 1, offset 4.
+info:   --> type `SCALAR' with name `PreConsolidationPressure', size 1, offset 5.
+info:   --> type `SCALAR' with name `PlasticVolumetricStrain', size 1, offset 6.
+info:   --> type `SCALAR' with name `VolumeRatio', size 1, offset 7.
+info: #Ext. StVars.: 1 (array size 1).
+info:   --> type `SCALAR' with name `Temperature', size 1, offset 0.
+info: #Real-valued parameters: 10.
+info:   --> with name `theta'.
+info:   --> with name `epsilon'.
+info:   --> with name `minimal_time_step_scaling_factor'.
+info:   --> with name `maximal_time_step_scaling_factor'.
+info:   --> with name `levmar_mu0'.
+info:   --> with name `levmar_p0'.
+info:   --> with name `levmar_p1'.
+info:   --> with name `levmar_p2'.
+info:   --> with name `levmar_m'.
+info:   --> with name `numerical_jacobian_epsilon'.
+info: #Integer parameters: 0.
+info: #Unsigned parameters: 1.
+info:   --> with name `iterMax'.
+info: #Tangent operator blocks: 1.
+info:   --> (Stress, Strain).
+info: Using OGS parameter `nu' for material property `PoissonRatio'.
+info: Using OGS parameter `CriticalStateLineSlope' for material property `CriticalStateLineSlope'.
+info: Using OGS parameter `SwellingLineSlope' for material property `SwellingLineSlope'.
+info: Using OGS parameter `VirginConsolidationLineSlope' for material property `VirginConsolidationLineSlope'.
+info: Using OGS parameter `InitialPreConsolidationPressure' for material property `CharacteristicPreConsolidationPressure'.
+info: Using OGS parameter `InitialVolumeRatio' for material property `InitialVolumeRatio'.
+info: Using OGS parameter `InitialPreConsolidationPressure' for initial value of internal state variable `PreConsolidationPressure'.
+info: Using OGS parameter `InitialVolumeRatio' for initial value of internal state variable `VolumeRatio'.
+info: ### MFRONT END ####################################################
+warning: RichardsMechanics: potential_exchange film_pressure_coupling=true (maxwell sec.5): mu_lR carries the effective-stress film term; eigenstrain swelling; smooth gate. Experimental -- verify with the Maxwell-symmetry + stress-direction GP tests before trusting gate-open results.
+info: Threads used for ParallelVectorMatrixAssembler: 1.
+info: RichardsMechanics process initializeSubmeshOutput().
+info: Initialize processes.
+info: Time step #0 started. Time: 0. Step size: 0.
+info: [time] Output of timestep 0 took 0.001323 s.
+info: Time step #0 took 0.004584 s.
+info: Solve processes.
+info: Time step #1 started. Time: 1. Step size: 1.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.002114 s.
+info: [time] Applying Dirichlet BCs took 2.6e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.000466 s.
+info: Convergence criterion, component 0: |dx|=4.2910e+08, |x|=9.0890e+08, |dx|/|x|=4.7211e-01
+info: Convergence criterion, component 1: |dx|=7.9329e-18, |x|=7.9329e-18, |dx|/|x|=1.0000e+00
+info: Convergence criterion, component 2: |dx|=3.4144e-02, |x|=3.4144e-02, |dx|/|x|=1.0000e+00
+info: [time] Iteration #1 took 0.002632 s.
+info: Iteration #2 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 0.003683 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 1 s for process #0.
+info: [time] Time step #1 took 0.0037 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 1 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.625. Step size: 0.625.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.9e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.625 s for process #0.
+info: [time] Time step #1 took 6.2e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 2 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.390625. Step size: 0.390625.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.5e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.390625 s for process #0.
+info: [time] Time step #1 took 5.6e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 3 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.244140625. Step size: 0.244140625.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.4e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.244140625 s for process #0.
+info: [time] Time step #1 took 5.6e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 4 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.152587890625. Step size: 0.152587890625.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.5e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.152587890625 s for process #0.
+info: [time] Time step #1 took 5.6e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 5 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.095367431640625. Step size: 0.095367431640625.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.5e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.095367431640625 s for process #0.
+info: [time] Time step #1 took 5.7e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 6 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.059604644775390625. Step size: 0.059604644775390625.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.9e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.059604644775390625 s for process #0.
+info: [time] Time step #1 took 6e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 7 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.037252902984619141. Step size: 0.037252902984619141.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.4e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.037252902984619141 s for process #0.
+info: [time] Time step #1 took 5.6e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 8 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.023283064365386963. Step size: 0.023283064365386963.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.5e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.023283064365386963 s for process #0.
+info: [time] Time step #1 took 5.6e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 9 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.014551915228366852. Step size: 0.014551915228366852.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.3e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.014551915228366852 s for process #0.
+info: [time] Time step #1 took 5.7e-05 s.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 1 was rejected 10 times and it will be repeated with a reduced step size.
+info: Time step #1 started. Time: 0.01. Step size: 0.01.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+info: [time] Solving process #0 took 4.5e-05 s in time step #1
+error: The nonlinear solver failed in time step #1 at t = 0.01 s for process #0.
+info: [time] Output of timestep 1 took 0.001148 s.
+critical: /Users/vinaykumar/git/ogs-worktrees/dsm_native_pdisj_maxwell_wt/ProcessLib/TimeLoop.cpp:674 solveUncoupledEquationSystems() 
+error: Time stepper cannot reduce the time step size further.
+error: OGS terminated with error on 2026-06-07 21:57:39+0200.
