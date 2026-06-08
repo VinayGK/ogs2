@@ -3230,19 +3230,26 @@ void RichardsMechanicsLocalAssembler<
                         (std::abs(mu_lR_vdw) > 1e-300)
                             ? (Pi_mc / mu_lR_vdw) * micro_potential.d2mu_lR_dnl2
                             : 0.0;
-                    // INTEGRABLE Maxwell mechanical partner (Vinay's Option-B,
-                    // 2026-06-08): the SINGLE mu_lR_mech form, UNGATED (no Pi
-                    // Heaviside) -- mirrors the L717 micro-solve fold so the
-                    // macro-exchange mu_lR equals the micro-solve mu_lR
-                    // (equipresence). PARAMETER-FREE: Pi/Pi'/Pi'' from the vdW
-                    // potential, eps_v + b (=alpha) from the assembly, K_drained
-                    // from the elastic stiffness C_el evaluated in this ip loop.
+                    // INTEGRABLE Maxwell mechanical partner, film-OFF REDUCED
+                    // conjugate (Vinay's request 2026-06-08: close the Maxwell
+                    // relation on the OFF path). The OFF swelling eigenstress is
+                    // the BARE disjoining form sigma_sw = -phi_m*Pi (no b*p_conf
+                    // drain) -> d(sigma_sw)/d(n_l) = -n_S*(Pi + n_l*Pi') = -n_S*A,
+                    // A := Pi + n_l*Pi'. Closing d(sigma_sw)/d(n_l) =
+                    // n_S*rho_lR*d(mu_lR)/d(eps_v) therefore REQUIRES biot_b = 0
+                    // here (drops the 0.5*b*K*eps_v^2 term): then
+                    // d(mu_lR_mech)/d(eps_v) = -A/rho_lR and the pair closes
+                    // EXACTLY. (ON path keeps biot_b=alpha -- its eigenstress is
+                    // sigma_sw = -phi_m*p_film, p_film = Pi - b*p_conf, folded in
+                    // the dedicated ON path at L717 / the ON p-u block.)
+                    // K_drained_mc no longer enters the partner (biot_b=0 zeroes
+                    // b*K); kept inert for clarity / future biot!=0 on OFF.
                     double const K_drained_mc =
                         drainedBulkModulusFromStiffness<DisplacementDim>(C_el);
                     auto const mc = computeIntegrableMechanicalMicroPotential(
                         Pi_mc, dPi_dnl_mc, d2Pi_dnl2_mc, n_l,
-                        variables.volumetric_strain, /*biot_b=*/alpha,
-                        K_drained_mc, rho_mc);
+                        variables.volumetric_strain, /*biot_b=*/0.0,
+                        K_drained_mc, rho_mc);  // J/kg; OFF reduced conjugate
                     mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive (ungated)
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                 }
@@ -4164,15 +4171,18 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                 this->solid_material_,
                                 *this->material_states_[ip]
                                      .material_state_variables));
-                    // INTEGRABLE Maxwell mechanical partner (Vinay's Option-B,
-                    // 2026-06-08): the SINGLE mu_lR_mech form, UNGATED (no Pi
-                    // Heaviside) -- mirrors the L717 micro-solve fold so the
-                    // macro-exchange mu_lR equals the micro-solve mu_lR
-                    // (equipresence). PARAMETER-FREE.
+                    // INTEGRABLE Maxwell mechanical partner, film-OFF REDUCED
+                    // conjugate (Vinay's request 2026-06-08): biot_b = 0 so the
+                    // OFF bare-Pi eigenstress and this partner close the Maxwell
+                    // pair d(sigma_sw)/d(n_l) = n_S*rho_lR*d(mu_lR)/d(eps_v)
+                    // EXACTLY (drops 0.5*b*K*eps_v^2; full derivation at the
+                    // residual fold above). ON path keeps biot_b=alpha. The p-u
+                    // tangent below consumes mc.dmu_lR_mech_deps_v = -A/rho_lR
+                    // (the reduced strain derivative), consistent with this fold.
                     auto const mc = computeIntegrableMechanicalMicroPotential(
                         Pi_mc, dPi_dnl_mc, d2Pi_dnl2_mc, n_l,
-                        variables.volumetric_strain, /*biot_b=*/alpha,
-                        K_drained_mc, rho_mc);
+                        variables.volumetric_strain, /*biot_b=*/0.0,
+                        K_drained_mc, rho_mc);  // J/kg; OFF reduced conjugate
                     mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive (ungated)
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                     // DSM Maxwell-conjugate: exchange<->displacement tangent --

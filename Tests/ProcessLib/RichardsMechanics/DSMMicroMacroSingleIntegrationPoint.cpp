@@ -2381,3 +2381,114 @@ TEST(RichardsMechanics, DSMMaxwellPairIntegrabilityIdentity)
                 1e-3 + 1e-5 * std::max(std::abs(lhs), std::abs(rhs)));
     EXPECT_EQ(std::signbit(lhs), std::signbit(rhs));
 }
+
+// ── INTEGRABLE Maxwell web: the identity on the film-OFF path ──────────────────
+// Vinay's request 2026-06-08: close the Maxwell relation on the OFF path.
+// Physics anchor: (c) frame indifference / thermodynamic integrability -- the
+// SAME identity as DSMMaxwellPairIntegrabilityIdentity above, for film_pressure_
+// coupling = OFF. SUPPLEMENTS that test (does not replace it). On the OFF path
+// the swelling eigenstress is the BARE disjoining form sigma_sw = -phi_m*Pi (no
+// b*p_conf drain), so d sigma_sw/d n_l = -n_S*(Pi + n_l*Pi') = -n_S*A, with
+// A := Pi + n_l*Pi'. The Maxwell pair
+//   d sigma_sw/d n_l = n_S * rho_lR * d mu_lR/d eps_v
+// then closes IFF the integrable partner uses biot_b = 0 (the REDUCED conjugate
+// mu_lR_mech = -A*eps_v/rho_lR): n_S*rho_lR*(-A/rho_lR) = -n_S*A = LHS. This is
+// the discriminating test for the OFF macro-exchange fold biot_b=0 (RichardsMech
+// FEM-impl.h, residual + Jacobian): the previous biot_b=alpha (the film/ON value)
+// does NOT close the OFF pair -- it misses by exactly -n_S*b*K_drained*eps_v
+// (asserted below). NO target value: both sides are computed from the
+// implementation; the test asserts the integrability relation. Calibration-blind:
+// the synthetic state mirrors the ON identity test (prior approved commit).
+TEST(RichardsMechanics, DSMMaxwellPairIntegrabilityIdentity_FilmOff)
+{
+    PotentialExchangeParameters params;
+    params.enabled = true;
+    params.film_pressure_coupling = false;  // OFF path: BARE-Pi eigenstress
+    params.hamaker_constant = 6.0e-20;      // synthetic (mirrors the ON test);
+    params.specific_surface = 1000.0;       //   sets only the energy scale of
+    params.micro_solid_density_reference = 2650.0;        // the FD-vs-analytic
+    params.micro_solid_volume_fraction_reference = 0.6;   // check, none asserted
+    params.micro_potential_convention =
+        MicroPotentialConvention::NegativeAttractive;  // mu_vdW < 0
+
+    double const n_S = 0.63;          // = 1 - phi_M (REV macro-solid fraction)
+    double const n_l_prev = 0.10;
+    double const rho_lR = 1000.0;
+    double const rho_lR_prev = 1000.0;
+    double const rho_LR = 1000.0;
+    double const b = 0.9;             // Biot (enters only the WRONG-biot guard)
+    double const K_drained = 1.5e8;   // Pa, mechanical drained bulk modulus
+    double const eps_v = -2.0e-3;     // volumetric strain (drained line)
+    double const p_conf = -K_drained * eps_v;  // IGNORED by the OFF eigenstress
+
+    using KM = MathLib::KelvinVector::KelvinMatrixType<2>;
+    KM const C_el = KM::Identity();  // unused on both swelling branches
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    double const sign = microPotentialSignFactor(
+        params.micro_potential_convention);
+
+    // BARE vdW Pi(n_l) = -rho*mu_vdW (identical to the ON test).
+    auto const bare_Pi = [&](double const n_l_eval)
+    {
+        double const active_nS = computeActiveMicroSolidVolumeFraction(
+            n_l_eval, PotentialExchangeLocalSolveContext{}, params);
+        double const mu_vdw =
+            computeVanDerWaalsMicroPotential(
+                n_l_eval, rho_lR, active_nS,
+                params.micro_solid_density_reference, params.hamaker_constant,
+                params.specific_surface, sign,
+                params.potential_augmentation_prefactor,
+                params.potential_augmentation_exponent)
+                .mu_lR;
+        return -rho_lR * mu_vdw;  // Pa
+    };
+
+    double const n_l = 0.15;
+
+    // LHS: central FD of the OFF (bare-Pi) swelling-stress mean w.r.t. n_l. With
+    // film_pressure_coupling=false the helper takes the bare-Pi branch; biot and
+    // p_conf are passed but IGNORED there (a free secondary check that the OFF
+    // eigenstress is biot/p_conf-independent).
+    auto const sigma_sw_mean_at = [&](double const n_l_eval)
+    {
+        return computeReferenceMicroPorositySwellingStressIncrement<2>(
+                   n_l_prev, n_l_eval, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
+                   params, /*biot_coefficient=*/b, p_conf)
+                   .dot(identity2) /
+               3.0;
+    };
+    double const h = 1e-7;
+    double const lhs =
+        (sigma_sw_mean_at(n_l + h) - sigma_sw_mean_at(n_l - h)) / (2.0 * h);
+
+    // RHS: n_S * rho_lR * d mu_lR/d eps_v from the REDUCED conjugate (biot_b = 0),
+    // built from the SAME bare-vdW Pi, Pi' (Pi'' via FD; it does not enter the
+    // eps_v partial). d mu_lR/d eps_v = d mu_lR_mech/d eps_v (vdW base eps_v-indep).
+    double const Pi_at = bare_Pi(n_l);
+    double const dPi_dnl_fd = (bare_Pi(n_l + h) - bare_Pi(n_l - h)) / (2.0 * h);
+    auto const mech_off = computeIntegrableMechanicalMicroPotential(
+        Pi_at, dPi_dnl_fd, /*d2Pi_dnl2=*/0.0, n_l, eps_v, /*biot_b=*/0.0,
+        K_drained, rho_lR);
+    double const rhs = n_S * rho_lR * mech_off.dmu_lR_mech_deps_v;
+
+    ASSERT_NE(rhs, 0.0);
+    EXPECT_NEAR(lhs, rhs,
+                1e-3 + 1e-5 * std::max(std::abs(lhs), std::abs(rhs)));
+    EXPECT_EQ(std::signbit(lhs), std::signbit(rhs));
+
+    // Discriminating guard: the FILM/ON biot (= alpha = b) does NOT close the OFF
+    // pair. Its RHS = -n_S*(A + b*K*eps_v) misses the bare-Pi LHS = -n_S*A by
+    // EXACTLY -n_S*b*K_drained*eps_v (the eps_v-derivative of the dropped
+    // 0.5*b*K*eps_v^2 mechanical term). Anchor (a): analytical limit. This pins
+    // WHY the OFF fold must use biot_b = 0.
+    auto const mech_wrong = computeIntegrableMechanicalMicroPotential(
+        Pi_at, dPi_dnl_fd, /*d2Pi_dnl2=*/0.0, n_l, eps_v, /*biot_b=*/b,
+        K_drained, rho_lR);
+    double const rhs_wrong = n_S * rho_lR * mech_wrong.dmu_lR_mech_deps_v;
+    double const miss = rhs_wrong - lhs;                       // measured
+    double const miss_expected = -n_S * b * K_drained * eps_v; // analytic
+    EXPECT_NEAR(miss, miss_expected,
+                1e-3 + 1e-5 * std::max(std::abs(miss),
+                                       std::abs(miss_expected)));
+}
