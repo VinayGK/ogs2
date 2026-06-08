@@ -3209,15 +3209,11 @@ void RichardsMechanicsLocalAssembler<
                 if (!film_pressure_coupling)
                 {
                     double const Pi_mc = p_L_m;  // Pa, disjoining = -rho*mu_lR > 0
-                    double const p_conf_mc =
-                        -std::get<ProcessLib::ConstitutiveRelations::
-                                      EffectiveStressData<DisplacementDim>>(
-                             this->current_states_[ip])
-                             .sigma_eff.dot(identity2) /
-                        3.0;  // Pa, confining pressure = -tr(sigma')/3
-                    double const one_minus_nl_mc = std::max(1e-12, 1.0 - n_l);
-                    double const n_S_mc = std::clamp(
-                        (1.0 - phi) / one_minus_nl_mc, 0.0, 1.0);  // = 1 - phi_M
+                    // The INTEGRABLE partner takes eps_v + K_drained (not p_conf)
+                    // and carries NO explicit (1-phi_M) factor (the n_S referencing
+                    // cancels in the specific potential -- equipresence note in
+                    // PotentialExchange.h), so p_conf / n_S / one-minus-n_l are no
+                    // longer formed here; mirrors the L717 micro-solve fold.
                     double const rho_mc =
                         (std::isfinite(rho_lR_exchange_input) &&
                          rho_lR_exchange_input > 0.0)
@@ -3228,19 +3224,26 @@ void RichardsMechanicsLocalAssembler<
                         (std::abs(mu_lR_vdw) > 1e-300)
                             ? (Pi_mc / mu_lR_vdw) * micro_potential.dmu_lR_dnl
                             : 0.0;
-                    double const S1_mc =
-                        -n_S_mc * (Pi_mc + n_l * dPi_dnl_mc);  // Pa
-                    // Gate-scale = option 1 (decision #4, 2026-06-02): the gate
-                    // threshold is the REV-consistent PARTIAL stress phi_m*Pi =
-                    // n_S*n_l*Pi, NOT the intrinsic micro Pi. p'(REV) reaches
-                    // phi_m*Pi but never Pi (confined probe 7.15<16.6; EPFL
-                    // path2 10.4>9.2). Trigger only -- S1_mc keeps the full Pi
-                    // for the term magnitude. See tex/maxwell_gate_scale.
-                    double const Pi_gate_mc = n_S_mc * n_l * Pi_mc;  // = phi_m*Pi
-                    auto const mc = computeMaxwellConjugateMicroPotential(
-                        S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
-                        p_conf_mc, Pi_gate_mc, rho_mc, /*n_S=*/n_S_mc);
-                    mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
+                    // Pi'' = -rho*mu_lR''; density-agnostic (Pi=-rho*mu_lR) ->
+                    // Pi''/Pi = mu_lR''/mu_lR, matching the dPi_dnl_mc convention.
+                    double const d2Pi_dnl2_mc =
+                        (std::abs(mu_lR_vdw) > 1e-300)
+                            ? (Pi_mc / mu_lR_vdw) * micro_potential.d2mu_lR_dnl2
+                            : 0.0;
+                    // INTEGRABLE Maxwell mechanical partner (Vinay's Option-B,
+                    // 2026-06-08): the SINGLE mu_lR_mech form, UNGATED (no Pi
+                    // Heaviside) -- mirrors the L717 micro-solve fold so the
+                    // macro-exchange mu_lR equals the micro-solve mu_lR
+                    // (equipresence). PARAMETER-FREE: Pi/Pi'/Pi'' from the vdW
+                    // potential, eps_v + b (=alpha) from the assembly, K_drained
+                    // from the elastic stiffness C_el evaluated in this ip loop.
+                    double const K_drained_mc =
+                        drainedBulkModulusFromStiffness<DisplacementDim>(C_el);
+                    auto const mc = computeIntegrableMechanicalMicroPotential(
+                        Pi_mc, dPi_dnl_mc, d2Pi_dnl2_mc, n_l,
+                        variables.volumetric_strain, /*biot_b=*/alpha,
+                        K_drained_mc, rho_mc);
+                    mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive (ungated)
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                 }
             }
@@ -4129,15 +4132,11 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 if (!film_pressure_coupling)
                 {
                     double const Pi_mc = p_L_m;  // Pa, disjoining = -rho*mu_lR > 0
-                    double const p_conf_mc =
-                        -std::get<ProcessLib::ConstitutiveRelations::
-                                      EffectiveStressData<DisplacementDim>>(
-                             this->current_states_[ip])
-                             .sigma_eff.dot(identity2) /
-                        3.0;  // Pa, confining pressure = -tr(sigma')/3
-                    double const one_minus_nl_mc = std::max(1e-12, 1.0 - n_l);
-                    double const n_S_mc = std::clamp(
-                        (1.0 - phi) / one_minus_nl_mc, 0.0, 1.0);  // = 1 - phi_M
+                    // The INTEGRABLE partner takes eps_v + K_drained (not p_conf)
+                    // and carries NO explicit (1-phi_M) factor (the n_S referencing
+                    // cancels in the specific potential -- equipresence note in
+                    // PotentialExchange.h), so p_conf / n_S / one-minus-n_l are no
+                    // longer formed here; mirrors the L717 micro-solve fold.
                     double const rho_mc =
                         (std::isfinite(rho_lR_exchange_input) &&
                          rho_lR_exchange_input > 0.0)
@@ -4148,30 +4147,45 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         (std::abs(mu_lR_vdw) > 1e-300)
                             ? (Pi_mc / mu_lR_vdw) * micro_potential.dmu_lR_dnl
                             : 0.0;
-                    double const S1_mc =
-                        -n_S_mc * (Pi_mc + n_l * dPi_dnl_mc);  // Pa
-                    // Gate-scale = option 1 (decision #4, 2026-06-02): the gate
-                    // threshold is the REV-consistent PARTIAL stress phi_m*Pi =
-                    // n_S*n_l*Pi, NOT the intrinsic micro Pi. p'(REV) reaches
-                    // phi_m*Pi but never Pi (confined probe 7.15<16.6; EPFL
-                    // path2 10.4>9.2). Trigger only -- S1_mc keeps the full Pi
-                    // for the term magnitude. See tex/maxwell_gate_scale.
-                    double const Pi_gate_mc = n_S_mc * n_l * Pi_mc;  // = phi_m*Pi
-                    auto const mc = computeMaxwellConjugateMicroPotential(
-                        S1_mc, /*dS1_dnl=*/0.0, variables.volumetric_strain,
-                        p_conf_mc, Pi_gate_mc, rho_mc, /*n_S=*/n_S_mc);
-                    mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive; ==0 below gate
+                    // Pi'' = -rho*mu_lR''; density-agnostic (Pi=-rho*mu_lR) ->
+                    // Pi''/Pi = mu_lR''/mu_lR, matching the dPi_dnl_mc convention.
+                    double const d2Pi_dnl2_mc =
+                        (std::abs(mu_lR_vdw) > 1e-300)
+                            ? (Pi_mc / mu_lR_vdw) * micro_potential.d2mu_lR_dnl2
+                            : 0.0;
+                    // Drained bulk modulus from the elastic tangent stiffness, the
+                    // SAME mechanical K the L717 fold uses (here reconstructed via
+                    // computeElasticTangentStiffness, mirroring the ON p-u block
+                    // below). dp_conf/deps_v = -dsigma'_m/deps_v.
+                    double const K_drained_mc =
+                        drainedBulkModulusFromStiffness<DisplacementDim>(
+                            ip_data_[ip].computeElasticTangentStiffness(
+                                variables, t, x_position, dt,
+                                this->solid_material_,
+                                *this->material_states_[ip]
+                                     .material_state_variables));
+                    // INTEGRABLE Maxwell mechanical partner (Vinay's Option-B,
+                    // 2026-06-08): the SINGLE mu_lR_mech form, UNGATED (no Pi
+                    // Heaviside) -- mirrors the L717 micro-solve fold so the
+                    // macro-exchange mu_lR equals the micro-solve mu_lR
+                    // (equipresence). PARAMETER-FREE.
+                    auto const mc = computeIntegrableMechanicalMicroPotential(
+                        Pi_mc, dPi_dnl_mc, d2Pi_dnl2_mc, n_l,
+                        variables.volumetric_strain, /*biot_b=*/alpha,
+                        K_drained_mc, rho_mc);
+                    mu_lR_vdw += mc.mu_lR_mech;  // J/kg, additive (ungated)
                     dmu_lR_vdw_drho_lR += mc.dmu_lR_mech_drho_lR;
                     // DSM Maxwell-conjugate: exchange<->displacement tangent --
                     // the transpose partner of the swelling-eigenstress block.
                     // mu_lR_mech makes the exchange depend on eps_v, so the
                     // pressure residual rho_L_hat = alpha_M*(mu_lR - mu_LR) has
                     //   d rho_L_hat/d u = alpha_M * (dmu_lR_mech/deps_v) * m^T B,
-                    // m = identity2 (eps_v = m^T B u). ==0 below the gate, so
-                    // gate-closed runs stay bit-for-bit. Without this block the
-                    // tangent is inconsistent and Newton diverges (Task-13 Pi
-                    // blow-up). Sign mirrors the K[p,p] exchange block (-=).
-                    if (mc.gate_open && mc.dmu_lR_mech_deps_v != 0.0 && mu > 0.0)
+                    // m = identity2 (eps_v = m^T B u). The integrable partner is
+                    // SMOOTH in eps_v (NO Heaviside gate), so this fires whenever
+                    // the exchange is active (no gate_open guard). Without this
+                    // block the tangent is inconsistent and Newton diverges
+                    // (Task-13 Pi blow-up). Sign mirrors the K[p,p] exchange (-=).
+                    if (mc.dmu_lR_mech_deps_v != 0.0 && mu > 0.0)
                     {
                         double const alpha_M_eff_mc = alpha_bar * rho_LR / mu;
                         local_Jac

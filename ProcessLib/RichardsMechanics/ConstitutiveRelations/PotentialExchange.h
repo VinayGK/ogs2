@@ -237,6 +237,12 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     return out;
 }
 
+// RETIRED 2026-06-08 (Vinay's Option-B): superseded by
+// computeIntegrableMechanicalMicroPotential; no callers. The whole
+// computeMaxwellConjugateMicroPotential unit below (struct + function) is kept
+// for the historical record only — the macro-exchange residual + Jacobian now
+// route the mechanical Maxwell partner through the INTEGRABLE, ungated form
+// (single mu_lR everywhere, equipresence). Do NOT add new callers.
 // ── DSM Maxwell-conjugate term (B1) ─────────────────────────────────────────
 // Restores the mean-effective-stress dependence of mu_lR — the Maxwell partner
 // of the swelling eigenstress sigma_sw = -phi_m * Pi — so that (sigma, mu_lR)
@@ -262,6 +268,9 @@ struct MaxwellConjugateMicroPotentialData
     bool gate_open = false;
 };
 
+// RETIRED 2026-06-08 (Vinay's Option-B): superseded by
+// computeIntegrableMechanicalMicroPotential; no callers. Definition retained
+// (historical); do NOT re-wire.
 inline MaxwellConjugateMicroPotentialData computeMaxwellConjugateMicroPotential(
     double const S1, double const dS1_dnl, double const eps_v,
     double const p_conf, double const Pi, double const rho_lR,
