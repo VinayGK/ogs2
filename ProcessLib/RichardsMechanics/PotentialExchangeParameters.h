@@ -141,13 +141,15 @@ struct PotentialExchangeParameters
     bool use_micro_liquid_density_for_micro_pressure = true;
 
     // ── Film-pressure coupling (maxwell beamer sec.5) ──────────────────────
-    // Master gate for the equipresent stress-coupled micro potential
-    // mu_lR(p_film = p_disj + sigma'). Default OFF preserves the existing path
-    // bit-for-bit. When true: mu_lR carries the effective-stress (film) term in
-    // ALL local solves and the macro exchange, the swelling stress becomes the
-    // eigenstrain form (S1 < 0 -> compression drains), and the sharp gate is
-    // replaced by a C1 activation of width film_pressure_gate_width.
-    bool film_pressure_coupling = false;
+    // Default ON (2026-06-08, Vinay): the model is CONSOLIDATED on the film
+    // coupling. mu_lR carries the effective-stress (film) term mu_lR(p_film =
+    // p_disj + sigma') in ALL local solves and the macro exchange, the swelling
+    // stress is the eigenstrain form (S1 < 0 -> compression drains), biot=alpha
+    // (incompressible grains), and the sharp gate is a C1 activation of width
+    // film_pressure_gate_width. The bare-Pi OFF formulation is RETIRED: it is
+    // forced true at parse (CreateRichardsMechanicsProcess), so OFF is unrunnable;
+    // the residual OFF code branches are dead and pending physical removal.
+    bool film_pressure_coupling = true;
     // NOTE: the eigenstrain Biot b is NO LONGER a separate film parameter. It is
     // unified with the poroelastic biot_coefficient MPL medium property (same
     // solid-fluid volume partitioning; one-Psi consistency) and threaded into the

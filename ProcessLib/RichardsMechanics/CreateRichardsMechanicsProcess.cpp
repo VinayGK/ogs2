@@ -454,10 +454,22 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             context);
     }
 
-    // ── Film-pressure coupling (maxwell beamer sec.5); default OFF ─────────
-    auto const film_pressure_coupling = config.getConfigParameter<bool>(
+    // ── Film-pressure coupling (maxwell beamer sec.5); default ON ──────────
+    // RETIRED OFF path 2026-06-08 (Vinay): the model is consolidated on the film
+    // coupling (biot=alpha). The bare-Pi OFF formulation is no longer selectable;
+    // if a PRJ requests false it is overridden to true with a warning.
+    bool film_pressure_coupling = config.getConfigParameter<bool>(
         "film_pressure_coupling",
-        defaults ? defaults->film_pressure_coupling : false);
+        defaults ? defaults->film_pressure_coupling : true);
+    if (!film_pressure_coupling)
+    {
+        WARN(
+            "RichardsMechanics: {} film_pressure_coupling=false requested, but "
+            "the bare-Pi OFF DSM path is RETIRED (consolidated on the film "
+            "coupling, 2026-06-08). Overriding to film_pressure_coupling=true.",
+            context);
+        film_pressure_coupling = true;
+    }
     // NOTE: the eigenstrain Biot b is unified with the poroelastic
     // biot_coefficient MPL property (no separate film_pressure_biot_b param).
     auto const film_pressure_gate_width = config.getConfigParameter<double>(
@@ -501,12 +513,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "RichardsMechanics: {} macro_floor_cutoff_width must be >= 0, got {:g}.",
             context, macro_floor_cutoff_width);
     }
-    if (film_pressure_coupling)
-    {
-        WARN(
-            "RichardsMechanics: {} film_pressure_coupling=true (maxwell sec.5): mu_lR carries the effective-stress film term; eigenstrain swelling; smooth gate. Experimental -- verify with the Maxwell-symmetry + stress-direction GP tests before trusting gate-open results.",
-            context);
-    }
+    // (The former "experimental -- verify before trusting" WARN was dropped:
+    // the film coupling is now the consolidated standard path, not opt-in.)
     return PotentialExchangeParameters{
         enabled,
         pressure_tolerance,
