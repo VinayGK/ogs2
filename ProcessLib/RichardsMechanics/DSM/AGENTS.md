@@ -169,3 +169,33 @@ suite; 12.2 blocks added to the ModelVII experimental BC variants. Verified:
 ogs+testrunner build clean; 14/14 DSM unit tests pass (incl. corrected
 active_nS=1-n_l, section-2 incident); full MS33 suite (10/11 to t_end; dd1600
 documented corner crash; endpoints ~2% high, first-order dt error).
+
+**2026-06-08 -- K(rho_d): augmentation prefactor as a function of dry density.**
+Branch `dsm_native_pdisj_maxwell_kofdd` (off `dsm_native_pdisj_maxwell`); build
+`/Users/vinaykumar/git/build/kofdd_20260608/bin/ogs`. Implemented Option A
+(parse-time table): `potential_augmentation_prefactor` may be set by a
+`<potential_augmentation_prefactor_vs_dry_density>` block (child lists
+`<dry_densities>`/`<prefactors>`) evaluated at each material's `<dry_density>`
+(rho_d). K is resolved to a scalar at parse time -> *initial/target* rho_d,
+constant in time, so NO Jacobian/tangent change downstream (Vinay's call
+2026-06-08). The shared table inherits into per-`<medium id>` overrides via the
+existing defaults mechanism; the scalar key and the table are mutually exclusive
+(OGS_FATAL if both); a table requires a `<dry_density>`; `getValue` clamps
+outside the node range. Files: `PotentialExchangeParameters.h` (+2 fields,
+forward-decl MathLib::PiecewiseLinearInterpolation), `CreateRichardsMechanics
+Process.cpp` (parse + resolve). DONE.
+- Test (pellet block, Model IV): curve-vs-scalar equivalence. New PRJs
+  `ms33_modelIV_pellets_kref100x.prj` (scalar K) and `..._kofdd.prj` (table K),
+  both at k0 x100 spec (test acceleration, Vinay 2026-06-08; rate-only, endpoint
+  unchanged), differing ONLY in how K is specified. Table nodes {(900, 20600),
+  (1600, 103879.0)} J/kg carried verbatim from `ms33_modelIV_pellets.prj` so the
+  table reproduces each material's existing per-material K. VERIFIED 2026-06-08:
+  both run to t=200 d (ts_689); vtkdiff abs-max diff = 0 on all 14 output fields
+  -> bit-for-bit identical. Registered both run-only in `Tests.cmake`.
+- Back-compat VERIFIED: unmodified `ms33_modelI_dd1600.prj` runs clean through the
+  refactored parser (scalar path).
+- OPEN (deferred, Vinay): (i) closed-form vs table interpolation shape for
+  intermediate rho_d (linear/log) is a modelling choice, not yet decided;
+  (ii) the *current/evolving* rho_d variant (K riding porosity, needs a tangent
+  term, double-count risk vs the exp(-xi) porosity dependence) is NOT
+  implemented -- this delivery is initial/target rho_d only.

@@ -5,7 +5,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <memory>
+#include <vector>
 
+#include "MathLib/InterpolationAlgorithms/PiecewiseLinearInterpolation.h"
 #include "MaterialLib/MPL/CreateMaterialSpatialDistributionMap.h"
 #include "MaterialLib/MPL/MaterialSpatialDistributionMap.h"
 #include "MaterialLib/MPL/Medium.h"
@@ -420,9 +423,86 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             context, local_jacobian_perturbation);
     }
 
-    auto const potential_augmentation_prefactor = config.getConfigParameter<double>(
-        "potential_augmentation_prefactor",
-        defaults ? defaults->potential_augmentation_prefactor : 0.0);
+    // ── Augmentation prefactor K, optionally as a function of dry density ──
+    // Two mutually exclusive ways to set K (J/kg):
+    //   (1) scalar  <potential_augmentation_prefactor>
+    //   (2) table   <potential_augmentation_prefactor_vs_dry_density> with
+    //       child lists <dry_densities>/<prefactors>, evaluated at the
+    //       material's <dry_density> (initial/target rho_d, kg/m^3).
+    // Path (2) resolves to a scalar K = K(rho_d) at parse time; K is constant
+    // in time (initial/target rho_d, Vinay 2026-06-08) so no Jacobian term is
+    // introduced. The shared table inherits into per-<medium id> overrides via
+    // `defaults`, while each medium supplies its own <dry_density>.
+    std::shared_ptr<MathLib::PiecewiseLinearInterpolation const>
+        potential_augmentation_prefactor_vs_dry_density =
+            defaults ? defaults->potential_augmentation_prefactor_vs_dry_density
+                     : nullptr;
+    if (auto k_curve_config = config.getConfigSubtreeOptional(
+            "potential_augmentation_prefactor_vs_dry_density"))
+    {
+        auto dry_densities =
+            k_curve_config->getConfigParameter<std::vector<double>>(
+                "dry_densities");
+        auto prefactors =
+            k_curve_config->getConfigParameter<std::vector<double>>(
+                "prefactors");
+        if (dry_densities.size() < 2 ||
+            dry_densities.size() != prefactors.size())
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} "
+                "potential_augmentation_prefactor_vs_dry_density requires "
+                "<dry_densities> and <prefactors> of equal length >= 2, got "
+                "{} and {}.",
+                context, dry_densities.size(), prefactors.size());
+        }
+        potential_augmentation_prefactor_vs_dry_density =
+            std::make_shared<MathLib::PiecewiseLinearInterpolation const>(
+                std::move(dry_densities), std::move(prefactors));
+    }
+
+    std::optional<double> dry_density =
+        config.getConfigParameterOptional<double>("dry_density");
+    if (!dry_density && defaults)
+    {
+        dry_density = defaults->dry_density;
+    }
+
+    auto const potential_augmentation_prefactor_scalar =
+        config.getConfigParameterOptional<double>(
+            "potential_augmentation_prefactor");
+
+    double potential_augmentation_prefactor;
+    if (potential_augmentation_prefactor_vs_dry_density)
+    {
+        if (potential_augmentation_prefactor_scalar)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} both a scalar "
+                "potential_augmentation_prefactor and a "
+                "potential_augmentation_prefactor_vs_dry_density table were "
+                "given; they are mutually exclusive.",
+                context);
+        }
+        if (!dry_density)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} "
+                "potential_augmentation_prefactor_vs_dry_density requires a "
+                "<dry_density> (rho_d, kg/m^3) to evaluate K(rho_d).",
+                context);
+        }
+        potential_augmentation_prefactor =
+            potential_augmentation_prefactor_vs_dry_density->getValue(
+                *dry_density);
+    }
+    else
+    {
+        potential_augmentation_prefactor =
+            potential_augmentation_prefactor_scalar
+                ? *potential_augmentation_prefactor_scalar
+                : (defaults ? defaults->potential_augmentation_prefactor : 0.0);
+    }
     if (!(potential_augmentation_prefactor >= 0.0))
     {
         OGS_FATAL(
@@ -540,7 +620,9 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         film_pressure_gate_width,
         film_pressure_swelling_modulus,
         macro_porosity_floor,
-        macro_floor_cutoff_width};
+        macro_floor_cutoff_width,
+        potential_augmentation_prefactor_vs_dry_density,
+        dry_density};
 }
 
 template <int DisplacementDim>

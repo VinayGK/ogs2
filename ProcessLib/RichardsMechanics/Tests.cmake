@@ -33,7 +33,18 @@ if (NOT OGS_USE_MPI)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIII/ms33_modelIII_gap2mm.prj RUNTIME 240)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 240)
+    # K(rho_d) equivalence pair (each material's k0 x20 spec, for speed): the
+    # table-K variant resolves K = K(dry_density) at parse time and must
+    # reproduce, bit-for-bit, the per-material scalar-K reference. Verified
+    # 2026-06-08 (abs max diff = 0 on all 14 output fields at t=200 d). Both
+    # registered run-only here.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets_kref20x.prj RUNTIME 240)
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets_kofdd.prj RUNTIME 240)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling.prj RUNTIME 300)
+    # K(rho_d) feature on a 2nd model (single-material Model VII -> table resolves
+    # to the rho_d=1600 node, a physical no-op; k0 x50 spec for speed). Run to
+    # t_end 2026-06-08. Exercises the table-resolution path on the free-swelling cell.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling_kofdd.prj RUNTIME 300)
 endif()
 
 if (NOT OGS_USE_MPI AND OGS_USE_MFRONT)

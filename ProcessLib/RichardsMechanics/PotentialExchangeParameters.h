@@ -3,7 +3,13 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
+
+namespace MathLib
+{
+class PiecewiseLinearInterpolation;
+}
 
 namespace ProcessLib::RichardsMechanics
 {
@@ -170,5 +176,20 @@ struct PotentialExchangeParameters
     // no floor -> bit-for-bit unchanged.
     double macro_porosity_floor = 0.0;
     double macro_floor_cutoff_width = 0.0;  // film-to-bulk cutoff width in n_l [-]; 0 -> default 5% of n_l_cap [Vinay's call]
+
+    // ── K(rho_d): augmentation prefactor as a function of dry density ──────
+    // Optional piecewise-linear table K = K(rho_d) [J/kg vs kg/m^3]. When set
+    // together with `dry_density`, the augmentation prefactor above is
+    // RESOLVED at parse time to K(dry_density) and stored back into
+    // `potential_augmentation_prefactor` — i.e. K is the *initial/target*
+    // dry-density value, a per-material constant in time (Vinay 2026-06-08).
+    // Because resolution is parse-time and time-constant, the downstream
+    // potential/exchange tangent is unchanged (no dK/drho_d term). The table
+    // and dry density are carried here only so a per-<medium id> override can
+    // inherit the shared table from the global block as its default.
+    // getValue() clamps outside [rho_d_min, rho_d_max] (endpoint hold).
+    std::shared_ptr<MathLib::PiecewiseLinearInterpolation const>
+        potential_augmentation_prefactor_vs_dry_density = nullptr;
+    std::optional<double> dry_density;  // rho_d [kg/m^3], initial/target
 };
 }  // namespace ProcessLib::RichardsMechanics
