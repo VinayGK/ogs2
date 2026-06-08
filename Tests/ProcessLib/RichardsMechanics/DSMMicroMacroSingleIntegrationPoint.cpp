@@ -2070,13 +2070,17 @@ TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
 {
     using KM = MathLib::KelvinVector::KelvinMatrixType<2>;
 
-    // Flag-ON film-pressure swelling stress (2026-06-06 PRESSURE form, Vinay's
-    // correction): the micro swelling stress is a transmitted PRESSURE over the
-    // contact fraction, NOT an elastic K_sw eigenstress:
-    //   sigma_sw(n)   = -(1 - phi_M)*(Pi(n_l) - b*p_conf),
-    //   delta_sigma_sw = -(1 - phi_M)*(Pi(n_l) - Pi(n_l_prev))*identity2
-    // (the -b*p_conf term cancels in the p_conf-fixed increment), with Pi the BARE
-    // van-der-Waals disjoining pressure Pi = -rho * mu_vdW. K_sw is GONE.
+    // Flag-ON film-pressure swelling stress (2026-06-06 MICRO-WEIGHTED PRESSURE
+    // form, Vinay's correction): the micro swelling stress is a transmitted
+    // PRESSURE over the contact fraction, weighted by the MICRO porosity
+    // phi_m = (1-phi_M)*n_l = n_S*n_l, NOT an elastic K_sw eigenstress:
+    //   sigma_sw(n)    = -n_S*n_l*(Pi(n_l) - b*p_conf) = -phi_m*p_film,
+    //   delta_sigma_sw = n_S*(n_l_prev*p_film_prev - n_l*p_film_curr)*identity2,
+    //   p_film         = Pi - b*p_conf (p_conf HELD FIXED across the step).
+    // Pi is the BARE van-der-Waals disjoining pressure Pi = -rho * mu_vdW. K_sw is
+    // GONE. With the n_l weighting the -b*p_conf term does NOT cancel in the
+    // increment (the weights n_l_prev, n_l differ); the NaN-p_conf default drops
+    // the drain (p_conf -> 0).
     //
     // This re-derives the expected increment from the SAME bare-vdW Pi the
     // production residual recomputes (independent reconstruction here, so this is
@@ -2131,32 +2135,50 @@ TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
         return -density * mu_vdw;
     };
 
-    // (1) The assembled increment equals -n_S*(Pi_curr - Pi_prev)*identity2.
+    // (1) The assembled increment equals
+    //   n_S*(n_l_prev*p_film_prev - n_l*p_film_curr)*identity2,
+    //   p_film = Pi - b*p_conf, p_conf held fixed (current value for both terms).
     double const n_l = 0.15;
+    double const p_conf = 8.0e6;
     auto const increment = computeReferenceMicroPorositySwellingStressIncrement<2>(
         n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
-        potential_exchange_params, /*biot_coefficient=*/b,
-        /*p_conf=*/8.0e6);  // finite p_conf must NOT change the increment
+        potential_exchange_params, /*biot_coefficient=*/b, p_conf);
     double const Pi_prev = bare_Pi(n_l_prev, rho_lR_prev);
     double const Pi_curr = bare_Pi(n_l, rho_lR);
-    double const scalar = -n_S * (Pi_curr - Pi_prev);
+    double const p_film_prev = Pi_prev - b * p_conf;
+    double const p_film_curr = Pi_curr - b * p_conf;
+    double const scalar = n_S * (n_l_prev * p_film_prev - n_l * p_film_curr);
     auto const expected_increment = (scalar * identity2).eval();
     EXPECT_GT(increment.norm(), 0.0);
     EXPECT_NEAR((increment - expected_increment).norm(), 0.0,
                 1e-10 * std::max(1.0, expected_increment.norm()));
 
-    // (2) p_conf-independence of the increment (the -b*p_conf term cancels): the
-    // NaN-default call and a large finite p_conf give the identical increment.
+    // NOTE on sign: this synthetic unit uses tiny vdW params (specific_surface =
+    // 1000 => bare Pi ~ O(10) Pa) and no augmentation, so phi_m*Pi = n_S*n_l*Pi ~
+    // 1/n_l^2 actually DECREASES with wetting here, and at p_conf = 8 MPa the
+    // -b*p_conf drain dominates the increment entirely. The increment sign is
+    // therefore formula-dependent, NOT a universal "compressive on wetting" -- it
+    // is verified against the analytic slope in (3) below (whatever-the-formula-
+    // gives), and the physical swelling-sign / density gate is exercised on the
+    // REAL models (constant-volume dd1400/dd1600, full Sa + augmentation), not in
+    // this synthetic GP unit.
+
+    // (2) p_conf drain does NOT cancel under the n_l weighting: the finite-p_conf
+    // call and the NaN-default (drain dropped, p_conf -> 0) call differ by exactly
+    //   -n_S*b*p_conf*(n_l_prev - n_l)*identity2.
     auto const increment_nan =
         computeReferenceMicroPorositySwellingStressIncrement<2>(
             n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
             potential_exchange_params, /*biot_coefficient=*/b);
-    EXPECT_NEAR((increment - increment_nan).norm(), 0.0,
-                1e-12 * std::max(1.0, expected_increment.norm()));
+    double const drain_scalar = -n_S * b * p_conf * (n_l_prev - n_l);
+    auto const expected_drain_diff = (drain_scalar * identity2).eval();
+    EXPECT_NEAR((increment - increment_nan - expected_drain_diff).norm(), 0.0,
+                1e-9 * std::max(1.0, expected_increment.norm()));
 
-    // (3) Sign of d(sigma_sw_mean)/dn_l = -n_S*dPi/dn_l: assert WHATEVER the
-    // formula gives (no assumed swelling sign), via central FD of the assembled
-    // mean against the independently FD'd -n_S*dPi/dn_l.
+    // (3) Sign of d(sigma_sw_mean)/dn_l = -n_S*(p_film + n_l*dPi/dn_l): assert
+    // WHATEVER the formula gives (no assumed swelling sign), via central FD of the
+    // assembled mean against the independently reconstructed analytic slope. Uses
+    // the NaN-default call (drain dropped), so p_film here is the BARE Pi.
     auto const sigma_sw_mean_at = [&](double const n_l_eval)
     {
         return computeReferenceMicroPorositySwellingStressIncrement<2>(
@@ -2170,9 +2192,192 @@ TEST(RichardsMechanics, DSMFilmEigenstressSignDrains)
         (sigma_sw_mean_at(n_l + h) - sigma_sw_mean_at(n_l - h)) / (2.0 * h);
     double const dPi_dnl_fd =
         (bare_Pi(n_l + h, rho_lR) - bare_Pi(n_l - h, rho_lR)) / (2.0 * h);
-    double const expected_slope = -n_S * dPi_dnl_fd;
+    double const Pi_at_nl = bare_Pi(n_l, rho_lR);  // p_film = Pi (drain dropped)
+    double const expected_slope = -n_S * (Pi_at_nl + n_l * dPi_dnl_fd);
     EXPECT_NEAR(fd, expected_slope,
                 1e-3 + 1e-5 * std::max(std::abs(fd), std::abs(expected_slope)));
     ASSERT_NE(expected_slope, 0.0);
     EXPECT_EQ(std::signbit(fd), std::signbit(expected_slope));
+}
+
+// ── INTEGRABLE Maxwell web: partner helper analytic vs FD (calibration-blind) ─
+// Physics anchor: (c) frame indifference / thermodynamic integrability — the
+// strain dependence of mu_lR and the swelling eigenstress derive from ONE free
+// energy, so their cross-partials match. NO expected value is tuned: every
+// assertion is a central finite difference vs the analytic partial of the SAME
+// helper (round-off only). Verifies spec item (2)'s derivatives directly.
+TEST(RichardsMechanics, DSMIntegrableMechanicalPotentialTangents)
+{
+    // Representative state (synthetic; values only set the energy scale of the
+    // FD-vs-analytic check — none is asserted against a target).
+    double const Pi = 5.0e6;       // Pa, disjoining pressure
+    double const dPi_dnl = -1.2e8; // Pa per n_l (cubic core slope sign)
+    double const d2Pi_dnl2 = 4.0e9;// Pa per n_l^2
+    double const n_l = 0.12;
+    double const eps_v = -3.0e-3;  // compressive volumetric strain
+    double const b = 0.9;          // Biot
+    double const K_drained = 1.5e8;// Pa
+    double const rho_lR = 1100.0;  // kg/m^3 (confined micro-liquid density)
+
+    auto const mech = computeIntegrableMechanicalMicroPotential(
+        Pi, dPi_dnl, d2Pi_dnl2, n_l, eps_v, b, K_drained, rho_lR);
+
+    // (i) d mu_lR_mech/d eps_v vs central FD over eps_v.
+    {
+        double const h = 1e-7;
+        double const plus =
+            computeIntegrableMechanicalMicroPotential(
+                Pi, dPi_dnl, d2Pi_dnl2, n_l, eps_v + h, b, K_drained, rho_lR)
+                .mu_lR_mech;
+        double const minus =
+            computeIntegrableMechanicalMicroPotential(
+                Pi, dPi_dnl, d2Pi_dnl2, n_l, eps_v - h, b, K_drained, rho_lR)
+                .mu_lR_mech;
+        double const fd = (plus - minus) / (2.0 * h);
+        EXPECT_NEAR(fd, mech.dmu_lR_mech_deps_v,
+                    1e-9 + 1e-6 * std::max(std::abs(fd),
+                                           std::abs(mech.dmu_lR_mech_deps_v)));
+    }
+
+    // (ii) d mu_lR_mech/d n_l vs central FD over n_l. The helper's analytic
+    // dmu_lR_mech_dnl = -((2*Pi' + n_l*Pi'')*eps_v)/rho_lR is the TOTAL n_l-
+    // derivative (spec item 2): it bakes in dPi/dn_l = Pi' and dPi'/dn_l = Pi'',
+    // i.e. Pi, Pi' are themselves functions of n_l. So a correct FD MUST move Pi
+    // and Pi' with n_l, NOT hold them fixed (perturbing only the n_l argument
+    // captures only the explicit-n_l partial -(Pi'*eps_v)/rho_lR and would miss
+    // the leading Pi' from dPi/dn_l — exactly the out-of-scope single-argument FD
+    // the film-helper test warns about). We supply a synthetic, parameter-free
+    // quadratic Pi(n_l) Taylor model around n_l whose value/slope/curvature equal
+    // the supplied Pi/dPi_dnl/d2Pi_dnl2 AT n_l, and FD the total derivative
+    // through it. Calibration-blind: the model is synthetic and asserted only
+    // against the helper's own analytic value (round-off).
+    {
+        auto const Pi_model = [&](double const n) { // Pa, Pi(n) Taylor about n_l
+            double const s = n - n_l;
+            return Pi + dPi_dnl * s + 0.5 * d2Pi_dnl2 * s * s;
+        };
+        auto const dPi_model = [&](double const n) { // Pa/n_l, Pi'(n) = dPi/dn
+            double const s = n - n_l;
+            return dPi_dnl + d2Pi_dnl2 * s;
+        };
+        double const h = 1e-7;
+        double const plus =
+            computeIntegrableMechanicalMicroPotential(
+                Pi_model(n_l + h), dPi_model(n_l + h), d2Pi_dnl2, n_l + h, eps_v,
+                b, K_drained, rho_lR)
+                .mu_lR_mech;
+        double const minus =
+            computeIntegrableMechanicalMicroPotential(
+                Pi_model(n_l - h), dPi_model(n_l - h), d2Pi_dnl2, n_l - h, eps_v,
+                b, K_drained, rho_lR)
+                .mu_lR_mech;
+        double const fd = (plus - minus) / (2.0 * h);
+        EXPECT_NEAR(fd, mech.dmu_lR_mech_dnl,
+                    1e-9 + 1e-6 * std::max(std::abs(fd),
+                                           std::abs(mech.dmu_lR_mech_dnl)));
+    }
+
+    // (iii) d mu_lR_mech/d rho_lR vs central FD over rho_lR.
+    {
+        double const h = 1e-4 * rho_lR;
+        double const plus =
+            computeIntegrableMechanicalMicroPotential(
+                Pi, dPi_dnl, d2Pi_dnl2, n_l, eps_v, b, K_drained, rho_lR + h)
+                .mu_lR_mech;
+        double const minus =
+            computeIntegrableMechanicalMicroPotential(
+                Pi, dPi_dnl, d2Pi_dnl2, n_l, eps_v, b, K_drained, rho_lR - h)
+                .mu_lR_mech;
+        double const fd = (plus - minus) / (2.0 * h);
+        EXPECT_NEAR(fd, mech.dmu_lR_mech_drho_lR,
+                    1e-9 + 1e-6 * std::max(std::abs(fd),
+                                           std::abs(mech.dmu_lR_mech_drho_lR)));
+    }
+}
+
+// ── INTEGRABLE Maxwell web: the integrability identity (calibration-blind) ────
+// Physics anchor: (c) frame indifference / thermodynamic integrability. On the
+// drained elastic line p_conf = -K_drained*eps_v, the spec's Maxwell identity
+//   d sigma_sw,m/d n_l = n_S * rho_lR * d mu_lR/d eps_v
+// must hold. LHS is taken by CENTRAL FD of the assembled swelling-stress mean
+// (computeReferenceMicroPorositySwellingStressIncrement, the WIP residual form
+// sigma_sw = -phi_m*p_film, p_conf set on the drained line); RHS is the analytic
+// d mu_lR_mech/d eps_v from the integrable partner, built from the SAME bare-vdW
+// Pi, Pi'. NO expected value: both sides are computed from the implementation;
+// the test asserts they agree (integrability). Verifies spec item (3).
+TEST(RichardsMechanics, DSMMaxwellPairIntegrabilityIdentity)
+{
+    PotentialExchangeParameters params;
+    params.enabled = true;
+    params.film_pressure_coupling = true;
+    params.hamaker_constant = 6.0e-20;
+    params.specific_surface = 1000.0;
+    params.micro_solid_density_reference = 2650.0;
+    params.micro_solid_volume_fraction_reference = 0.6;
+    params.micro_potential_convention =
+        MicroPotentialConvention::NegativeAttractive;  // mu_vdW < 0
+
+    double const n_S = 0.63;          // = 1 - phi_M (REV macro-solid fraction)
+    double const n_l_prev = 0.10;
+    double const rho_lR = 1000.0;
+    double const rho_lR_prev = 1000.0;
+    double const rho_LR = 1000.0;
+    double const b = 0.9;             // Biot
+    double const K_drained = 1.5e8;   // Pa, mechanical drained bulk modulus
+    double const eps_v = -2.0e-3;     // volumetric strain (drained line)
+    // Drained elastic skeleton: p_conf = -K_drained*eps_v (>0 in compression).
+    double const p_conf = -K_drained * eps_v;
+
+    using KM = MathLib::KelvinVector::KelvinMatrixType<2>;
+    KM const C_el = KM::Identity();  // unused on the film-ON eigenstress branch
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    double const sign = microPotentialSignFactor(
+        params.micro_potential_convention);
+
+    // BARE vdW Pi(n_l) = -rho*mu_vdW and a central-FD Pi'(n_l).
+    auto const bare_Pi = [&](double const n_l_eval)
+    {
+        double const active_nS = computeActiveMicroSolidVolumeFraction(
+            n_l_eval, PotentialExchangeLocalSolveContext{}, params);
+        double const mu_vdw =
+            computeVanDerWaalsMicroPotential(
+                n_l_eval, rho_lR, active_nS,
+                params.micro_solid_density_reference, params.hamaker_constant,
+                params.specific_surface, sign,
+                params.potential_augmentation_prefactor,
+                params.potential_augmentation_exponent)
+                .mu_lR;
+        return -rho_lR * mu_vdw;  // Pa
+    };
+
+    double const n_l = 0.15;
+
+    // LHS: central FD of the swelling-stress mean w.r.t. n_l, p_conf on the
+    // drained line (finite -> drain retained).
+    auto const sigma_sw_mean_at = [&](double const n_l_eval)
+    {
+        return computeReferenceMicroPorositySwellingStressIncrement<2>(
+                   n_l_prev, n_l_eval, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
+                   params, /*biot_coefficient=*/b, p_conf)
+                   .dot(identity2) /
+               3.0;
+    };
+    double const h = 1e-7;
+    double const lhs =
+        (sigma_sw_mean_at(n_l + h) - sigma_sw_mean_at(n_l - h)) / (2.0 * h);
+
+    // RHS: n_S * rho_lR * d mu_lR/d eps_v from the integrable partner, built from
+    // the SAME bare-vdW Pi, Pi' (Pi'' via FD here; it does not enter the eps_v
+    // partial). d mu_lR/d eps_v = d mu_lR_mech/d eps_v (vdW base eps_v-independent).
+    double const Pi_at = bare_Pi(n_l);
+    double const dPi_dnl_fd = (bare_Pi(n_l + h) - bare_Pi(n_l - h)) / (2.0 * h);
+    auto const mech = computeIntegrableMechanicalMicroPotential(
+        Pi_at, dPi_dnl_fd, /*d2Pi_dnl2=*/0.0, n_l, eps_v, b, K_drained, rho_lR);
+    double const rhs = n_S * rho_lR * mech.dmu_lR_mech_deps_v;
+
+    ASSERT_NE(rhs, 0.0);
+    EXPECT_NEAR(lhs, rhs,
+                1e-3 + 1e-5 * std::max(std::abs(lhs), std::abs(rhs)));
+    EXPECT_EQ(std::signbit(lhs), std::signbit(rhs));
 }

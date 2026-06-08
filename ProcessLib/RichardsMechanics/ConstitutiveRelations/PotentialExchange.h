@@ -67,6 +67,14 @@ struct VanDerWaalsMicroPotentialData
                                    // (Was exactly zero in the earlier reduced form.)
     double dmu_lR_dnS = 0.0;
     double dmu_lR_drho_SR = 0.0;
+    // PARTIAL second derivative d^2 mu_lR/d n_l^2 (nS held fixed), needed by the
+    // INTEGRABLE Maxwell mechanical partner (mu_lR_mech, below) for its analytic
+    // n_l-derivative via Pi'' = -rho_lR*d^2 mu_lR_vdw/d n_l^2. Analytic, derived
+    // in this file from the cubic core (12*mu/n_l^2) plus augmentation
+    // (mu_aug*(xi/n_l)^2). The live-nS chain (F2) is NOT threaded into this
+    // second partial (tangent-only path; the integrable partner's n_l-tangent
+    // is used in the analytic predictor/scalar micro-solve Jacobians only).
+    double d2mu_lR_dnl2 = 0.0;
 };
 
 // DSM dsm_micromacro microscale vdW potential helper:
@@ -189,6 +197,9 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     out.dmu_lR_drho_lR = -out.mu_lR / rho_lR;  // non-zero after /rho_lR fix
     out.dmu_lR_dnS = 3.0 * out.mu_lR / nS;
     out.dmu_lR_drho_SR = 3.0 * out.mu_lR / rho_SR;
+    // PARTIAL second derivative of the cubic core (mu_core ~ C/n_l^3, nS fixed):
+    //   d^2 mu_core/d n_l^2 = 12*C/n_l^5 = 12*mu_core/n_l^2.   [J/kg]
+    out.d2mu_lR_dnl2 = 12.0 * out.mu_lR / (n_l * n_l);
 
     // Lumped exponential force augmentation:
     // h = n_l / (nS * rho_SR * Sa)  [mean water film thickness, m]
@@ -207,6 +218,10 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
         // so mu_aug has no rho_lR dependence; dmu_lR_drho_lR from vdW term only
         out.dmu_lR_dnS += mu_aug * xi / nS;
         out.dmu_lR_drho_SR += mu_aug * xi / rho_SR;
+        // PARTIAL second derivative of the augmentation (nS fixed): xi linear in
+        // n_l so xi/n_l = const, d mu_aug/d n_l = -mu_aug*(xi/n_l), hence
+        //   d^2 mu_aug/d n_l^2 = mu_aug*(xi/n_l)^2 = mu_aug*xi^2/n_l^2.   [J/kg]
+        out.d2mu_lR_dnl2 += mu_aug * xi * xi / (n_l * n_l);
     }
 
     // ── F2 (2026-06-06, tangent-only): live-nS chain for dmu_lR/dnl ──────────
@@ -426,6 +441,74 @@ inline FilmPressureMicroPotentialData computeFilmPressureMicroPotential(
     out.dmu_lR_film_dnl =
         dg_dx * (-dPi_gate_dnl) * biot_b * p_conf / rho_lR;
     out.dmu_lR_film_drho_lR = -D / rho_lR;
+    return out;
+}
+
+// ── INTEGRABLE Maxwell mechanical micro potential (the "web", spec item 2) ───
+// REPLACES the non-integrable film bolt-on (computeFilmPressureMicroPotential's
+// +g*b*p_conf/rho_lR delta) when film_pressure_coupling is ON. It is the RIGHT
+// half of the Maxwell pair: the strain (eps_v) dependence of mu_lR that derives
+// from the SAME free energy Psi as the swelling eigenstress
+//   sigma_sw,m = -phi_m*p_film = -n_S*n_l*(Pi - b*p_conf)   (the WIP closure,
+// kept UNCHANGED). The integrable partner is
+//
+//   mu_lR_mech = -[ (Pi + n_l*Pi')*eps_v + 0.5*b*K_drained*eps_v^2 ] / rho_lR
+//                                                                    [J/kg]
+//   mu_lR = mu_lR_vdw + mu_lR_mech   (ADDITIVE; never overwrites mu_lR_vdw).
+//
+// with Pi  = -rho_lR*mu_lR_vdw > 0 (disjoining), Pi' = dPi/dn_l, Pi'' = d2Pi/dn_l2
+// (from the vdW + augmentation potential), b = biot_coefficient, K_drained the
+// drained bulk modulus (from the elastic stiffness), eps_v the volumetric strain.
+//
+// Maxwell identity (the GP test asserts it FD-vs-analytic, with the drained
+// skeleton p_conf = -K_drained*eps_v):
+//   d sigma_sw,m/d n_l = n_S*rho_lR*d mu_lR/d eps_v.
+//   LHS = -n_S*[ p_film + n_l*Pi' ] = -n_S*[ Pi + b*K_drained*eps_v + n_l*Pi' ]
+//         (p_film = Pi - b*p_conf = Pi + b*K_drained*eps_v on the drained line),
+//   d mu_lR/d eps_v = d mu_lR_mech/d eps_v
+//                   = -[ (Pi + n_l*Pi') + b*K_drained*eps_v ] / rho_lR,
+//   so n_S*rho_lR*(d mu_lR/d eps_v) = -n_S*[ (Pi + n_l*Pi') + b*K_drained*eps_v ]
+//   = LHS.  EXACT (one Psi; loop integral zero), PARAMETER-FREE.
+//
+// Analytic derivatives (units in the comments below). NOTE: the linear-in-eps_v
+// piece -(Pi + n_l*Pi')/rho_lR is the leading conjugate; the quadratic
+// -0.5*b*K_drained*eps_v^2/rho_lR carries the p_conf(eps_v) = -K_drained*eps_v
+// chain so that d mu_lR_mech/d eps_v reproduces the p_film slope exactly.
+struct IntegrableMechanicalMicroPotentialData
+{
+    double mu_lR_mech = 0.0;           // J/kg
+    double dmu_lR_mech_deps_v = 0.0;   // J/kg            per unit volumetric strain
+    double dmu_lR_mech_dnl = 0.0;      // J/kg            per unit n_l
+    double dmu_lR_mech_drho_lR = 0.0;  // (J/kg)/(kg/m^3)
+};
+
+inline IntegrableMechanicalMicroPotentialData
+computeIntegrableMechanicalMicroPotential(
+    double const Pi, double const dPi_dnl, double const d2Pi_dnl2,
+    double const n_l, double const eps_v, double const biot_b,
+    double const K_drained, double const rho_lR)
+{
+    if (!(rho_lR > 0.0))
+    {
+        OGS_FATAL(
+            "computeIntegrableMechanicalMicroPotential requires rho_lR > 0, got "
+            "{:g}.",
+            rho_lR);
+    }
+    IntegrableMechanicalMicroPotentialData out;
+    // A := Pi + n_l*Pi'  [Pa]; B := b*K_drained  [Pa].
+    double const A = Pi + n_l * dPi_dnl;
+    double const Bmod = biot_b * K_drained;
+    // mu_lR_mech = -[ A*eps_v + 0.5*B*eps_v^2 ] / rho_lR   [J/kg]
+    out.mu_lR_mech = -(A * eps_v + 0.5 * Bmod * eps_v * eps_v) / rho_lR;  // J/kg
+    // d(mu_lR_mech)/d(eps_v) = -[ A + B*eps_v ] / rho_lR   [J/kg per unit strain]
+    out.dmu_lR_mech_deps_v = -(A + Bmod * eps_v) / rho_lR;
+    // d(mu_lR_mech)/d(n_l) = -[ (2*Pi' + n_l*Pi'')*eps_v ] / rho_lR
+    //   (dA/dn_l = 2*Pi' + n_l*Pi''; B carries no n_l dependence). [J/kg per n_l]
+    out.dmu_lR_mech_dnl =
+        -((2.0 * dPi_dnl + n_l * d2Pi_dnl2) * eps_v) / rho_lR;
+    // d(mu_lR_mech)/d(rho_lR) = -mu_lR_mech/rho_lR   [(J/kg)/(kg/m^3)]
+    out.dmu_lR_mech_drho_lR = -out.mu_lR_mech / rho_lR;
     return out;
 }
 
