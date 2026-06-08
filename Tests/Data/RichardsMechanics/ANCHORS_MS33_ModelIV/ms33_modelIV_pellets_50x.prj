@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+EURAD-2 MS33 Theoretical Benchmarking — Model IV
+Clay-pellets interaction, homogenization in dry density
+BGR / DSM native hierarchical vdW-augmented model
+
+Geometry: 50mm diam × 70mm height axisymmetric cylinder
+  Bentonite block (medium id=0): r=0–0.025m, z=0.035–0.070m  (MaterialID=0)
+  Pellet zone     (medium id=1): r=0–0.025m, z=0–0.035m      (MaterialID=1)
+
+Bentonite: rho_d=1600 kg/m³, phi0=0.424460, K=71900 J/kg (Dixon 2023 Fig.1, EMDD=rho_d, 14.161 MPa; supersedes Villar 29999.25)
+Pellets:   rho_d=900  kg/m³, phi0=0.676259, K≈150 J/kg
+  (Villar target at 0.9 g/cm³ ≈ 0.051 MPa; K extrapolated from calibration curve)
+  Pellet k0 from Kozeny-Carman with k_ref=5.6e-21 m² at phi_ref=0.42
+
+Official benchmark spec (MSXX §Model IV):
+  Initial suction = 100 MPa for both zones
+  Same hydration BC as reference configuration (bottom suction ramp)
+  Both zones use same 200-day simulation
+-->
+<OpenGeoSysProject>
+    <!--
+      DSM provenance (CLAUDE.md §12.2). Authoritative; supersedes any older inline
+      "Villar" calibration wording elsewhere in this file.
+      Benchmark family : MS LE  (gating regression standard, §12.3)
+      Geometry / BC    : axisym cylinder 50 mm diam x 70 mm; bentonite block (MaterialID 0,
+                         rho_d=1600) over pellet zone (MaterialID 1, rho_d=900); 100 MPa initial
+                         suction both zones; bottom suction ramp 100->0 MPa / 20 d to 200 d.
+                         Source: EURAD-2 MS33 spec (pellet rho_d=0.9 g/cm3 verbatim spec value).
+      Calibration anchor:
+        source       : Dixon (2023)   [CLAUDE.md 12.1-compliant]
+        locator      : Dixon et al. (2023), "Measured swelling, hydraulic and thermal
+                       properties of MX-80 bentonite", Applied Clay Science 241:106998;
+                       median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
+        dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27)
+        bentonite    : rho_d=1600 kg/m3, target 14.161 MPa, fitted K=103879.0 J/kg (potential_augmentation_prefactor)
+        pellet       : rho_d=900 kg/m3, target sigma_sat=0.400 MPa (Vinay 2026-06-08), fitted
+                       K_pellet=20600 J/kg via the per-medium <medium id="1"> override (calibrated in
+                       a standalone constant-volume cell; gentle-VG calibration WRC, sigma_sat
+                       WRC-independent, validated K=22710->0.4308 vs SaturationTuller). The 0.400 MPa
+                       target is set by Vinay; cf. Dixon (2023) EMDD==rho_d extrapolated to EMDD=0.9 ->
+                       0.35 MPa (rho_d=900 below Dixon's measured range: §12.1 extrapolation edge).
+                       Permeability: k0_pellet=10*k0_clay (Vinay 2026-06-08).
+                       [RESOLVED 2026-06-08: pellet carries a distinct calibrated K override;
+                        §12.1 extrapolation edge confirmed by Vinay.]
+      Material parameters (source per group): as Model I; elastic — PER-MATERIAL Young's modulus
+        (Group parameter keyed by MaterialID; Vinay 2026-06-08): MaterialID 0 (clay block) E=52 MPa
+        (EURAD-2 MS33 Table TH-G [TODO(Vinay): confirm]); MaterialID 1 (pellet zone) E=2 MPa
+        (Vinay-approved 2026-06-08 soft-pellet convergence value, NOT a measured constant); nu=0.3 both.
+        geometry = 50 mm reference cell (r25 mesh). retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780; pellet
+        phi0=0.676259 = 1-rho_d/rho_s; cavitation 1.4e8 Or-Tuller 2002; A_Hamaker 2.2e-20
+        Israelachvili & Adams 1978; lambda=7.5e-7 co-calibrated; micro EOS / Tuller geom /
+        specific_surface [TODO(Vinay): primary locators]; alpha_M phenomenological.
+      NOTE: swelling pressure K-governed (BishopsSaturationCutoff=1).
+    -->
+    <meshes>
+        <mesh axially_symmetric="true">ms33_pellets_r25_h70.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_pellets_r25_h70_left.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_pellets_r25_h70_right.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_pellets_r25_h70_bottom.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_pellets_r25_h70_top.vtu</mesh>
+    </meshes>
+    <processes>
+        <process>
+            <name>RM</name>
+            <type>RICHARDS_MECHANICS</type>
+            <integration_order>2</integration_order>
+            <micro_porosity>
+                <mass_exchange_coefficient>1e-13</mass_exchange_coefficient>
+                <nonlinear_solver>
+                    <maximum_iterations>100</maximum_iterations>
+                    <residuum_tolerance>1e-8</residuum_tolerance>
+                    <increment_tolerance>1e-20</increment_tolerance>
+                </nonlinear_solver>
+            </micro_porosity>
+            <potential_exchange>
+                <enabled>true</enabled>
+                <pressure_tolerance>1e-12</pressure_tolerance>
+                <hamaker_constant>2.2e-20</hamaker_constant>
+                <specific_surface>523.0</specific_surface>
+                <micro_solid_density_reference>2780.0</micro_solid_density_reference>
+                <!-- n_s reference from bentonite zone: 1 - phi0_clay = 0.575540 -->
+                <micro_solid_volume_fraction_reference>0.5755395683453237</micro_solid_volume_fraction_reference>
+                <!-- rho_l0=100 → rho_lR = 100·exp(-1e-16·ω) + 1000 ≈ 1100 kg/m³
+                     (1W-hydration-state interlayer water; MD: Boek & Sprik 2003, Marry et al. 2008) -->
+                <micro_liquid_density_reference>100.0</micro_liquid_density_reference>
+                <micro_liquid_density_a>1e-16</micro_liquid_density_a>
+                <micro_liquid_density_b>1.0</micro_liquid_density_b>
+                <!-- n_l0 at 99 MPa suction for bentonite (pellet n_l0 ≈ 6.59e-4 is smaller;
+                     global parameter uses bentonite value; pellet zone n_s≈0.324 applies it locally) -->
+                <initial_micro_water_content>1.1699e-3</initial_micro_water_content>
+                <local_nonlinear_solve_mode>scalar_micro_macro_mass_storage_mode</local_nonlinear_solve_mode>
+                <!-- fd_jacobian_for_exchange omitted: default false (analytic Jacobian). -->
+                <micro_potential_convention>negative_attractive</micro_potential_convention>
+                <!-- Swelling mechanical path: Pi-model (default).
+                     slope = 0 → Pi-path only: delta_sigma_sw = nS*(n_l_prev*Pi_prev - n_l*Pi_curr)*I
+                     where Pi = rho_LR * K * exp(-xi) (disjoining pressure, Pa; bulk density).
+                     micro_water_content_swelling_slope omitted: default 0.0 (Pi-only swelling;
+                     set >0 to add phenomenological n_l coupling). -->
+                <use_micro_liquid_density_for_micro_pressure>true</use_micro_liquid_density_for_micro_pressure>
+                <!-- K for bentonite zone (Villar at 1600 kg/m³); Π uses bulk ρ_LR (step 3).
+                     Pellet zone carries its OWN calibrated K override K_pellet=20600 (see medium id=1 below), NOT this K; n_s_pellet=0.324 → smaller Pi contribution
+                     (n_s enters delta_sigma_sw computation). Calibrated 2026-05-21. -->
+                <!-- K recalibrated 2026-06-01: dt-converged Dixon(2023) reference K (P* basis); prev value 71900 -->
+                <potential_augmentation_prefactor>103879.0</potential_augmentation_prefactor>
+                <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
+                     (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
+                      Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
+                <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
+                <!-- PER-MATERIAL K override (Vinay 2026-06-08): pellet zone, material id 1,
+                     rho_d=900. n_s=900/2780=0.323741; n_l0=6.59e-4 (pellet 99 MPa IC).
+                     K_pellet=20600 J/kg CALIBRATED to sigma_sat(rho_d=900)=0.400 MPa in a
+                     standalone constant-volume cell on the consolidation (film-ON) binary
+                     (gentle-VG calibration WRC; sigma_sat is WRC-independent, validated
+                     K=22710 -> 0.4308 under both VG and SaturationTuller). Target 0.40 MPa
+                     set by Vinay; cf. Dixon (2023) EMDD==rho_d formula extrapolated to
+                     EMDD=0.9 -> 0.35 MPa (rho_d=900 is below Dixon's measured range:
+                     §12.1 extrapolation edge, confirmed by Vinay). -->
+                <medium id="1">
+                    <micro_solid_volume_fraction_reference>0.3237410071942446</micro_solid_volume_fraction_reference>
+                    <initial_micro_water_content>6.59e-4</initial_micro_water_content>
+                    <potential_augmentation_prefactor>20600</potential_augmentation_prefactor>
+                </medium>
+            </potential_exchange>
+            <constitutive_relation>
+                <type>LinearElasticIsotropic</type>
+                <youngs_modulus>E</youngs_modulus>
+                <poissons_ratio>nu</poissons_ratio>
+            </constitutive_relation>
+            <process_variables>
+                <pressure>pressure</pressure>
+                <displacement>displacement</displacement>
+            </process_variables>
+            <secondary_variables>
+                <secondary_variable name="sigma"/>
+                <secondary_variable name="swelling_stress"/>
+                <secondary_variable name="epsilon"/>
+                <secondary_variable name="saturation"/>
+                <secondary_variable name="porosity"/>
+                <secondary_variable name="transport_porosity"/>
+                <secondary_variable name="dry_density_solid"/>
+                <secondary_variable name="intrinsic_permeability"/>
+                <secondary_variable name="relative_permeability"/>
+                <!-- micro_saturation removed: Pi-path model has no capillary micro-saturation;
+                     the adsorbed water content is tracked by micro_water_content (n_l) instead -->
+                <secondary_variable name="micro_pressure"/>
+                <secondary_variable name="micro_water_content"/>
+                <secondary_variable name="micro_porosity"/>
+                <secondary_variable name="micro_exchange_source"/>
+            </secondary_variables>
+            <specific_body_force>0 0</specific_body_force>
+            <initial_stress>sigma0</initial_stress>
+            <mass_lumping>true</mass_lumping>
+        </process>
+    </processes>
+    <media>
+        <!-- Bentonite zone: DSM, rho_d=1600 kg/m³ -->
+        <medium id="0">
+            <phases>
+                <phase>
+                    <type>AqueousLiquid</type>
+                    <properties>
+                        <property><name>viscosity</name><type>Constant</type><value>1e-3</value></property>
+                        <property><name>density</name><type>Constant</type><value>1000.0</value></property>
+                    </properties>
+                </phase>
+                <phase>
+                    <type>Solid</type>
+                    <properties>
+                        <property><name>density</name><type>Constant</type><value>2780.0</value></property>
+                        <!-- swelling_stress_rate (SaturationDependentSwelling, pressures=0) removed:
+                             Pi-path swelling is driven by disjoining pressure Pi, not phenomenological S_L coupling.
+                             swelling_stress_active remains true via isPotentialExchangeEnabled. -->
+                    </properties>
+                </phase>
+            </phases>
+            <properties>
+                <!-- transport_porosity (TransportPorosityFromMassBalance) removed:
+                     phi_M is computed by the hierarchical split phi_M=(phi-n_l)/(1-n_l) in
+                     computeTransportPorosityUpdate. Sentinel no longer needed after C++ else-branch fix. -->
+                <property><name>biot_coefficient</name><type>Constant</type><value>1.0</value></property>
+                <property>
+                    <name>permeability</name>
+                    <type>KozenyCarman</type>
+                    <initial_permeability>k0_clay</initial_permeability>
+                    <initial_porosity>phi0_clay</initial_porosity>
+                </property>
+                <property>
+                    <name>porosity</name>
+                    <type>PorosityFromMassBalance</type>
+                    <initial_porosity>phi0_clay</initial_porosity>
+                    <minimal_porosity>0</minimal_porosity>
+                    <maximal_porosity>1</maximal_porosity>
+                </property>
+                <property><name>reference_temperature</name><type>Constant</type><value>293.15</value></property>
+                <property>
+                    <name>relative_permeability</name>
+                    <!-- Benchmark spec: k_r = S_e^3 (power law, A=1, n=3).
+                         RelativePermeabilityGeneralizedPower: k_r = enhancement_factor × S_eff^exponent.
+                         Replaces Mualem-VGM (RelativePermeabilityVanGenuchten) which gives
+                         k_r = sqrt(S_eff)·[1−(1−S_eff^(1/m))^m]², not S_e^3. -->
+                    <type>RelativePermeabilityGeneralizedPower</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <min_relative_permeability>1e-2</min_relative_permeability>
+                    <enhancement_factor>1.0</enhancement_factor>
+                    <exponent>3</exponent>
+                </property>
+                <property>
+                    <!-- Tuller macro retention (parity-branch params: area_factor=1.0,
+                         shapefactor=0.8584073464102069, char_pore_size=1e-5 m, surface_tension=0.0715);
+                         cavitation_pressure=1.4e8 Pa (Or and Tuller 2002 WRR 38(5) 1061). -->
+                    <name>saturation</name>
+                    <type>SaturationTuller</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <area_factor_tuller>1.0</area_factor_tuller>
+                    <pore_area_shapefactor_tuller>0.8584073464102069</pore_area_shapefactor_tuller>
+                    <characteristic_pore_size>1e-5</characteristic_pore_size>
+                    <surface_tension>0.0715</surface_tension>
+                    <cavitation_pressure>1.4e8</cavitation_pressure>
+                </property>
+                <!-- saturation_micro (VGM, p_b=2.7e8) removed: vestigial in Pi-path mode.
+                     micro_pressure = Pi = rho_lR*K*exp(-xi) (disjoining pressure).
+                     micro_water_content = n_l (adsorbed water per unit solid volume). -->
+                <property><name>bishops_effective_stress</name><type>BishopsSaturationCutoff</type><cutoff_value>1</cutoff_value></property>
+            </properties>
+        </medium>
+        <!-- Pellet zone: DSM with rho_d=900 kg/m³ (high porosity) -->
+        <medium id="1">
+            <phases>
+                <phase>
+                    <type>AqueousLiquid</type>
+                    <properties>
+                        <property><name>viscosity</name><type>Constant</type><value>1e-3</value></property>
+                        <property><name>density</name><type>Constant</type><value>1000.0</value></property>
+                    </properties>
+                </phase>
+                <phase>
+                    <type>Solid</type>
+                    <properties>
+                        <property><name>density</name><type>Constant</type><value>2780.0</value></property>
+                        <!-- swelling_stress_rate (SaturationDependentSwelling, pressures=0) removed:
+                             Pi-path swelling is driven by disjoining pressure Pi, not phenomenological S_L coupling.
+                             swelling_stress_active remains true via isPotentialExchangeEnabled. -->
+                    </properties>
+                </phase>
+            </phases>
+            <properties>
+                <!-- transport_porosity (TransportPorosityFromMassBalance) removed:
+                     phi_M is computed by the hierarchical split phi_M=(phi-n_l)/(1-n_l) in
+                     computeTransportPorosityUpdate. Sentinel no longer needed after C++ else-branch fix. -->
+                <property><name>biot_coefficient</name><type>Constant</type><value>1.0</value></property>
+                <property>
+                    <name>permeability</name>
+                    <type>KozenyCarman</type>
+                    <initial_permeability>k0_pellet</initial_permeability>
+                    <initial_porosity>phi0_pellet</initial_porosity>
+                </property>
+                <property>
+                    <name>porosity</name>
+                    <type>PorosityFromMassBalance</type>
+                    <initial_porosity>phi0_pellet</initial_porosity>
+                    <minimal_porosity>0</minimal_porosity>
+                    <maximal_porosity>1</maximal_porosity>
+                </property>
+                <property><name>reference_temperature</name><type>Constant</type><value>293.15</value></property>
+                <property>
+                    <name>relative_permeability</name>
+                    <!-- Benchmark spec: k_r = S_e^3 (power law, A=1, n=3).
+                         RelativePermeabilityGeneralizedPower: k_r = enhancement_factor × S_eff^exponent.
+                         Replaces Mualem-VGM (RelativePermeabilityVanGenuchten) which gives
+                         k_r = sqrt(S_eff)·[1−(1−S_eff^(1/m))^m]², not S_e^3. -->
+                    <type>RelativePermeabilityGeneralizedPower</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <min_relative_permeability>1e-2</min_relative_permeability>
+                    <enhancement_factor>1.0</enhancement_factor>
+                    <exponent>3</exponent>
+                </property>
+                <property>
+                    <!-- Tuller macro retention (pellet zone uses same macro curve; heterogeneity
+                         is via the DSM per-medium K override). cavitation_pressure=1.4e8 Pa
+                         (Or and Tuller 2002 WRR 38(5) 1061). -->
+                    <name>saturation</name>
+                    <type>SaturationTuller</type>
+                    <residual_liquid_saturation>0.0</residual_liquid_saturation>
+                    <residual_gas_saturation>0.0</residual_gas_saturation>
+                    <area_factor_tuller>1.0</area_factor_tuller>
+                    <pore_area_shapefactor_tuller>0.8584073464102069</pore_area_shapefactor_tuller>
+                    <characteristic_pore_size>1e-5</characteristic_pore_size>
+                    <surface_tension>0.0715</surface_tension>
+                    <cavitation_pressure>1.4e8</cavitation_pressure>
+                </property>
+                <!-- saturation_micro (VGM, p_b=1.5e8) removed: vestigial in Pi-path mode.
+                     Pellet zone: same Pi-path physics, no capillary micro-saturation concept. -->
+                <property><name>bishops_effective_stress</name><type>BishopsSaturationCutoff</type><cutoff_value>1</cutoff_value></property>
+            </properties>
+        </medium>
+    </media>
+    <time_loop>
+        <processes>
+            <process ref="RM">
+                <nonlinear_solver>basic_newton</nonlinear_solver>
+                <convergence_criterion>
+                    <type>PerComponentDeltaX</type>
+                    <norm_type>NORM2</norm_type>
+                    <abstols>1 1e-12 1e-12</abstols>
+                    <!-- reltols 1e-6 added 2026-05-30 (Vinay approved): abstol-only criterion (1 Pa on |p|~1.7e9, 1 pm disp) traps the IterationNumberBased dt at the wetting front; a relative tol opens it (sandbox IV tolerance sweep: Newton 11 to 9 iters, dt 2s to 5e4s, Model IV completes 200d in 443 steps vs stalled). -->
+                    <reltols>1e-6 1e-6 1e-6</reltols>
+                </convergence_criterion>
+                <time_discretization><type>BackwardEuler</type></time_discretization>
+                <time_stepping>
+                    <type>IterationNumberBasedTimeStepping</type>
+                    <t_initial>0.0</t_initial>
+                    <!-- 200 days = 17280000 s -->
+                    <t_end>17280000</t_end>
+                    <initial_dt>10</initial_dt>
+                    <minimum_dt>0.1</minimum_dt>
+                    <maximum_dt>86400</maximum_dt>
+                    <number_iterations>1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25</number_iterations>
+                    <multiplier>1.225 1.2 1.175 1.15 1.125 1.1 1.075 1.05 1.025 0.975 0.95 0.925 0.9 0.875 0.85 0.825 0.8 0.775 0.75 0.725 0.7 0.675 0.65 0.625</multiplier>
+                </time_stepping>
+            </process>
+        </processes>
+        <output>
+            <type>VTK</type>
+            <prefix>ms33_modelIV_pellets</prefix>
+            <suffix>_ts_{:timestep}_t_{:time}</suffix>
+            <fixed_output_times>86400 432000 864000 1296000 1728000 4320000 8640000 12960000 17280000</fixed_output_times>
+            <variables>
+                <variable>pressure</variable>
+                <variable>displacement</variable>
+                <variable>sigma</variable>
+                <variable>swelling_stress</variable>
+                <variable>saturation</variable>
+                <variable>porosity</variable>
+                <variable>transport_porosity</variable>
+                <variable>dry_density_solid</variable>
+                <variable>intrinsic_permeability</variable>
+                <variable>relative_permeability</variable>
+                <variable>micro_pressure</variable>
+                <!-- micro_saturation removed: not physical in Pi-path model -->
+                <variable>micro_water_content</variable>
+                <variable>micro_porosity</variable>
+                <variable>micro_exchange_source</variable>
+            </variables>
+        </output>
+    </time_loop>
+    <parameters>
+        <parameter><name>sigma0</name><type>Function</type>
+            <expression>-1.5e5</expression><expression>-1.5e5</expression>
+            <expression>-1.5e5</expression><expression>0</expression>
+        </parameter>
+        <!-- PER-MATERIAL Young's modulus (Group parameter keyed by MaterialID; Vinay 2026-06-08).
+             MaterialID 0 (bentonite block, z=0.035-0.070 m) = 52e6 Pa
+               (EURAD-2 MS33 Table TH-G [TODO(Vinay): confirm]);
+             MaterialID 1 (pellet zone, z=0-0.035 m) = 2e6 Pa
+               (Vinay-approved 2026-06-08 soft-pellet convergence value; NOT a measured constant).
+             Supersedes the prior Constant E=52e6 (which over-stiffened the pellet zone). -->
+        <parameter>
+            <name>E</name>
+            <type>Group</type>
+            <group_id_property>MaterialIDs</group_id_property>
+            <index_values><index>0</index><value>52e6</value></index_values>
+            <index_values><index>1</index><value>2e6</value></index_values>
+        </parameter>
+        <parameter><name>nu</name><type>Constant</type><value>0.3</value></parameter>
+        <!-- Bentonite parameters: rho_d=1600, phi0=0.424460 -->
+        <parameter><name>phi0_clay</name><type>Constant</type><value>0.4244604316546763</value></parameter>
+        <!-- phi_tr0_clay removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
+             Initial phi_M is computed from phi0_clay and initial_micro_water_content by the hierarchical split. -->
+        <!-- k0_clay from Kozeny-Carman at phi0=0.4245 -->
+        <parameter><name>k0_clay</name><type>Constant</type><value>5.8703e-21</value></parameter>
+        <!-- Pellet parameters: rho_d=900, phi0 = 1-900/2780 = 0.676259 -->
+        <parameter><name>phi0_pellet</name><type>Constant</type><value>0.6762589928057554</value></parameter>
+        <!-- phi_tr0_pellet removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
+             Initial phi_M for pellet zone is computed from phi0_pellet and initial_micro_water_content. -->
+        <!-- k0_pellet from Kozeny-Carman: k_ref=5.6e-21 at phi_ref=0.42 → k0=7.478e-20 -->
+        <!-- k0_pellet = 10 x k0_clay = 5.8703e-20 (Vinay 2026-06-08; pellet zone more permeable
+             than the compacted block). Supersedes the Kozeny-Carman 7.478e-20 noted above. -->
+        <parameter><name>k0_pellet</name><type>Constant</type><value>5.8703e-20</value></parameter>
+        <parameter><name>displacement0</name><type>Constant</type><values>0 0</values></parameter>
+        <parameter><name>pressure_ic</name><type>Constant</type><value>-1e8</value></parameter>
+        <parameter><name>zero</name><type>Constant</type><value>0.0</value></parameter>
+        <parameter><name>p_bc_scale</name><type>Constant</type><value>1</value></parameter>
+        <parameter><name>pressure_bc</name><type>CurveScaled</type><curve>suction_ramp</curve><parameter>p_bc_scale</parameter></parameter>
+    </parameters>
+    <process_variables>
+        <process_variable>
+            <name>displacement</name>
+            <components>2</components>
+            <order>1</order>
+            <initial_condition>displacement0</initial_condition>
+            <boundary_conditions>
+                <!-- Axis of symmetry: u_r = 0 -->
+                <boundary_condition><mesh>ms33_pellets_r25_h70_left</mesh><type>Dirichlet</type><component>0</component><parameter>zero</parameter></boundary_condition>
+                <!-- Outer wall at r=0.025m: u_r = 0 (rigid container) -->
+                <boundary_condition><mesh>ms33_pellets_r25_h70_right</mesh><type>Dirichlet</type><component>0</component><parameter>zero</parameter></boundary_condition>
+                <!-- Bottom: u_z = 0 (rigid base) -->
+                <boundary_condition><mesh>ms33_pellets_r25_h70_bottom</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
+                <!-- Top lid: u_z = 0 (rigid lid) -->
+                <boundary_condition><mesh>ms33_pellets_r25_h70_top</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
+            </boundary_conditions>
+        </process_variable>
+        <process_variable>
+            <name>pressure</name>
+            <components>1</components>
+            <order>1</order>
+            <initial_condition>pressure_ic</initial_condition>
+            <boundary_conditions>
+                <!-- Hydration from bottom (pellet zone bottom face) -->
+                <boundary_condition><mesh>ms33_pellets_r25_h70_bottom</mesh><type>Dirichlet</type><parameter>pressure_bc</parameter></boundary_condition>
+            </boundary_conditions>
+        </process_variable>
+    </process_variables>
+    <nonlinear_solvers>
+        <nonlinear_solver><name>basic_newton</name><type>Newton</type><max_iter>60</max_iter><linear_solver>ls</linear_solver></nonlinear_solver>
+    </nonlinear_solvers>
+    <linear_solvers>
+        <linear_solver><name>ls</name><eigen><solver_type>SparseLU</solver_type><scaling>true</scaling></eigen></linear_solver>
+    </linear_solvers>
+    <curves>
+        <curve>
+            <name>suction_ramp</name>
+            <coords>0 1728000 17280000</coords>
+            <values>-1e8 0 0</values>
+        </curve>
+    </curves>
+</OpenGeoSysProject>
