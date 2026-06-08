@@ -19,6 +19,12 @@ Official benchmark spec (MSXX §Model IV):
   Both zones use same 200-day simulation
 -->
 <OpenGeoSysProject>
+  <!-- GUARDRAIL §12.5 audit (2026-06-09, Vinay-approved): intrinsic permeability
+       set to 20x spec (k0=1.17406e-19 m^2 clay; 1.17406e-18 pellet). Rationale:
+       spec-perm = unconverged transient at reporting horizon; 20x equilibrates and is
+       the MAX stable factor on dsm_native_maxwell_conjugate (50x diverges ~11d, Model III,
+       always-on Maxwell-term wetting-rate ceiling). IV/VII endpoints perm-insensitive
+       (20x vs 50x <1%). Submission candidate, EURAD-2 MS33. -->
     <!--
       DSM provenance (CLAUDE.md §12.2). Authoritative; supersedes any older inline
       "Villar" calibration wording elsewhere in this file.
@@ -371,15 +377,15 @@ Official benchmark spec (MSXX §Model IV):
         <!-- phi_tr0_clay removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
              Initial phi_M is computed from phi0_clay and initial_micro_water_content by the hierarchical split. -->
         <!-- k0_clay from Kozeny-Carman at phi0=0.4245 -->
-        <parameter><name>k0_clay</name><type>Constant</type><value>5.8703e-21</value></parameter>
+        <parameter><name>k0_clay</name><type>Constant</type><value>1.17406e-19</value></parameter>
         <!-- Pellet parameters: rho_d=900, phi0 = 1-900/2780 = 0.676259 -->
         <parameter><name>phi0_pellet</name><type>Constant</type><value>0.6762589928057554</value></parameter>
         <!-- phi_tr0_pellet removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
              Initial phi_M for pellet zone is computed from phi0_pellet and initial_micro_water_content. -->
         <!-- k0_pellet from Kozeny-Carman: k_ref=5.6e-21 at phi_ref=0.42 → k0=7.478e-20 -->
-        <!-- k0_pellet = 10 x k0_clay = 5.8703e-20 (Vinay 2026-06-08; pellet zone more permeable
+        <!-- k0_pellet = 10 x k0_clay = 1.17406e-18 (Vinay 2026-06-08; pellet zone more permeable
              than the compacted block). Supersedes the Kozeny-Carman 7.478e-20 noted above. -->
-        <parameter><name>k0_pellet</name><type>Constant</type><value>5.8703e-20</value></parameter>
+        <parameter><name>k0_pellet</name><type>Constant</type><value>1.17406e-18</value></parameter>
         <parameter><name>displacement0</name><type>Constant</type><values>0 0</values></parameter>
         <parameter><name>pressure_ic</name><type>Constant</type><value>-1e8</value></parameter>
         <parameter><name>zero</name><type>Constant</type><value>0.0</value></parameter>

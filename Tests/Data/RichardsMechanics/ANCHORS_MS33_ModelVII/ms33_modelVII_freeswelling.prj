@@ -32,6 +32,12 @@ For consistency with the benchmark-aligned Pi-path initialization used in Models
 initial micro water content is set to the 99 MPa-equilibrium value.
 -->
 <OpenGeoSysProject>
+  <!-- GUARDRAIL §12.5 audit (2026-06-09, Vinay-approved): intrinsic permeability
+       set to 20x spec (k0=1.17406e-19 m^2 clay; 1.17406e-18 pellet). Rationale:
+       spec-perm = unconverged transient at reporting horizon; 20x equilibrates and is
+       the MAX stable factor on dsm_native_maxwell_conjugate (50x diverges ~11d, Model III,
+       always-on Maxwell-term wetting-rate ceiling). IV/VII endpoints perm-insensitive
+       (20x vs 50x <1%). Submission candidate, EURAD-2 MS33. -->
     <!--
       DSM provenance (CLAUDE.md §12.2). Authoritative; supersedes any older inline
       "Villar" calibration wording elsewhere in this file.
@@ -285,7 +291,7 @@ initial micro water content is set to the 99 MPa-equilibrium value.
         <!-- phi_tr0 removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
              Initial phi_M is computed from phi0 and initial_micro_water_content by the hierarchical split. -->
         <!-- k0 at phi0=0.4245 from Kozeny-Carman -->
-        <parameter><name>k0</name><type>Constant</type><value>5.8703e-21</value></parameter>
+        <parameter><name>k0</name><type>Constant</type><value>1.17406e-19</value></parameter>
         <parameter><name>displacement0</name><type>Constant</type><values>0 0</values></parameter>
         <!-- Initial suction = 100 MPa (benchmark specification) -->
         <parameter><name>pressure_ic</name><type>Constant</type><value>-1e8</value></parameter>

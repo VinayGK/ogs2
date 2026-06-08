@@ -22,6 +22,12 @@ Boundary conditions (official spec):
   Initial stress: isotropic 0.15 MPa
 -->
 <OpenGeoSysProject>
+  <!-- GUARDRAIL §12.5 audit (2026-06-09, Vinay-approved): intrinsic permeability
+       set to 20x spec (k0=1.17406e-19 m^2 clay; 1.17406e-18 pellet). Rationale:
+       spec-perm = unconverged transient at reporting horizon; 20x equilibrates and is
+       the MAX stable factor on dsm_native_maxwell_conjugate (50x diverges ~11d, Model III,
+       always-on Maxwell-term wetting-rate ceiling). IV/VII endpoints perm-insensitive
+       (20x vs 50x <1%). Submission candidate, EURAD-2 MS33. -->
     <!--
       DSM provenance (CLAUDE.md §12.2). Authoritative; supersedes any older inline
       "Villar" calibration wording elsewhere in this file.
@@ -348,7 +354,7 @@ Boundary conditions (official spec):
         <parameter><name>phi0_clay</name><type>Constant</type><value>0.4244604316546763</value></parameter>
         <!-- phi_tr0_clay removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
              Initial phi_M is computed from phi0_clay and initial_micro_water_content by the hierarchical split. -->
-        <parameter><name>k0_clay</name><type>Constant</type><value>5.8703e-21</value></parameter>
+        <parameter><name>k0_clay</name><type>Constant</type><value>1.17406e-19</value></parameter>
         <!-- Gap parameters: nearly empty void.
              phi0_gap = phi_M0_gap + (1-phi_M0_gap)*n_l0 = 0.985 + 0.015*1.1699e-3 ≈ 0.985018
              where phi_M0_gap=0.985 is the initial macro transport porosity of the gap. -->
