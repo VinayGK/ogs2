@@ -33,13 +33,16 @@ Official benchmark spec (MSXX §Model IV):
                        properties of MX-80 bentonite", Applied Clay Science 241:106998;
                        median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
         dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27)
-        bentonite    : rho_d=1600 kg/m3, target 14.161 MPa, fitted K=85312.6 J/kg (potential_augmentation_prefactor)
-        pellet       : rho_d=900 kg/m3, target ~0.051 MPa, K EXTRAPOLATED below Dixon's data range
-                       (header notes K~150 J/kg).
-                       [TODO(Vinay): (1) the body currently exposes only ONE
-                        potential_augmentation_prefactor (=71900); confirm whether the pellet zone carries
-                        a distinct K override or intentionally shares 71900. (2) extrapolating K
-                        below Dixon's measured density range is a 12.1 edge case to confirm.]
+        bentonite    : rho_d=1600 kg/m3, target 14.161 MPa, fitted K=103879.0 J/kg (potential_augmentation_prefactor)
+        pellet       : rho_d=900 kg/m3, target sigma_sat=0.400 MPa (Vinay 2026-06-08), fitted
+                       K_pellet=20600 J/kg via the per-medium <medium id="1"> override (calibrated in
+                       a standalone constant-volume cell; gentle-VG calibration WRC, sigma_sat
+                       WRC-independent, validated K=22710->0.4308 vs SaturationTuller). The 0.400 MPa
+                       target is set by Vinay; cf. Dixon (2023) EMDD==rho_d extrapolated to EMDD=0.9 ->
+                       0.35 MPa (rho_d=900 below Dixon's measured range: §12.1 extrapolation edge).
+                       Permeability: k0_pellet=10*k0_clay (Vinay 2026-06-08).
+                       [RESOLVED 2026-06-08: pellet carries a distinct calibrated K override;
+                        §12.1 extrapolation edge confirmed by Vinay.]
       Material parameters (source per group): as Model I; elastic E,nu: EURAD-2 MS33 Table TH-G
         [TODO(Vinay): confirm]; retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780; pellet
         phi0=0.676259 = 1-rho_d/rho_s; cavitation 1.4e8 Or-Tuller 2002; A_Hamaker 2.2e-20
@@ -93,14 +96,28 @@ Official benchmark spec (MSXX §Model IV):
                      set >0 to add phenomenological n_l coupling). -->
                 <use_micro_liquid_density_for_micro_pressure>true</use_micro_liquid_density_for_micro_pressure>
                 <!-- K for bentonite zone (Villar at 1600 kg/m³); Π uses bulk ρ_LR (step 3).
-                     Pellet zone inherits same K; n_s_pellet=0.324 → smaller Pi contribution
+                     Pellet zone carries its OWN calibrated K override K_pellet=20600 (see medium id=1 below), NOT this K; n_s_pellet=0.324 → smaller Pi contribution
                      (n_s enters delta_sigma_sw computation). Calibrated 2026-05-21. -->
                 <!-- K recalibrated 2026-06-01: dt-converged Dixon(2023) reference K (P* basis); prev value 71900 -->
-                <potential_augmentation_prefactor>85312.6</potential_augmentation_prefactor>
+                <potential_augmentation_prefactor>103879.0</potential_augmentation_prefactor>
                 <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
                      (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
                       Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
+                <!-- PER-MATERIAL K override (Vinay 2026-06-08): pellet zone, material id 1,
+                     rho_d=900. n_s=900/2780=0.323741; n_l0=6.59e-4 (pellet 99 MPa IC).
+                     K_pellet=20600 J/kg CALIBRATED to sigma_sat(rho_d=900)=0.400 MPa in a
+                     standalone constant-volume cell on the consolidation (film-ON) binary
+                     (gentle-VG calibration WRC; sigma_sat is WRC-independent, validated
+                     K=22710 -> 0.4308 under both VG and SaturationTuller). Target 0.40 MPa
+                     set by Vinay; cf. Dixon (2023) EMDD==rho_d formula extrapolated to
+                     EMDD=0.9 -> 0.35 MPa (rho_d=900 is below Dixon's measured range:
+                     §12.1 extrapolation edge, confirmed by Vinay). -->
+                <medium id="1">
+                    <micro_solid_volume_fraction_reference>0.3237410071942446</micro_solid_volume_fraction_reference>
+                    <initial_micro_water_content>6.59e-4</initial_micro_water_content>
+                    <potential_augmentation_prefactor>20600</potential_augmentation_prefactor>
+                </medium>
             </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>
@@ -345,7 +362,9 @@ Official benchmark spec (MSXX §Model IV):
         <!-- phi_tr0_pellet removed: was initial_porosity for TransportPorosityFromMassBalance (now removed).
              Initial phi_M for pellet zone is computed from phi0_pellet and initial_micro_water_content. -->
         <!-- k0_pellet from Kozeny-Carman: k_ref=5.6e-21 at phi_ref=0.42 → k0=7.478e-20 -->
-        <parameter><name>k0_pellet</name><type>Constant</type><value>7.478e-20</value></parameter>
+        <!-- k0_pellet = 10 x k0_clay = 5.8703e-20 (Vinay 2026-06-08; pellet zone more permeable
+             than the compacted block). Supersedes the Kozeny-Carman 7.478e-20 noted above. -->
+        <parameter><name>k0_pellet</name><type>Constant</type><value>5.8703e-20</value></parameter>
         <parameter><name>displacement0</name><type>Constant</type><values>0 0</values></parameter>
         <parameter><name>pressure_ic</name><type>Constant</type><value>-1e8</value></parameter>
         <parameter><name>zero</name><type>Constant</type><value>0.0</value></parameter>
