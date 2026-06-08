@@ -43,8 +43,11 @@ Official benchmark spec (MSXX §Model IV):
                        Permeability: k0_pellet=10*k0_clay (Vinay 2026-06-08).
                        [RESOLVED 2026-06-08: pellet carries a distinct calibrated K override;
                         §12.1 extrapolation edge confirmed by Vinay.]
-      Material parameters (source per group): as Model I; elastic E,nu: EURAD-2 MS33 Table TH-G
-        [TODO(Vinay): confirm]; retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780; pellet
+      Material parameters (source per group): as Model I; elastic — PER-MATERIAL Young's modulus
+        (Group parameter keyed by MaterialID; Vinay 2026-06-08): MaterialID 0 (clay block) E=52 MPa
+        (EURAD-2 MS33 Table TH-G [TODO(Vinay): confirm]); MaterialID 1 (pellet zone) E=2 MPa
+        (Vinay-approved 2026-06-08 soft-pellet convergence value, NOT a measured constant); nu=0.3 both.
+        geometry = 50 mm reference cell (r25 mesh). retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780; pellet
         phi0=0.676259 = 1-rho_d/rho_s; cavitation 1.4e8 Or-Tuller 2002; A_Hamaker 2.2e-20
         Israelachvili & Adams 1978; lambda=7.5e-7 co-calibrated; micro EOS / Tuller geom /
         specific_surface [TODO(Vinay): primary locators]; alpha_M phenomenological.
@@ -349,7 +352,19 @@ Official benchmark spec (MSXX §Model IV):
             <expression>-1.5e5</expression><expression>-1.5e5</expression>
             <expression>-1.5e5</expression><expression>0</expression>
         </parameter>
-        <parameter><name>E</name><type>Constant</type><value>52e6</value></parameter>
+        <!-- PER-MATERIAL Young's modulus (Group parameter keyed by MaterialID; Vinay 2026-06-08).
+             MaterialID 0 (bentonite block, z=0.035-0.070 m) = 52e6 Pa
+               (EURAD-2 MS33 Table TH-G [TODO(Vinay): confirm]);
+             MaterialID 1 (pellet zone, z=0-0.035 m) = 2e6 Pa
+               (Vinay-approved 2026-06-08 soft-pellet convergence value; NOT a measured constant).
+             Supersedes the prior Constant E=52e6 (which over-stiffened the pellet zone). -->
+        <parameter>
+            <name>E</name>
+            <type>Group</type>
+            <group_id_property>MaterialIDs</group_id_property>
+            <index_values><index>0</index><value>52e6</value></index_values>
+            <index_values><index>1</index><value>2e6</value></index_values>
+        </parameter>
         <parameter><name>nu</name><type>Constant</type><value>0.3</value></parameter>
         <!-- Bentonite parameters: rho_d=1600, phi0=0.424460 -->
         <parameter><name>phi0_clay</name><type>Constant</type><value>0.4244604316546763</value></parameter>

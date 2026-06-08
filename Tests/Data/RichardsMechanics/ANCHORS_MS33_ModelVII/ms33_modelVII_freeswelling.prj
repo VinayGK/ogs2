@@ -52,7 +52,9 @@ initial micro water content is set to the 99 MPa-equilibrium value.
         target sigma : 14.161 MPa
         fitted K     : 103879.0 J/kg (potential_augmentation_prefactor)
       Material parameters (source per group): as Model I dd1600; elastic E,nu: EURAD-2 MS33
-        Table TH-G [TODO(Vinay): confirm]; retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780;
+        Table TH-G [TODO(Vinay): confirm] — SINGLE material, E=52 MPa Constant (no per-material
+        split needed; 2026-06-08 correction left VII E untouched); nu=0.3. geometry = 50 mm
+        reference cell (r25 mesh). retention P0=27MPa,a=0.45; rel.perm S_e^3; rho_s=2780;
         cavitation 1.4e8 Or-Tuller 2002; A_Hamaker 2.2e-20 Israelachvili & Adams 1978; lambda=7.5e-7
         co-calibrated; micro EOS / Tuller geom / specific_surface 523 m2/g [TODO(Vinay): primary
         locators]; alpha_M phenomenological.
