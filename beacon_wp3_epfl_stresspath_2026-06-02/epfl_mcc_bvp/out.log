@@ -1,0 +1,130 @@
+warning: The model is defined in 2D. On the material level currently a plane strain setting is used. In particular it is not checked if axial symmetry or plane stress are assumed. Special material behaviour for these settings is currently not supported.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #74 at t = 974210.2847256948 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 74 was rejected 1 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #74 at t = 941810.2847256948 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 74 was rejected 2 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 994207.1597256948 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 1 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 980253.6441006948 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 2 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 971532.6968350698 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 3 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 966082.10479405418 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 4 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 962675.48476841941 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 5 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 960546.34725239768 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 6 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 959215.6363048841 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 7 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 958383.94196268811 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 8 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957864.13299881562 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 9 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957539.25239639531 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 10 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957336.20201988262 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 11 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957209.2955345622 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 12 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957129.97898123693 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 13 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957080.40613540867 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 14 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957049.42310676596 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 15 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957030.0587138643 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 16 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957017.95596830081 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 17 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957010.3917523236 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 18 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957005.66411733779 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 19 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957002.7093454717 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 20 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 957000.86261305539 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 21 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956999.70840529515 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 22 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956998.98702544509 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 23 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956998.53616303881 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 24 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956998.25437403482 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 25 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956998.07825590728 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 26 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956997.96818207763 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 27 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956997.89938593411 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+warning: Time step 76 was rejected 28 times and it will be repeated with a reduced step size.
+error: Abort nonlinear iteration. Repeating timestep. Reason: Error in process' assembly: MFront: integration failed with status -1.
+error: The nonlinear solver failed in time step #76 at t = 956997.88472569478 s for process #0.
+warning: Time step will be rejected due to nonlinear solver divergence.
+critical: /Users/vinaykumar/git/ogs-worktrees/dsm_native_pdisj_maxwell_wt/ProcessLib/TimeLoop.cpp:393 computeTimeStepping() 
+error: The new step size of 0.10000000000000001 is the same as that of the previous rejected time step. 
+Please re-run ogs with a proper adjustment in the numerical settings, 
+e.g. those for time stepper, local or global non-linear solver.
+error: OGS terminated with error on 2026-06-06 08:00:57+0200.
+EXIT=1

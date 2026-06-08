@@ -1,0 +1,2 @@
+warning: The model is defined in 2D. On the material level currently a plane strain setting is used. In particular it is not checked if axial symmetry or plane stress are assumed. Special material behaviour for these settings is currently not supported.
+EXIT=0
