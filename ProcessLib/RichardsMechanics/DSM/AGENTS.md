@@ -271,3 +271,73 @@ completes** (308 steps, 0 rejects). Full table in the audit doc. Compare workspa
   case; re-derive/condition the u-side blocks so they don't singularize stiff cases;
   then re-verify on a two-way-coupled (EOS-active) benchmark before flipping either
   constexpr ON.
+
+---
+
+## Phase B — diagnose analytic micro 2×2 on dd1800; NO Jacobian error found, root cause is global-solver fragility (2026-06-09, branch dsm_maxwell_jac_parallel)
+
+Goal was to find and fix the "real J11/J12 error" on the dense / EOS-active dd1800
+case that Phase A point 2 (above) predicted. **That prediction is NOT supported by
+the measurements below and is relabeled accordingly (CLAUDE.md §5).**
+
+Method (temporary diagnostic, since removed; tree clean): set
+`use_analytic_micro_jacobian=true` and added an env-gated trace
+(`DSM_MICRO_JAC_TRACE`) that, at every micro Newton iterate, computed BOTH the
+analytic `evaluate_analytic_jacobian` J and an independent central-difference FD J
+of `evaluate` (the exact numerical derivative of the unchanged residual = ground
+truth), logging per-entry value + relative difference. Ran
+`Tests/Data/RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj`
+(staged in /tmp), single-thread, with analytic ON and (separately) FD ON.
+
+MEASURED (dd1800, maxjac_omp, OMP_NUM_THREADS=1, 2026-06-09):
+- **Analytic J == FD J to round-off at every iterate.** Over all 58 676 traced
+  analytic-run iterates: max rel diff J11 = 3.5e-9, J12 = 1.2e-8 (= the FD
+  central-difference truncation floor at h=1e-8), J22 = 0 (exact). J21: analytic
+  ≈6.1e-15 vs FD 0.0 — both numerically zero under `a=1e-16` (EOS inert ⇒
+  `drho_lR_dnl≈0`); the rel=1.0 is a 0/0 artifact, not a Jacobian error.
+- **No det sign flips, no singular dets** (analytic vs FD) over the whole trace.
+- **Converged micro states identical FD-vs-analytic to ≤3.2e-12 in n_l** over the
+  entire common range (1392 micro-solves, up to abort); ρ_lR diff 0.0. The
+  analytic path reproduces the FD-path solution entry-for-entry.
+- Many micro-solves (2448/2884 in the FD run; 956/1392 in the analytic run) run to
+  `max_iterations=60` pinned at `n_l_ceiling` — but this is **tolerated/normal**
+  (the FD parent run does it too and completes with **0 rejected steps**).
+- **Why analytic-ON fails dd1800:** with analytic ON the *global* run diverges at
+  time step #110 ("Newton: the linear solver failed in the compute() step"), step
+  size driven to 0.1 s. The FD parent sails through step #110 (Δt≈5720 s, 308
+  accepted / 0 rejected). The micro 2×2 J is verified-correct, so the only thing the
+  flag changes is FP accumulation order (analytic skips the 4 `evaluate()` calls);
+  at dd1800's near-singular *global* tangent that ~1e-12 perturbation tips the
+  brittle global linear solve into non-factorizability. This is the SAME dd1800
+  fragility Phase A point 1 documented for the FMA boundary — it is a global-solver
+  conditioning issue, NOT a micro-tangent error.
+- **Premise check:** every MS33 PRJ (all Models I/III/IV/V/VII) sets
+  `micro_liquid_density_a=1e-16`, so the micro EOS is bypassed everywhere; J21≈0
+  throughout the registered suite. dd1800 differs from dd1400 only in
+  `micro_solid_volume_fraction_reference` (0.6475 vs 0.5036), i.e. it is denser
+  (stiffer global problem), NOT "EOS-active." There is no EOS-active MS33 case in
+  the suite where a missing micro chain term could surface.
+
+CONCLUSION: there is **no missing chain term to add** — the analytic micro 2×2
+J11/J12 already matches the FD ground truth to round-off, including the live-nS
+chain. Per the task STOP condition ("discrepancy deeper than a missing chain term"),
+NO Jacobian change was committed. Diagnostic reverted; `use_analytic_micro_jacobian`
+left at its Phase A default (`false`, opt-in). maxjac_omp rebuilt clean; dd1800
+re-verified complete (308 accepted, 0 rejected) on the reverted FD-default binary.
+
+Relabeling (CLAUDE.md §5): Phase A point 2's "analytic micro 2×2 has a real J11/J12
+error on the dense/EOS-active case" was a *plausible-but-unverified* consequence
+claim; the Phase B trace measures analytic==FD to round-off and equal converged
+states, so the dd1800 break is reattributed to global-solver fragility (Phase A
+point 1's mechanism), not a micro-tangent error.
+
+- OPEN (Phase B, remaining): the analytic micro path is correct but NOT robust on
+  dd1800 because it perturbs FP order on a brittle global solve. Candidate
+  directions (none implemented, none verified): (a) keep analytic OFF by default
+  (current state) — the local cascade gain is real but the global solve is
+  near-singular at dd1800 regardless; (b) condition the *global* tangent / time
+  stepper at dd1800 so it is no longer 1e-12-fragile, then analytic-ON is safe;
+  (c) exercise a genuine EOS-active (`a`≠1e-16) two-way-coupled benchmark — none
+  exists in the registered MS33 suite — to measure any global iters/step gain the
+  consistent micro tangent could buy. u-side singularization (Phase A point 3) is
+  untouched by this diagnosis and remains OPEN.

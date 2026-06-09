@@ -218,6 +218,33 @@ not exercised here.
 > §(i)/(ii) "verified solution-invariant + quadratic convergence" wording is
 > retained above as historical record but is **superseded** by this correction.
 
+> **CORRECTION (2026-06-09, Phase B) — the "real J11/J12 error" claim is NOT
+> supported; reattributed to global-solver fragility.** The Phase A correction
+> just above predicted the analytic micro 2×2 "carries a real J11/J12 error on the
+> dense/EOS-active case." A Phase B diagnostic (env-gated `DSM_MICRO_JAC_TRACE`,
+> analytic-ON, dd1800, single-thread, since removed; tree clean) measured, at every
+> micro Newton iterate, the analytic J against an independent central-difference FD
+> J of the unchanged `evaluate` residual (= ground truth):
+> - **Analytic == FD to round-off** over all 58 676 traced iterates: max rel diff
+>   J11 = 3.5e-9, J12 = 1.2e-8 (= the FD h=1e-8 truncation floor), J22 = 0 exact;
+>   J21 ≈6.1e-15 vs 0.0 (both numerically zero — `a=1e-16` ⇒ `drho_lR_dnl≈0`; the
+>   rel=1.0 is a 0/0 artifact). No det sign flips, no singular dets.
+> - **Converged micro states FD-vs-analytic identical to ≤3.2e-12** (n_l) over the
+>   whole common range (1392 micro-solves); ρ_lR diff 0.0.
+> The analytic-ON run nonetheless fails dd1800 at global time step #110 ("Newton:
+> the linear solver failed in the compute() step"); the FD parent passes step #110
+> (Δt≈5720 s) and finishes 308 accepted / 0 rejected. Since the micro 2×2 is
+> verified-correct, the only effect of the flag is FP accumulation order (analytic
+> skips the 4 `evaluate()` calls), which at dd1800's near-singular *global* tangent
+> tips the brittle global linear solve — the SAME fragility as the Phase A FMA
+> boundary, **not** a micro-tangent error. Every MS33 PRJ sets `a=1e-16`, so no
+> registered case is genuinely EOS-active; dd1800 differs from dd1400 only in
+> `micro_solid_volume_fraction_reference` (0.6475 vs 0.5036, i.e. denser). The
+> "J11/J12 error" wording above is therefore **superseded** by this correction; the
+> dd1800 break is reattributed to global-solver conditioning. Per the task STOP
+> condition, NO Jacobian change was committed. (The u-side singularization claim in
+> the Phase A correction is untouched by Phase B and stands.)
+
 ---
 
 ## Phase A — ship-safe non-regression (2026-06-09, branch dsm_maxwell_jac_parallel)
