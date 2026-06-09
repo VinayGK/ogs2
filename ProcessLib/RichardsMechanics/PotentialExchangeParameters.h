@@ -38,6 +38,34 @@ enum class MicroSolidVolumeFractionMode
     CurrentPorositySplit
 };
 
+// ── Strained-film disjoining law h(w_m, eps_v) (DSM/STRAINED_FILM_IMPLEMENTATION.md) ──
+// Off:         film geometry frozen (current behavior, bit-for-bit).
+// Kinematic:   variant A — spacing follows the volumetric strain,
+//              h = h0(n_l)*(1 + kappa*eps_v)  <=>  evaluate the bare law at
+//              w_eff = n_l*(1 + kappa*eps_v).
+// Equilibrium: variant B — spacing tracks the film force balance once the load
+//              can compress the film: w_eff solves Pi(w_eff) = p_conf on the
+//              loaded branch (p_conf > Pi(n_l)), else w_eff = n_l (emergent
+//              branch point; no bolted-on gate).
+enum class FilmStrainCouplingMode
+{
+    Off,
+    Kinematic,
+    Equilibrium
+};
+
+// Spacing-strain weighting kappa in dh/deps_v = kappa*h0 (design doc §3, D1):
+// Aggregate: kappa = (1 - phi_M) (active_nS at the GP) — the integrable
+//            completion of the existing eigenstress scale (recommended).
+// Unity:     kappa = 1 — naive geometric reading (spacing follows REV strain
+//            one-to-one); kept PRJ-selectable for discrimination (Vinay,
+//            2026-06-09).
+enum class FilmStrainKappaMode
+{
+    Aggregate,
+    Unity
+};
+
 inline constexpr char const* toString(
     MicroPotentialConvention const convention)
 {
@@ -93,6 +121,32 @@ inline constexpr char const* toString(
             return "reference";
         case MicroSolidVolumeFractionMode::CurrentPorositySplit:
             return "current_porosity_split";
+    }
+    return "unknown";
+}
+
+inline constexpr char const* toString(FilmStrainCouplingMode const mode)
+{
+    switch (mode)
+    {
+        case FilmStrainCouplingMode::Off:
+            return "off";
+        case FilmStrainCouplingMode::Kinematic:
+            return "kinematic";
+        case FilmStrainCouplingMode::Equilibrium:
+            return "equilibrium";
+    }
+    return "unknown";
+}
+
+inline constexpr char const* toString(FilmStrainKappaMode const mode)
+{
+    switch (mode)
+    {
+        case FilmStrainKappaMode::Aggregate:
+            return "aggregate";
+        case FilmStrainKappaMode::Unity:
+            return "unity";
     }
     return "unknown";
 }
@@ -187,6 +241,16 @@ struct PotentialExchangeParameters
     // no floor -> bit-for-bit unchanged.
     double macro_porosity_floor = 0.0;
     double macro_floor_cutoff_width = 0.0;  // film-to-bulk cutoff width in n_l [-]; 0 -> default 5% of n_l_cap [Vinay's call]
+
+    // ── Strained-film disjoining law (DSM/STRAINED_FILM_IMPLEMENTATION.md) ──
+    // When != Off, the bare disjoining law is evaluated at the strained film
+    // state w_eff and mu_lR gains the load term +b*p_conf/rho_lR; the shipped
+    // integrable mechanical partner is REPLACED (it is the frozen-h, O(eps_v)
+    // truncation of the same physics — running both double-counts; D3
+    // provisional, demonstrated by the shipped-limit unit test). Off (default)
+    // is bit-for-bit the current behavior.
+    FilmStrainCouplingMode film_strain_coupling = FilmStrainCouplingMode::Off;
+    FilmStrainKappaMode film_strain_kappa = FilmStrainKappaMode::Aggregate;
 
     // ── K(rho_d): augmentation prefactor as a function of dry density ──────
     // Optional piecewise-linear table K = K(rho_d) [J/kg vs kg/m^3]. When set

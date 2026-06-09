@@ -71,6 +71,47 @@ LocalNonlinearSolveMode parseLocalNonlinearSolveMode(
         mode);
 }
 
+FilmStrainCouplingMode parseFilmStrainCouplingMode(std::string const& mode)
+{
+    if (mode == "off")
+    {
+        return FilmStrainCouplingMode::Off;
+    }
+    if (mode == "kinematic")
+    {
+        return FilmStrainCouplingMode::Kinematic;
+    }
+    if (mode == "equilibrium")
+    {
+        return FilmStrainCouplingMode::Equilibrium;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "film_strain_coupling '{}'. Currently supported: 'off', 'kinematic', "
+        "'equilibrium'. (DSM/STRAINED_FILM_IMPLEMENTATION.md)",
+        mode);
+}
+
+FilmStrainKappaMode parseFilmStrainKappaMode(std::string const& mode)
+{
+    if (mode == "aggregate")
+    {
+        return FilmStrainKappaMode::Aggregate;
+    }
+    if (mode == "unity")
+    {
+        return FilmStrainKappaMode::Unity;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "film_strain_kappa '{}'. Currently supported: 'aggregate' "
+        "(kappa = 1 - phi_M, the integrable completion of the eigenstress "
+        "scale), 'unity' (kappa = 1, naive geometric reading).",
+        mode);
+}
+
 MacroPorosityUpdateMode parseMacroPorosityUpdateMode(
     std::string const& mode)
 {
@@ -573,6 +614,22 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             context, film_pressure_swelling_modulus);
     }
 
+    // ── Strained-film disjoining law h(w_m, eps_v) ──────────────────────────
+    // (DSM/STRAINED_FILM_IMPLEMENTATION.md; Vinay 2026-06-09.) PRJ-selectable
+    // variants: 'off' (default, frozen geometry, bit-for-bit), 'kinematic'
+    // (variant A, spacing follows the volumetric strain), 'equilibrium'
+    // (variant B, spacing tracks the film force balance Pi = p_conf). When ON,
+    // the strained law REPLACES the shipped integrable mechanical partner (its
+    // frozen-h truncation) — never both (no double counting).
+    auto const film_strain_coupling = parseFilmStrainCouplingMode(
+        config.getConfigParameter<std::string>(
+            "film_strain_coupling",
+            defaults ? toString(defaults->film_strain_coupling) : "off"));
+    auto const film_strain_kappa = parseFilmStrainKappaMode(
+        config.getConfigParameter<std::string>(
+            "film_strain_kappa",
+            defaults ? toString(defaults->film_strain_kappa) : "aggregate"));
+
     // Macro-porosity floor phi_M,min: keeps the macro pore from collapsing into
     // the interlayer (n_l capped at (phi-floor)/(1-floor)); 0 -> no floor.
     auto const macro_porosity_floor = config.getConfigParameter<double>(
@@ -637,6 +694,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         film_pressure_swelling_modulus,
         macro_porosity_floor,
         macro_floor_cutoff_width,
+        film_strain_coupling,
+        film_strain_kappa,
         potential_augmentation_prefactor_vs_dry_density,
         dry_density};
 }

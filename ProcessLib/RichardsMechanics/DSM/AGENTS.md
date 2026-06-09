@@ -199,3 +199,29 @@ Process.cpp` (parse + resolve). DONE.
   (ii) the *current/evolving* rho_d variant (K riding porosity, needs a tangent
   term, double-count risk vs the exp(-xi) porosity dependence) is NOT
   implemented -- this delivery is initial/target rho_d only.
+
+## Strained-film disjoining law h(w_m, eps_v) (2026-06-09, branch dsm_native_h_of_eps)
+
+Goal (Vinay): reversible de-swelling/expulsion under load — film thickness
+varies with compressive stress so the potential reverses; the dissipative
+residual stays a future flow rule. Design + decision record:
+**STRAINED_FILM_IMPLEMENTATION.md** (this directory).
+
+- DONE 2026-06-09: enums + params (film_strain_coupling off|kinematic|
+  equilibrium, film_strain_kappa aggregate|unity), computeStrainedFilmState +
+  invertDisjoiningPressure (PotentialExchange.h), fold-point rewiring
+  (applyFilmPressureMicroPotential REPLACES the shipped integrable partner when
+  ON — D3 provisional), eigenstress threading (eps_v sentinel args), PRJ
+  parsing, unit tests (StrainedFilmPotential.cpp). Off = bit-for-bit.
+- STRUCTURAL FINDING [D]: a pure geometric squeeze of any repulsive Pi(h) can
+  never reverse the potential (Pi'(h)<0 ⇒ imbibition); the reversal lives in
+  the Derjaguin load term +b*p_conf/rho_lR, made h-live here. Emergent gate
+  b*K_drained > 3*kappa*Pi(h) (kinematic) / min()-branch at p_conf = Pi(w_m)
+  (equilibrium) — no bolted-on Macaulay gate.
+- HONESTY NOTE: implemented cut = operational Derjaguin form, NOT yet
+  Maxwell-exact; exact one-Psi closed forms derived in the design doc §9a,
+  AWAITING Vinay's review before coding. Do not cite the branch as
+  "Maxwell-exact".
+- TODO: build + unit tests + dd1400 off-mode regression (in progress
+  2026-06-09); §9a exact forms; confined expulsion probe; K re-calibration
+  [PRED: saturated swelling-pressure equilibrium shifts in both modes].

@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 
 #include "BaseLib/Error.h"
+#include "ProcessLib/RichardsMechanics/PotentialExchangeParameters.h"
 
 namespace ProcessLib::RichardsMechanics
 {
@@ -571,6 +573,178 @@ computeIntegrableMechanicalMicroPotential(
         -((2.0 * dPi_dnl + n_l * d2Pi_dnl2) * eps_v) / rho_lR;
     // d(mu_lR_mech)/d(rho_lR) = -mu_lR_mech/rho_lR   [(J/kg)/(kg/m^3)]
     out.dmu_lR_mech_drho_lR = -out.mu_lR_mech / rho_lR;
+    return out;
+}
+
+// ── Strained-film disjoining state — h(w_m, eps_v) ──────────────────────────
+// Design: ProcessLib/RichardsMechanics/DSM/STRAINED_FILM_IMPLEMENTATION.md.
+// Both variants reduce to evaluating the EXISTING bare law at an effective
+// micro water content w_eff (the law depends on n_l only through the film
+// thickness h = n_l/(nS*rho_SR*Sa), so straining h is straining the
+// evaluation point):
+//   Kinematic   (A): w_eff = n_l*(1 + kappa*eps_v), kappa = active_nS
+//                    (Aggregate, the integrable completion of the existing
+//                    eigenstress scale) or 1 (Unity). kappa is FROZEN at the
+//                    GP (B1) — no d(kappa)/d(eps_v) chain.
+//   Equilibrium (B): on the loaded branch (p_conf > Pi(n_l) > 0) w_eff solves
+//                    Pi(w_eff) = p_conf (film force balance; emergent branch
+//                    point, no bolted-on gate); else w_eff = n_l.
+// Mass bookkeeping stays at n_l everywhere; only the disjoining evaluation
+// point is strained.
+struct StrainedFilmStateData
+{
+    double w_eff = 0.0;          // effective content fed to the law [-]
+    double dw_eff_dnl = 1.0;     // d w_eff / d n_l [-]
+    double dw_eff_deps_v = 0.0;  // d w_eff / d eps_v [-]
+    bool loaded_branch = false;  // equilibrium mode: Pi(w_eff) = p_conf branch
+};
+
+// Invert the bare disjoining law Pi(w) = -rho_pi * mu_lR_bare(w) for w at a
+// target pressure (equilibrium-spacing variant B). Pi is strictly decreasing
+// in w (vdW core ~ w^-3 plus exponential augmentation), so the root in
+// (w_floor, w_upper] is unique when it exists. Newton on f(w) = Pi(w) -
+// p_target with the analytic dPi/dw from the law, seeded by the cubic-core
+// inverse and guarded by bisection on the bracket. All law arguments mirror
+// computeVanDerWaalsMicroPotential.
+inline double invertDisjoiningPressure(
+    double const p_target, double const w_upper, double const rho_lR,
+    double const nS, double const rho_SR, double const hamaker_constant,
+    double const specific_surface, double const potential_sign_factor,
+    double const potential_augmentation_prefactor,
+    double const potential_augmentation_exponent, double const n_l_floor,
+    double const rho_pi)
+{
+    auto const Pi_and_slope = [&](double const w)
+    {
+        auto const v = computeVanDerWaalsMicroPotential(
+            w, rho_lR, nS, rho_SR, hamaker_constant, specific_surface,
+            potential_sign_factor, potential_augmentation_prefactor,
+            potential_augmentation_exponent, 0.0 /*dnS_dnl*/, n_l_floor);
+        return std::pair{-rho_pi * v.mu_lR, -rho_pi * v.dmu_lR_dnl};
+    };
+
+    // Bracket: Pi(w_upper) < p_target (caller-checked loaded branch). Lower
+    // end: the law floor (Pi capped there) or a structural tiny fraction of
+    // w_upper. 1e-8 is a bracket-width guard, not a physical value.
+    double w_lo = std::max(n_l_floor, 1e-8 * w_upper);
+    double w_hi = w_upper;
+    auto const [Pi_lo, dPi_lo] = Pi_and_slope(w_lo);
+    if (!(Pi_lo > p_target))
+    {
+        // Law cannot reach the target (e.g. floored Pi cap below p_target):
+        // the film is squeezed to its cap; return the lower end.
+        return w_lo;
+    }
+
+    // Seed: cubic-core inverse Pi ~ w^-3 => w0 = w_upper*(Pi(w_upper)/p)^(1/3).
+    auto const [Pi_up, dPi_up] = Pi_and_slope(w_upper);
+    double w = w_upper *
+               std::cbrt(std::max(1e-300, Pi_up) / std::max(1e-300, p_target));
+    w = std::clamp(w, w_lo, w_hi);
+
+    // Iteration cap 50 (structural bound, not physics); relative tolerance on
+    // the pressure residual scaled by the target per the tolerance-from-
+    // problem-scale rule.
+    for (int i = 0; i < 50; ++i)
+    {
+        auto const [Pi_w, dPi_dw] = Pi_and_slope(w);
+        double const f = Pi_w - p_target;
+        if (std::abs(f) <= 1e-12 * std::abs(p_target))
+        {
+            break;
+        }
+        // Maintain the bracket (Pi decreasing in w).
+        if (f > 0.0)
+        {
+            w_lo = w;  // Pi too high -> root at larger w
+        }
+        else
+        {
+            w_hi = w;
+        }
+        double const step = (std::isfinite(dPi_dw) && std::abs(dPi_dw) > 0.0)
+                                ? -f / dPi_dw
+                                : 0.0;
+        double w_next = w + step;
+        if (!(w_next > w_lo && w_next < w_hi))
+        {
+            w_next = 0.5 * (w_lo + w_hi);  // bisection fallback
+        }
+        if (std::abs(w_next - w) <= 1e-15 * std::max(1.0, std::abs(w)))
+        {
+            w = w_next;
+            break;
+        }
+        w = w_next;
+    }
+    return w;
+}
+
+inline StrainedFilmStateData computeStrainedFilmState(
+    FilmStrainCouplingMode const mode, FilmStrainKappaMode const kappa_mode,
+    double const n_l, double const active_nS, double const eps_v,
+    double const p_conf, double const rho_lR, double const rho_SR,
+    double const hamaker_constant, double const specific_surface,
+    double const potential_sign_factor,
+    double const potential_augmentation_prefactor,
+    double const potential_augmentation_exponent, double const n_l_floor,
+    double const rho_pi)
+{
+    StrainedFilmStateData out;
+    out.w_eff = n_l;
+
+    switch (mode)
+    {
+        case FilmStrainCouplingMode::Off:
+            return out;
+        case FilmStrainCouplingMode::Kinematic:
+        {
+            double const kappa =
+                kappa_mode == FilmStrainKappaMode::Aggregate ? active_nS : 1.0;
+            // Positivity guard on the spacing factor (1e-6 is a numeric
+            // floor against w_eff <= 0 at extreme compression, not physics).
+            double const f =
+                std::max(1e-6, 1.0 + kappa * (std::isfinite(eps_v) ? eps_v
+                                                                   : 0.0));
+            out.w_eff = n_l * f;
+            out.dw_eff_dnl = f;
+            // kappa frozen at the GP (B1): d w_eff/d eps_v = n_l*kappa on the
+            // unclamped branch, 0 when the positivity guard clamps.
+            out.dw_eff_deps_v =
+                (f > 1e-6) ? n_l * kappa : 0.0;
+            return out;
+        }
+        case FilmStrainCouplingMode::Equilibrium:
+        {
+            if (!(std::isfinite(p_conf) && p_conf > 0.0))
+            {
+                return out;  // no load supplied -> unloaded branch
+            }
+            auto const bare = computeVanDerWaalsMicroPotential(
+                n_l, rho_lR, active_nS, rho_SR, hamaker_constant,
+                specific_surface, potential_sign_factor,
+                potential_augmentation_prefactor,
+                potential_augmentation_exponent, 0.0 /*dnS_dnl*/, n_l_floor);
+            double const Pi_unloaded = -rho_pi * bare.mu_lR;
+            if (!(Pi_unloaded > 0.0 && p_conf > Pi_unloaded))
+            {
+                return out;  // below the branch point: film carries the load
+            }
+            out.loaded_branch = true;
+            out.w_eff = invertDisjoiningPressure(
+                p_conf, n_l, rho_lR, active_nS, rho_SR, hamaker_constant,
+                specific_surface, potential_sign_factor,
+                potential_augmentation_prefactor,
+                potential_augmentation_exponent, n_l_floor, rho_pi);
+            // On the loaded branch the film state is pinned by the load:
+            // w_eff solves Pi(w_eff) = p_conf, independent of n_l and eps_v
+            // (implicit-function chains enter via p_conf only, which the
+            // outer Newton iteration carries).
+            out.dw_eff_dnl = 0.0;
+            out.dw_eff_deps_v = 0.0;
+            return out;
+        }
+    }
     return out;
 }
 

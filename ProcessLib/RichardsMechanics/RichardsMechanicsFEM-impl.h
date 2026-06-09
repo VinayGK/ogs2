@@ -683,13 +683,79 @@ inline void applyFilmPressureMicroPotential(
     PotentialExchangeLocalSolveContext const& local_context,
     PotentialExchangeParameters const& potential_exchange_params)
 {
-    (void)active_nS;
     applyMacroFloorCutoff(out, n_l, local_context, potential_exchange_params);
     if (!(potential_exchange_params.film_pressure_coupling &&
           std::isfinite(local_context.confining_pressure_p_conf)))
     {
         return;  // flag OFF or NaN p_conf -> unchanged (pure vdW), bit-for-bit.
     }
+
+    // ── Strained-film modes (DSM/STRAINED_FILM_IMPLEMENTATION.md) ───────────
+    // film_strain_coupling != Off REPLACES the frozen-geometry path below: the
+    // bare law is evaluated at the strained film state w_eff and mu_lR carries
+    // the Derjaguin load term +b*p_conf/rho_lR (squeezing confined liquid
+    // raises its chemical potential). The shipped integrable partner is NOT
+    // added on top — it is the frozen-h, O(eps_v) truncation of the same
+    // coupling (no double counting; D3 provisional, see the shipped-limit unit
+    // test). nS chains are FROZEN here (B1): the strained re-evaluation uses
+    // dnS_dnl = 0 regardless of the caller's F2 mode.
+    if (potential_exchange_params.film_strain_coupling !=
+        FilmStrainCouplingMode::Off)
+    {
+        double const p_conf_sf = local_context.confining_pressure_p_conf;
+        double const eps_v_sf = local_context.volumetric_strain;
+        double const sign_sf =
+            microPotentialSignFactorFromParameters(potential_exchange_params);
+
+        auto const film_state = computeStrainedFilmState(
+            potential_exchange_params.film_strain_coupling,
+            potential_exchange_params.film_strain_kappa, n_l, active_nS,
+            eps_v_sf, p_conf_sf, rho_lR_used,
+            potential_exchange_params.micro_solid_density_reference,
+            potential_exchange_params.hamaker_constant,
+            potential_exchange_params.specific_surface, sign_sf,
+            potential_exchange_params.potential_augmentation_prefactor,
+            potential_exchange_params.potential_augmentation_exponent,
+            potential_exchange_params.micro_water_content_floor,
+            rho_lR_used /*rho_pi: mirrors Pi = -rho_lR_used*mu_lR below*/);
+
+        // Bare law at the strained state (frozen nS, B1).
+        auto strained = computeVanDerWaalsMicroPotential(
+            film_state.w_eff, rho_lR_used, active_nS,
+            potential_exchange_params.micro_solid_density_reference,
+            potential_exchange_params.hamaker_constant,
+            potential_exchange_params.specific_surface, sign_sf,
+            potential_exchange_params.potential_augmentation_prefactor,
+            potential_exchange_params.potential_augmentation_exponent,
+            0.0 /*dnS_dnl: frozen nS in strained modes*/,
+            potential_exchange_params.micro_water_content_floor);
+
+        // Chain the law's n_l-derivative through w_eff BEFORE the cutoff
+        // product rule (the cutoff factor g is a function of the TRUE n_l).
+        strained.dmu_lR_dnl *= film_state.dw_eff_dnl;
+        strained.d2mu_lR_dnl2 *=
+            film_state.dw_eff_dnl * film_state.dw_eff_dnl;
+        applyMacroFloorCutoff(strained, n_l, local_context,
+                              potential_exchange_params);
+
+        // Derjaguin load term, UNCUT (mirrors the Off path, where the
+        // mechanical partner is added after the cutoff):
+        //   mu_load = +b*p_conf/rho_lR  [J/kg]  — compression raises mu_lR
+        //   (expulsion channel); reversible because the disjoining half
+        //   Pi(w_eff) stiffens through the SAME strained state (one Psi).
+        double const b_sf = local_context.biot_coefficient;
+        double const mu_load = b_sf * p_conf_sf / rho_lR_used;  // J/kg
+
+        out.mu_lR = strained.mu_lR + mu_load;               // J/kg
+        out.dmu_lR_dnl = strained.dmu_lR_dnl;               // J/kg per n_l
+        out.d2mu_lR_dnl2 = strained.d2mu_lR_dnl2;           // J/kg per n_l^2
+        out.dmu_lR_dnS = strained.dmu_lR_dnS;
+        out.dmu_lR_drho_SR = strained.dmu_lR_drho_SR;
+        out.dmu_lR_drho_lR =
+            strained.dmu_lR_drho_lR - mu_load / rho_lR_used;  // (J/kg)/(kg/m^3)
+        return;
+    }
+    (void)active_nS;
     // ── INTEGRABLE Maxwell mechanical partner (spec item 2; REPLACES the old
     // non-integrable +g*b*p_conf/rho_lR film delta) ─────────────────────────
     // mu_lR_mech = -[ (Pi + n_l*Pi')*eps_v + 0.5*b*K_drained*eps_v^2 ]/rho_lR,
@@ -1827,7 +1893,9 @@ computeReferenceMicroPorositySwellingStressIncrement(
     MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el,
     PotentialExchangeParameters const& potential_exchange_params,
     double const biot_coefficient = 1.0,
-    double const p_conf = std::numeric_limits<double>::quiet_NaN())
+    double const p_conf = std::numeric_limits<double>::quiet_NaN(),
+    double const eps_v = std::numeric_limits<double>::quiet_NaN(),
+    double const eps_v_prev = std::numeric_limits<double>::quiet_NaN())
 {
     using KV = MathLib::KelvinVector::KelvinVectorType<DisplacementDim>;
     auto const& params = potential_exchange_params;
@@ -1906,9 +1974,53 @@ computeReferenceMicroPorositySwellingStressIncrement(
             n_l, PotentialExchangeLocalSolveContext{}, params);
         double const sign_factor_film =
             microPotentialSignFactorFromParameters(params);
+
+        // ── Strained-film modes (DSM/STRAINED_FILM_IMPLEMENTATION.md) ──────
+        // Evaluate Pi at the SAME strained state w_eff the micro-potential
+        // fold point uses, so both halves of Psi_film see one film thickness
+        // (one-Psi consistency). The density fed to the strained state mirrors
+        // the hydraulic p_L_m choice exactly like the Pi evaluation below.
+        // eps_v NaN sentinel (callers without strain in scope) or mode Off ->
+        // w_eval = n_l, bit-for-bit the frozen-geometry path. p_conf is HELD
+        // FIXED across the step for BOTH states (mirrors the telescoping
+        // convention for the -b*p_conf drain).
+        double w_eval_prev = n_l_prev;
+        double w_eval_curr = n_l;
+        if (params.film_strain_coupling != FilmStrainCouplingMode::Off &&
+            std::isfinite(eps_v))
+        {
+            double const rho_pi_prev =
+                params.use_micro_liquid_density_for_micro_pressure ? rho_lR_prev
+                                                                   : rho_LR;
+            double const rho_pi_curr =
+                params.use_micro_liquid_density_for_micro_pressure ? rho_lR
+                                                                   : rho_LR;
+            double const eps_v_prev_used =
+                std::isfinite(eps_v_prev) ? eps_v_prev : eps_v;
+            w_eval_prev =
+                computeStrainedFilmState(
+                    params.film_strain_coupling, params.film_strain_kappa,
+                    n_l_prev, active_nS_prev_film, eps_v_prev_used, p_conf,
+                    rho_lR_prev, params.micro_solid_density_reference,
+                    params.hamaker_constant, params.specific_surface,
+                    sign_factor_film, params.potential_augmentation_prefactor,
+                    params.potential_augmentation_exponent,
+                    params.micro_water_content_floor, rho_pi_prev)
+                    .w_eff;
+            w_eval_curr =
+                computeStrainedFilmState(
+                    params.film_strain_coupling, params.film_strain_kappa, n_l,
+                    active_nS_curr_film, eps_v, p_conf, rho_lR,
+                    params.micro_solid_density_reference,
+                    params.hamaker_constant, params.specific_surface,
+                    sign_factor_film, params.potential_augmentation_prefactor,
+                    params.potential_augmentation_exponent,
+                    params.micro_water_content_floor, rho_pi_curr)
+                    .w_eff;
+        }
         double const mu_lR_prev_film =
             computeVanDerWaalsMicroPotential(
-                n_l_prev, rho_lR_prev, active_nS_prev_film,
+                w_eval_prev, rho_lR_prev, active_nS_prev_film,
                 params.micro_solid_density_reference, params.hamaker_constant,
                 params.specific_surface, sign_factor_film,
                 params.potential_augmentation_prefactor,
@@ -1917,7 +2029,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
                 .mu_lR;
         double const mu_lR_curr_film =
             computeVanDerWaalsMicroPotential(
-                n_l, rho_lR, active_nS_curr_film,
+                w_eval_curr, rho_lR, active_nS_curr_film,
                 params.micro_solid_density_reference, params.hamaker_constant,
                 params.specific_surface, sign_factor_film,
                 params.potential_augmentation_prefactor,
@@ -2089,11 +2201,14 @@ computeSwellingStressIncrement(
     MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el,
     PotentialExchangeParameters const& potential_exchange_params,
     double const biot_coefficient = 1.0,
-    double const p_conf = std::numeric_limits<double>::quiet_NaN())
+    double const p_conf = std::numeric_limits<double>::quiet_NaN(),
+    double const eps_v = std::numeric_limits<double>::quiet_NaN(),
+    double const eps_v_prev = std::numeric_limits<double>::quiet_NaN())
 {
     return computeReferenceMicroPorositySwellingStressIncrement<DisplacementDim>(
         n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
-        potential_exchange_params, biot_coefficient, p_conf);
+        potential_exchange_params, biot_coefficient, p_conf, eps_v,
+        eps_v_prev);
 }
 
 template <int DisplacementDim>
@@ -2161,7 +2276,8 @@ inline void updateSwellingState(
     sigma_sw.sigma_sw +=
         computeSwellingStressIncrement<DisplacementDim>(
             n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
-            potential_exchange_params, biot_coefficient, p_conf_swelling);
+            potential_exchange_params, biot_coefficient, p_conf_swelling,
+            variables.volumetric_strain, variables_prev.volumetric_strain);
 
     auto const C_el_inverse = C_el.inverse().eval();
 
