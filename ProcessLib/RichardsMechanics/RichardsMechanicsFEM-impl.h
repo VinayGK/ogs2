@@ -925,6 +925,19 @@ solveReferenceMassStoragePredictorState(
     return out;
 }
 
+// Localized floating-point-contraction guard (Phase A, 2026-06-09).
+// The micro 2x2 local solve forms FD central differences (r(x+h) - r(x-h)) that
+// are cancellation-prone; under the build default -ffp-contract=fast clang is
+// free to fuse the subtractions and divisions into FMAs and reassociate them.
+// On the dd1800 conditioning cliff (near-singular assembled tangent) that
+// reassociation perturbs the last bits enough to tip the global Newton path —
+// the if/else refactor boundary alone changed which fusions clang chose and
+// broke dd1800. Pinning FP_CONTRACT OFF for this translation unit's evaluation
+// of these differences removes that fragility and restores parent-identical
+// numerics. Portable STDC pragma (file scope; gcc honours this) + clang-specific
+// statement-scope `#pragma clang fp contract(off)` inside the body (clang honours
+// that form most reliably).
+#pragma STDC FP_CONTRACT OFF
 inline MicroMacroMassStorageCoupledSolveData
 solveReferenceMassStorageCoupledState(
     double const n_l_prev, double const rho_l_prev, double const rho_lR_prev,
@@ -933,6 +946,9 @@ solveReferenceMassStorageCoupledState(
     PotentialExchangeLocalSolveContext const& local_context,
     PotentialExchangeParameters const& potential_exchange_params)
 {
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#endif
     requirePositiveViscosity("solveReferenceMassStorageCoupledState", mu);
     constexpr double n_l_floor = 1e-16;
     constexpr double rho_floor = 1e-16;
@@ -1092,6 +1108,18 @@ solveReferenceMassStorageCoupledState(
     constexpr double residual_tolerance = 1e-10;
     constexpr double increment_tolerance = 1e-10;
 
+    // Phase A (2026-06-09): the micro 2x2 local Jacobian defaults to the FD
+    // central-difference path — bit-for-bit the parent (commit d98f5f8324)
+    // behaviour. The analytic micro 2x2 (evaluate_analytic_jacobian) is RETAINED
+    // but parked OFF: on the dense / EOS-active case it carries a J11/J12 error
+    // (masked on dd1400 because micro_liquid_density_a=1e-16 bypasses the EOS),
+    // so it is NOT solution-invariant on dd1800 — see
+    // DSM/AUDIT_maxwell_local_jacobian_2026-06-09.md (Phase B will correct it).
+    // Flip to true to opt in (Phase B development only). Deliberately decoupled
+    // from use_fd_jacobian_for_exchange (the block #3 macro p-p tangent flag),
+    // which keeps its own default so block #3 stays analytic exactly as parent.
+    constexpr bool use_analytic_micro_jacobian = false;
+
     for (int iter = 0; iter < max_iterations; ++iter)
     {
         auto const [mass_residual, density_residual, micro_potential, exchange] =
@@ -1111,10 +1139,15 @@ solveReferenceMassStorageCoupledState(
         }
 
         double J11 = 0.0, J12 = 0.0, J21 = 0.0, J22 = 0.0;
-        if (potential_exchange_params.use_fd_jacobian_for_exchange)
+        // Default (Phase A): FD micro 2x2 — parent-identical. The analytic micro
+        // 2x2 is taken ONLY when explicitly opted in via the parked
+        // use_analytic_micro_jacobian constexpr above; the existing
+        // use_fd_jacobian_for_exchange flag still forces FD when set.
+        if (potential_exchange_params.use_fd_jacobian_for_exchange ||
+            !use_analytic_micro_jacobian)
         {
-            // FD fallback (opt-in via use_fd_jacobian_for_exchange): central
-            // difference of the full `evaluate` over (n_l, rho_lR).
+            // FD path (default; also opt-in via use_fd_jacobian_for_exchange):
+            // central difference of the full `evaluate` over (n_l, rho_lR).
             double const h_n = 1e-8 * std::max(1.0, std::abs(n_l));
             double const h_rho = 1e-8 * std::max(1.0, std::abs(rho_lR));
             auto const [r1_n_plus, r2_n_plus] =
@@ -4488,12 +4521,15 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     // +(1-phi_M)*n_l*b*K_drained and d sigma_sw/d n_l =
                     // -(1-phi_M)*(p_film + n_l*Pi') routed through dn_l/dpL — the
                     // exact transpose of the eigenstress block (THM_DSM_Richards_
-                    // maxwell_web.wl L54, L135). Tangent-only: the residual is
-                    // unchanged, so the converged solution is invariant; effect on
-                    // iteration count is PREDICTED to improve, not yet verified
-                    // here (see DSM/AUDIT_maxwell_local_jacobian_2026-06-09.md).
-                    // Set false to compile the term out (FD/legacy fallback).
-                    constexpr bool enable_dsm_swelling_up_jacobian = true;
+                    // maxwell_web.wl L54, L135).
+                    //
+                    // u-side swelling Jacobian blocks (K[u,p]/K[u,u]) kept in code
+                    // but OFF by default — enabling them singularizes the assembled
+                    // tangent on stiff/dense MS33 cases (dd1800, ModelIII gap2mm:
+                    // SparseLU compute() failure) per the at-scale comparison
+                    // 2026-06-09; flip to true to opt in. Analytic micro 2x2 (a)
+                    // is unchanged — the strict win.
+                    constexpr bool enable_dsm_swelling_up_jacobian = false;
                     // Scope: already inside `if (potential_exchange_enabled)`,
                     // which IS the p^disj (Pi-path) DSM path. Do NOT additionally
                     // gate on saturation_micro: the Pi-path models REMOVE that

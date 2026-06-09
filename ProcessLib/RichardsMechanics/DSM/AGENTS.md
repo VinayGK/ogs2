@@ -225,3 +225,49 @@ Tangent-only gap-closing (Vinay's AceGen derivation, `THM_DSM_Richards_maxwell_w
   Full numbers + table in `AUDIT_maxwell_local_jacobian_2026-06-09.md`.
 - OPEN: a two-way-coupled benchmark (EOS active, `a` not bypassed) to measure the
   predicted global iters/step reduction — not yet exercised.
+
+---
+
+## Phase A — park analytic micro + u-side OFF; restore FD micro; fix dd1800 FMA fragility (2026-06-09, branch dsm_maxwell_jac_parallel)
+
+The 2026-06-09 "full consistent tangent" delivery above did NOT survive an
+at-scale 6-model MS33 check. Root cause established:
+
+1. **dd1800 broke from FMA fragility, not math.** The `if (use_fd_jacobian) {…}
+   else {analytic}` boundary changed clang's FMA fusion choices under the build
+   default `-ffp-contract=fast`; on the dd1800 near-singular tangent that tipped
+   the global Newton path.
+2. **Analytic micro 2×2 has a real J11/J12 error on the dense / EOS-active case.**
+   The §VERIFIED dd1400 result above is **solution-invariant ONLY under the
+   `a=1e-16` EOS-bypass** (`density_residual≡0` degenerates the 2×2). The audit's
+   (i)/(ii) claim is RELABELED accordingly (see CORRECTION note in
+   `AUDIT_maxwell_local_jacobian_2026-06-09.md`). Not solution-invariant on dd1800.
+3. **u-side blocks singularize** dd1800 and ModelIII gap2mm (SparseLU failure).
+
+Phase A (this delivery) — ship-safe non-regression, analytic + u-side RETAINED
+but parked OFF by default:
+
+- `solveReferenceMassStorageCoupledState` (RichardsMechanicsFEM-impl.h): added
+  `constexpr bool use_analytic_micro_jacobian = false` (parked off); gate now takes
+  the FD micro 2×2 path when `use_fd_jacobian_for_exchange || !use_analytic_micro_jacobian`
+  → **FD micro = parent**. `evaluate_analytic_jacobian` retained, opt-in (Phase B).
+  Decoupled from `use_fd_jacobian_for_exchange` (default false) so block #3 stays
+  analytic exactly as parent.
+- Localized FP-contraction guard around the function: file-scope
+  `#pragma STDC FP_CONTRACT OFF` + body `#pragma clang fp contract(off)` (clang) —
+  removes the dd1800 FD-reassociation fragility.
+- `enable_dsm_swelling_up_jacobian` back to `false` (~L4488).
+- `ParallelVectorMatrixAssembler.cpp` copy()-guard kept (math-neutral).
+
+VERIFIED 2026-06-09 (maxjac_omp NEW vs mxconj_omp parent OTHER, OGS_ASM_THREADS=4,
+fresh runs on identical inputs): all 6 MS33 (I dd1400/1600/1800, III gap2mm,
+IV pellets_kref20x, VII freeswelling) **complete on both**; identical accepted-step
+counts (308/311/308/438/636/507); final-VTU fields bit-identical to parent to
+round-off (every field ≤ ~1e-12 rel-to-scale; mostly 1e-14–1e-16). **dd1800 now
+completes** (308 steps, 0 rejects). Full table in the audit doc. Compare workspace
+`~/ogs-models/maxjac_compare_2026-06-09/{*/phaseA_new,*/phaseA_other}`.
+
+- OPEN (Phase B): correct the analytic micro 2×2 J11/J12 on the EOS-active/dense
+  case; re-derive/condition the u-side blocks so they don't singularize stiff cases;
+  then re-verify on a two-way-coupled (EOS-active) benchmark before flipping either
+  constexpr ON.

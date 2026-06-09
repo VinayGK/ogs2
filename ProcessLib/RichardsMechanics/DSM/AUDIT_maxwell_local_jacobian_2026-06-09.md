@@ -202,3 +202,96 @@ Predicted (not yet verified): on a benchmark where the EOS is active (`a` not
 bypassed) and the global problem is genuinely two-way coupled, enabling the u-side
 blocks + analytic micro tangent is expected to reduce global iters/step; this was
 not exercised here.
+
+> **CORRECTION (2026-06-09, Phase A) — the "solution-invariant" claim above held
+> ONLY on dd1400.** §(i) asserted the analytic micro 2×2 is solution-invariant
+> (max rel diff 6.748e-15). That measurement was on Model I **dd1400**, where
+> `micro_liquid_density_a=1e-16` bypasses the micro EOS (CLAUDE.md §2 EOS-bypass
+> regime): `density_residual ≡ 0`, so the 2×2 degenerates and the J11/J12 detail
+> is never exercised. When the at-scale 6-model comparison was run, the **dd1800**
+> (dense / EOS-sensitive, near-singular assembled tangent) case did **not**
+> reproduce the parent under the analytic-ON + u-side-ON build — the analytic
+> micro 2×2 carries a real **J11/J12 error on the dense/EOS-active case**, and the
+> u-side blocks **singularize** the assembled tangent on dd1800 and ModelIII
+> gap2mm (SparseLU compute() failure). The analytic micro 2×2 is therefore **NOT
+> solution-invariant in general** — only under the dd1400 EOS-bypass. The earlier
+> §(i)/(ii) "verified solution-invariant + quadratic convergence" wording is
+> retained above as historical record but is **superseded** by this correction.
+
+---
+
+## Phase A — ship-safe non-regression (2026-06-09, branch dsm_maxwell_jac_parallel)
+
+Goal: a binary functionally **bit-identical to the parent** (commit d98f5f8324,
+binary `build/mxconj_omp/bin/ogs`) on all 6 MS33 cases **including dd1800**,
+while KEEPING the new code (analytic micro 2×2, u-side blocks) in the tree but
+OFF by default.
+
+### Root cause (established before Phase A)
+
+1. **FMA fragility from the if/else refactor.** Wrapping the previously
+   top-level FD micro 2×2 in an `if (use_fd_jacobian_for_exchange) {…} else
+   {analytic}` boundary changed which FMA fusions clang chose under the build
+   default `-ffp-contract=fast`. On the **dd1800 conditioning cliff** (dense,
+   near-singular assembled tangent) that last-bit perturbation tipped the global
+   Newton path and broke the run. Cause is the *codegen boundary*, not the math.
+2. **Analytic micro 2×2 J11/J12 dense-case error.** The closed-form micro 2×2 has
+   a real J11/J12 error on the **EOS-active / dense** case. dd1400 masked it
+   because `micro_liquid_density_a=1e-16` bypasses the EOS (`density_residual≡0`),
+   degenerating the 2×2 — see the CORRECTION note above. So the analytic micro
+   tangent must be **parked OFF** until Phase B corrects it.
+3. **u-side blocks singularize stiff cases.** `enable_dsm_swelling_up_jacobian`
+   ON drives the assembled tangent singular on dd1800 and ModelIII gap2mm
+   (SparseLU compute() failure). Parked OFF.
+
+### What changed (files + lines)
+
+- **`RichardsMechanicsFEM-impl.h`, `solveReferenceMassStorageCoupledState`:**
+  - Added `constexpr bool use_analytic_micro_jacobian = false;` (parked off) and
+    changed the Newton-loop Jacobian gate to take the FD central-difference path
+    when `use_fd_jacobian_for_exchange || !use_analytic_micro_jacobian`. Net
+    default = **FD micro 2×2 = parent behaviour**. The analytic
+    `evaluate_analytic_jacobian` lambda is **retained, reachable** by flipping the
+    constexpr (Phase B only). Deliberately **decoupled** from
+    `use_fd_jacobian_for_exchange`, whose default stays `false` so block #3 (the
+    macro p–p tangent) remains **analytic exactly as the parent**.
+  - Added a localized FP-contraction guard around the function: file-scope
+    `#pragma STDC FP_CONTRACT OFF` (gcc) + statement-scope
+    `#pragma clang fp contract(off)` inside the body under `#if defined(__clang__)`
+    (clang). Tames the cancellation-prone FD central differences so they are not
+    FMA-reassociated — removes the dd1800 fragility.
+- **`RichardsMechanicsFEM-impl.h`, u-side gate (~4488):**
+  `enable_dsm_swelling_up_jacobian` set back to `false` (uncommitted edit kept).
+- **`ParallelVectorMatrixAssembler.cpp`:** copy()-guard kept as-is (math-neutral).
+
+### Verification — all 6 MS33, maxjac_omp (NEW, Phase A) vs mxconj_omp (OTHER, parent)
+
+`OGS_ASM_THREADS=4`, both binaries run fresh on identical staged inputs.
+Final-VTU field diffs measured by `compare_fields.py`. "rel-to-scale" = max abs
+diff over the field's own max-abs value (the meaningful round-off metric; the
+headline per-element `max_rel_diff` spikes are all at near-zero-value elements).
+
+| case | NEW done? | OTHER done? | accepted steps (NEW=OTHER) | rejected | max abs-diff rel-to-scale | verdict |
+|------|:---------:|:-----------:|:--------------------------:|:--------:|:--------------------------:|:-------:|
+| Model I dd1400 | yes | yes | 308 | 0 | sigma 1.5e-8 Pa / 4.9e6 → ~3e-15 | bit-identical (round-off) |
+| Model I dd1600 | yes | yes | 311 | 0 | sigma 3.0e-8 Pa / 1.4e7 → ~2e-15 | bit-identical (round-off) |
+| Model I dd1800 | yes | yes | 308 | 0 | sigma 6.0e-8 Pa / 4.1e7 → ~1.5e-15; micro_pressure 0.0 | bit-identical (round-off) |
+| Model III gap2mm | yes | yes | 438 | — | sigma 5.5e-7 Pa / 1.1e7 → ~5e-14 | bit-identical (round-off) |
+| Model IV pellets_kref20x | yes | yes | 636 | — | micro_exchange_source 4.4e-17 / 6.0e-4 → 7.4e-14; sigma 1.4e-6 / 9.1e6 → ~1.5e-13 | bit-identical (round-off) |
+| Model VII freeswelling | yes | yes | 507 | — | sigma 1.7e-6 Pa / 4.2e5 → ~4e-12; epsilon 4.3e-15 | bit-identical (round-off) |
+
+All 6 complete on both binaries; **dd1800 now completes** (308 accepted steps, 0
+rejected — identical step count to parent). Every field difference is at round-off
+relative to the field's own scale (≤ ~1e-12 rel-to-scale; mostly 1e-14–1e-16).
+The single ModelIV `micro_exchange_source` per-element `max_rel_diff` of 1.97e-5
+is at an element whose value is ~1e-13 (a near-zero source crossing); the absolute
+difference there is 2e-18 and the field-wide max abs diff is 4.4e-17 (7.4e-14 of
+scale) — pure round-off, not divergence. The parent binary version string confirms
+parent provenance: `archive/dsm_consolidate_on_film_2026-06-08-4-gd98f5f83`.
+
+Conclusion: **Phase A goal met** — the maxjac_omp binary is functionally
+bit-identical to the parent on all 6 MS33 cases. Analytic micro 2×2 and the u-side
+blocks remain in the tree, opt-in, OFF by default, pending Phase B.
+
+Compare workspace: `~/ogs-models/maxjac_compare_2026-06-09/` (subdirs
+`*/phaseA_new`, `*/phaseA_other`; driver `run_phaseA.sh`).
