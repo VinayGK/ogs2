@@ -103,13 +103,22 @@ struct VanDerWaalsMicroPotentialData
 //   lambda = potential_augmentation_exponent [m]     characteristic film thickness (calibrate)
 // Total: mu_lR = sign * (mu_lR_vdW + mu_lR_aug)   — ADDITIVE, augmentation never replaces vdW
 // Setting K = 0 (default) reduces exactly to the pure vdW form.
+//
+// Optional disjoining-pressure FLOOR (n_l_floor > 0): the value formulas
+// (mu_lR_vdW, mu_aug, omega_l, film thickness h) are evaluated at
+//   n_l_eff = max(n_l, n_l_floor),
+// so Pi ~ 1/n_l^3 is CAPPED at Pi(n_l_floor) instead of diverging as n_l -> 0.
+// When clamped (n_l < n_l_floor) the value is CONSTANT in n_l, so the
+// n_l-derivatives (dmu_lR_dnl, d2mu_lR_dnl2 and the augmentation chain) are 0;
+// when n_l >= n_l_floor (incl. the default n_l_floor = 0) every formula and
+// derivative is byte-identical to the unfloored form.
 inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     double const n_l, double const rho_lR, double const nS, double const rho_SR,
     double const hamaker_constant, double const specific_surface,
     double const potential_sign_factor = 1.0,
     double const potential_augmentation_prefactor = 0.0,
     double const potential_augmentation_exponent = 0.0,
-    double const dnS_dnl = 0.0)
+    double const dnS_dnl = 0.0, double const n_l_floor = 0.0)
 {
     if (!(n_l > 0.0))
     {
@@ -164,14 +173,32 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
             potential_augmentation_exponent);
     }
 
+    if (!(n_l_floor >= 0.0))
+    {
+        OGS_FATAL(
+            "computeVanDerWaalsMicroPotential requires n_l_floor >= 0, got "
+            "{:g}.",
+            n_l_floor);
+    }
+
     constexpr double pi = 3.141592653589793238462643383279502884;
+
+    // Disjoining-pressure floor: evaluate every VALUE formula at n_l_eff =
+    // max(n_l, n_l_floor). `clamped` flags that n_l sits below the floor, where
+    // Pi is held at Pi(n_l_floor) and is therefore FLAT in n_l (n_l-derivatives
+    // -> 0). With the default n_l_floor = 0 the OGS_FATAL above already enforced
+    // n_l > 0, so clamped == false and n_l_eff == n_l exactly (byte-identical).
+    bool const clamped = (n_l_floor > 0.0) && (n_l < n_l_floor);
+    double const n_l_eff = clamped ? n_l_floor : n_l;  // [-]
 
     VanDerWaalsMicroPotentialData out;
 
-    out.omega_l = n_l * rho_lR / (nS * rho_SR);
+    out.omega_l = n_l_eff * rho_lR / (nS * rho_SR);
 
-    out.domega_l_dnl = rho_lR / (nS * rho_SR);
-    out.domega_l_drho_lR = n_l / (nS * rho_SR);
+    // omega_l value uses n_l_eff; its n_l-derivative is 0 when clamped (the
+    // clamped omega_l is constant in n_l). Unclamped: rho_lR/(nS*rho_SR) as before.
+    out.domega_l_dnl = clamped ? 0.0 : rho_lR / (nS * rho_SR);
+    out.domega_l_drho_lR = n_l_eff / (nS * rho_SR);
     out.domega_l_dnS = -out.omega_l / nS;
     out.domega_l_drho_SR = -out.omega_l / rho_SR;
 
@@ -186,42 +213,60 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     //   = J/kg  ✓
     // The leading /rho_lR converts J/m^3 (Pa) to J/kg — dimensionally
     // required by the exchange equation rho_l_hat = alpha * (mu_LR - mu_lR).
+    // Value uses n_l_eff (the floored water content). When clamped this is the
+    // capped Pi(n_l_floor); when unclamped (incl. floor = 0) it is the exact
+    // unfloored mu_lR_vdW.
     out.mu_lR = potential_sign_factor * prefactor * (nS * nS * nS) *
-                (rho_SR * rho_SR * rho_SR) / (n_l * n_l * n_l * rho_lR);
+                (rho_SR * rho_SR * rho_SR) /
+                (n_l_eff * n_l_eff * n_l_eff * rho_lR);  // J/kg
 
     // PARTIAL derivatives (nS held fixed). The TOTAL d mu_lR/d n_l under
     // current_porosity_split (nS = 1 - n_l LIVE) additionally picks up the
     // dmu_lR_dnS * dnS/dnl chain, applied after the augmentation contributions
     // below via the dnS_dnl multiplier (F2, 2026-06-06; tangent-only).
-    out.dmu_lR_dnl = -3.0 * out.mu_lR / n_l;
+    //
+    // n_l-DERIVATIVES: 0 when clamped (capped mu_lR is flat in n_l), else the
+    // exact cubic-core forms; divide by n_l_eff so the unclamped branch matches
+    // the value's n_l_eff (== n_l unclamped). The rho_lR / nS / rho_SR partials
+    // are NOT n_l-derivatives and stay exact (the capped value still depends on
+    // them through n_l_eff).
+    out.dmu_lR_dnl = clamped ? 0.0 : -3.0 * out.mu_lR / n_l_eff;  // J/kg
     out.dmu_lR_drho_lR = -out.mu_lR / rho_lR;  // non-zero after /rho_lR fix
     out.dmu_lR_dnS = 3.0 * out.mu_lR / nS;
     out.dmu_lR_drho_SR = 3.0 * out.mu_lR / rho_SR;
     // PARTIAL second derivative of the cubic core (mu_core ~ C/n_l^3, nS fixed):
     //   d^2 mu_core/d n_l^2 = 12*C/n_l^5 = 12*mu_core/n_l^2.   [J/kg]
-    out.d2mu_lR_dnl2 = 12.0 * out.mu_lR / (n_l * n_l);
+    // 0 when clamped (flat in n_l).
+    out.d2mu_lR_dnl2 =
+        clamped ? 0.0 : 12.0 * out.mu_lR / (n_l_eff * n_l_eff);  // J/kg
 
     // Lumped exponential force augmentation:
     // h = n_l / (nS * rho_SR * Sa)  [mean water film thickness, m]
     // mu_lR_aug = sign * K * exp(-h / lambda)
     if (potential_augmentation_prefactor > 0.0)
     {
-        double const xi = n_l / (potential_augmentation_exponent * nS *
-                                 rho_SR * specific_surface);
+        // Film thickness h ~ n_l uses n_l_eff, so the augmentation value mu_aug
+        // is capped at the floor exactly like the vdW core.
+        double const xi = n_l_eff / (potential_augmentation_exponent * nS *
+                                     rho_SR * specific_surface);
         double const mu_aug =
             potential_sign_factor * potential_augmentation_prefactor *
             std::exp(-xi);
 
-        out.mu_lR += mu_aug;
-        out.dmu_lR_dnl += -mu_aug * xi / n_l;
-        // xi = n_l / (lambda * nS * rho_SR * Sa) — independent of rho_lR,
+        out.mu_lR += mu_aug;  // J/kg
+        // n_l-derivative: 0 when clamped (mu_aug flat in n_l), else the exact
+        // -mu_aug*xi/n_l_eff form.
+        out.dmu_lR_dnl += clamped ? 0.0 : -mu_aug * xi / n_l_eff;  // J/kg
+        // xi = n_l_eff / (lambda * nS * rho_SR * Sa) — independent of rho_lR,
         // so mu_aug has no rho_lR dependence; dmu_lR_drho_lR from vdW term only
         out.dmu_lR_dnS += mu_aug * xi / nS;
         out.dmu_lR_drho_SR += mu_aug * xi / rho_SR;
         // PARTIAL second derivative of the augmentation (nS fixed): xi linear in
         // n_l so xi/n_l = const, d mu_aug/d n_l = -mu_aug*(xi/n_l), hence
         //   d^2 mu_aug/d n_l^2 = mu_aug*(xi/n_l)^2 = mu_aug*xi^2/n_l^2.   [J/kg]
-        out.d2mu_lR_dnl2 += mu_aug * xi * xi / (n_l * n_l);
+        // 0 when clamped (flat in n_l).
+        out.d2mu_lR_dnl2 +=
+            clamped ? 0.0 : mu_aug * xi * xi / (n_l_eff * n_l_eff);  // J/kg
     }
 
     // ── F2 (2026-06-06, tangent-only): live-nS chain for dmu_lR/dnl ──────────
@@ -232,7 +277,15 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     // 3*mu/nS plus any augmentation term), so the chain is consistent across
     // both contributions. Tangent-only: the converged forward solve uses a
     // finite-difference Jacobian and is unaffected.
-    out.dmu_lR_dnl += out.dmu_lR_dnS * dnS_dnl;
+    //
+    // Disjoining floor: when clamped, the disjoining law is held at Pi(n_l_floor)
+    // and is FLAT in n_l (task spec: the n_l-derivatives of the clamped value are
+    // 0), so the TOTAL n_l-tangent is 0 -> skip the live-nS chain as well.
+    // Unclamped (incl. the default floor = 0) -> unchanged.
+    if (!clamped)
+    {
+        out.dmu_lR_dnl += out.dmu_lR_dnS * dnS_dnl;
+    }
 
     return out;
 }

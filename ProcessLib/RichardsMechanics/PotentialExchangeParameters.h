@@ -142,6 +142,17 @@ struct PotentialExchangeParameters
     double potential_augmentation_prefactor = 0.0;     // K      [J/kg], must be >= 0
     double potential_augmentation_exponent = 0.0;  // lambda [m],    must be > 0 if K > 0
 
+    // ── Disjoining-pressure FLOOR via a micro-water-content lower bound ───────
+    // Optional lower bound n_l,min [-] on the water content USED IN THE vdW
+    // DISJOINING LAW ONLY (Pi ~ 1/n_l^3). When > 0, the law is evaluated at
+    // max(n_l, micro_water_content_floor), so Pi is CAPPED at Pi(floor) instead
+    // of diverging as n_l -> 0. This is local to the disjoining evaluation: it
+    // does NOT change the global n_l, the exchange, or the porosity. Below the
+    // floor the clamped Pi is FLAT in n_l, so its n_l-derivatives are 0 there.
+    // 0.0 (default) -> no floor -> evaluation is byte-identical to before.
+    // Value source: PRJ-supplied (Vinay's call), not defaulted in code.
+    double micro_water_content_floor = 0.0;  // n_l,min [-], must be >= 0
+
     // Optional consistency switches for the hierarchical DSM branch.
     // Default micro-pressure density is the confined micro-liquid density.
     bool use_micro_liquid_density_for_micro_pressure = true;

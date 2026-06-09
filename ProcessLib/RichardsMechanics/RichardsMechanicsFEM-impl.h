@@ -781,7 +781,9 @@ solveReferenceMassStoragePredictorState(
             potential_exchange_params.specific_surface,
             microPotentialSignFactorFromParameters(potential_exchange_params),
             potential_exchange_params.potential_augmentation_prefactor,
-            potential_exchange_params.potential_augmentation_exponent);
+            potential_exchange_params.potential_augmentation_exponent,
+            0.0 /*dnS_dnl*/,
+            potential_exchange_params.micro_water_content_floor);
         // Increment E: fold the film delta into mu_lR (and dmu_lR_dnl, which the
         // analytic predictor Jacobian below reads through micro_potential) using
         // the SAME micro density the vdW formula consumed. No-op when the flag is
@@ -954,7 +956,9 @@ solveReferenceMassStorageCoupledState(
             potential_exchange_params.hamaker_constant, potential_exchange_params.specific_surface,
             microPotentialSignFactorFromParameters(potential_exchange_params),
             potential_exchange_params.potential_augmentation_prefactor,
-            potential_exchange_params.potential_augmentation_exponent);
+            potential_exchange_params.potential_augmentation_exponent,
+            0.0 /*dnS_dnl*/,
+            potential_exchange_params.micro_water_content_floor);
         // Increment E: fold the film delta into mu_lR with the in-iteration micro
         // density rho_lR (the 2x2 unknown the vdW formula just consumed). The 2x2
         // local Jacobian is finite-difference over THIS lambda, so it picks up the
@@ -1223,7 +1227,8 @@ inline VanDerWaalsMicroPotentialData computeActiveMicroPotential(
         potential_exchange_params.hamaker_constant, potential_exchange_params.specific_surface,
         microPotentialSignFactorFromParameters(potential_exchange_params),
             potential_exchange_params.potential_augmentation_prefactor,
-            potential_exchange_params.potential_augmentation_exponent, dnS_dnl);
+            potential_exchange_params.potential_augmentation_exponent, dnS_dnl,
+            potential_exchange_params.micro_water_content_floor);
 
     // ── Film-pressure coupling (maxwell sec.5): ONE evaluator ────────────────
     // Fold the smoothly-gated film delta into mu_lR via the shared helper, so the
@@ -1907,7 +1912,8 @@ computeReferenceMicroPorositySwellingStressIncrement(
                 params.micro_solid_density_reference, params.hamaker_constant,
                 params.specific_surface, sign_factor_film,
                 params.potential_augmentation_prefactor,
-                params.potential_augmentation_exponent)
+                params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
+                params.micro_water_content_floor)
                 .mu_lR;
         double const mu_lR_curr_film =
             computeVanDerWaalsMicroPotential(
@@ -1915,7 +1921,8 @@ computeReferenceMicroPorositySwellingStressIncrement(
                 params.micro_solid_density_reference, params.hamaker_constant,
                 params.specific_surface, sign_factor_film,
                 params.potential_augmentation_prefactor,
-                params.potential_augmentation_exponent)
+                params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
+                params.micro_water_content_floor)
                 .mu_lR;
 
         // Density mirrors the hydraulic p_L_m choice EXACTLY (see OFF branch and
@@ -2043,7 +2050,8 @@ computeReferenceMicroPorositySwellingStressIncrement(
             params.micro_solid_density_reference, params.hamaker_constant,
             params.specific_surface, sign_factor,
             params.potential_augmentation_prefactor,
-            params.potential_augmentation_exponent)
+            params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
+            params.micro_water_content_floor)
             .mu_lR;
     double const mu_lR_curr =
         computeVanDerWaalsMicroPotential(
@@ -2051,7 +2059,8 @@ computeReferenceMicroPorositySwellingStressIncrement(
             params.micro_solid_density_reference, params.hamaker_constant,
             params.specific_surface, sign_factor,
             params.potential_augmentation_prefactor,
-            params.potential_augmentation_exponent)
+            params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
+            params.micro_water_content_floor)
             .mu_lR;
 
     // MIRROR the hydraulic p_L_m density choice exactly (see
@@ -4250,7 +4259,9 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             ->potential_augmentation_prefactor,
                         potential_exchange_params_ptr
                             ->potential_augmentation_exponent,
-                        dnS_dnl_pu);
+                        dnS_dnl_pu,
+                        potential_exchange_params_ptr
+                            ->micro_water_content_floor);
                     double const Pi_pu = -rho_film * vdw_pu.mu_lR;          // Pa
                     double const dPi_dnl_pu = -rho_film * vdw_pu.dmu_lR_dnl;  // Pa/n_l
                     double const d2Pi_dnl2_pu =
@@ -4432,7 +4443,10 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             potential_exchange_params_ptr
                                 ->potential_augmentation_prefactor,
                             potential_exchange_params_ptr
-                                ->potential_augmentation_exponent);
+                                ->potential_augmentation_exponent,
+                            0.0 /*dnS_dnl*/,
+                            potential_exchange_params_ptr
+                                ->micro_water_content_floor);
                         double rho_d_film_swj = rho_LR;
                         if (potential_exchange_params_ptr
                                 ->use_micro_liquid_density_for_micro_pressure)

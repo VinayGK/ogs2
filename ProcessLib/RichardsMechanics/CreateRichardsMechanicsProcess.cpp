@@ -593,6 +593,21 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "RichardsMechanics: {} macro_floor_cutoff_width must be >= 0, got {:g}.",
             context, macro_floor_cutoff_width);
     }
+
+    // Disjoining-pressure floor via a micro-water-content lower bound: clamps the
+    // water content used in the vdW disjoining law so Pi = Pi(max(n_l, floor)),
+    // capping Pi instead of diverging as n_l -> 0. 0 (default) -> no floor -> the
+    // disjoining evaluation is byte-identical to before.
+    auto const micro_water_content_floor = config.getConfigParameter<double>(
+        "micro_water_content_floor",
+        defaults ? defaults->micro_water_content_floor : 0.0);
+    if (!(micro_water_content_floor >= 0.0))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} micro_water_content_floor must be >= 0, got "
+            "{:g}.",
+            context, micro_water_content_floor);
+    }
     // (The former "experimental -- verify before trusting" WARN was dropped:
     // the film coupling is now the consolidated standard path, not opt-in.)
     return PotentialExchangeParameters{
@@ -615,6 +630,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         local_jacobian_perturbation,
         potential_augmentation_prefactor,
         potential_augmentation_exponent,
+        micro_water_content_floor,
         use_micro_liquid_density_for_micro_pressure,
         film_pressure_coupling,
         film_pressure_gate_width,
