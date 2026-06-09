@@ -199,3 +199,29 @@ Process.cpp` (parse + resolve). DONE.
   (ii) the *current/evolving* rho_d variant (K riding porosity, needs a tangent
   term, double-count risk vs the exp(-xi) porosity dependence) is NOT
   implemented -- this delivery is initial/target rho_d only.
+
+---
+
+## Full consistent tangent for the Maxwell local Jacobian (2026-06-09, branch dsm_maxwell_jac_parallel)
+
+Tangent-only gap-closing (Vinay's AceGen derivation, `THM_DSM_Richards_maxwell_web.wl`); residual UNCHANGED.
+
+- (a) Analytic micro 2×2 Jacobian in `solveReferenceMassStorageCoupledState`
+  (RichardsMechanicsFEM-impl.h): replaced the 4 FD `evaluate()` calls with a
+  closed-form `J = d(mass_res, dens_res)/d(n_l, ρ_lR)` (`evaluate_analytic_jacobian`
+  lambda). Reuses the helper-chain μ_lR derivatives; recovers the live-nS chain by
+  re-running the vdW helper with the right `dnS_dnl`. Branch on
+  `fd_jacobian_for_exchange` (default analytic, FD path kept as fallback). J22=1 exact.
+- (b) Enabled the u-side swelling Jacobian: `enable_dsm_swelling_up_jacobian`
+  false→true (~L4394). The film-ON K[u,p]/K[u,u] block already matched the Maxwell
+  identity (`d σ_sw/d ε_v = +(1-φ_M)·n_l·b·K_drained`; `d σ_sw/d n_l = -(1-φ_M)·(p_film+n_l·Π')`),
+  no formula fix needed.
+- VERIFIED 2026-06-09 (Model I dd1400, Maxwell film path; maxjac vs pre-edit floor binary):
+  (i) solution-unchanged max rel diff = 6.748e-15 (PASS); (ii) local 2×2 cascade
+  quadratic, `|R_{k+1}|/|R_k|²` ~0.24 const (4.84e-2 → 5.57e-4 → 7.23e-8 → 1.3e-15),
+  analytic = FD to round-off; (iii) global iters/step identical 1.338 (max 2) pre vs
+  post (this benchmark's global problem is near-linear per step, `a=1e-16` EOS-bypass —
+  global count cannot move; gain is in the local cascade). SPLICE B not needed.
+  Full numbers + table in `AUDIT_maxwell_local_jacobian_2026-06-09.md`.
+- OPEN: a two-way-coupled benchmark (EOS active, `a` not bypassed) to measure the
+  predicted global iters/step reduction — not yet exercised.

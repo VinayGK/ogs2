@@ -272,8 +272,16 @@ void ParallelVectorMatrixAssembler::assemble(
         std::vector<double> local_K_data;
         std::vector<double> local_b_data;
 
-        // copy to avoid concurrent access
-        auto const jac_asm = jacobian_assembler_.copy();
+        // Per-thread Jacobian assembler copy is needed for thread isolation
+        // (num_threads_ > 1). This non-Jacobian assemble() path never uses the
+        // assembler, but copy() is still skipped at one thread so that
+        // assemblers which hard-OGS_FATAL on copy()
+        // (CompareJacobiansJacobianAssembler owns a log ofstream) remain usable
+        // in the serial case.
+        if (num_threads_ > 1)
+        {
+            [[maybe_unused]] auto const jac_asm = jacobian_assembler_.copy();
+        }
 
         auto stats_this_thread = stats->clone();
         MultiMatrixElementCache<2> cache{M, K, b, stats_this_thread->data,
@@ -356,8 +364,19 @@ void ParallelVectorMatrixAssembler::assembleWithJacobian(
         std::vector<double> local_b_data;
         std::vector<double> local_Jac_data;
 
-        // copy to avoid concurrent access
-        auto const jac_asm = jacobian_assembler_.copy();
+        // Per-thread Jacobian assembler. For num_threads_ > 1 copy() to avoid
+        // concurrent access to one shared assembler. For the serial case
+        // (num_threads_ == 1) use the original directly: assemblers that own a
+        // non-copyable resource and hard-OGS_FATAL on copy()
+        // (CompareJacobiansJacobianAssembler owns a log ofstream) are then
+        // usable; the copy exists only for thread isolation, moot at 1 thread.
+        std::unique_ptr<AbstractJacobianAssembler> jac_asm_copy;
+        AbstractJacobianAssembler* jac_asm = &jacobian_assembler_;
+        if (num_threads_ > 1)
+        {
+            jac_asm_copy = jacobian_assembler_.copy();
+            jac_asm = jac_asm_copy.get();
+        }
         auto stats_this_thread = stats->clone();
 
         MultiMatrixElementCache<1> cache{b, Jac, stats_this_thread->data,
