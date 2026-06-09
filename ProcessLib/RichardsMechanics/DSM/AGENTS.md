@@ -341,3 +341,38 @@ point 1's mechanism), not a micro-tangent error.
   exists in the registered MS33 suite — to measure any global iters/step gain the
   consistent micro tangent could buy. u-side singularization (Phase A point 3) is
   untouched by this diagnosis and remains OPEN.
+
+---
+
+## Phase C — dd1800 conditioning DIAGNOSED + fix found (2026-06-10) — DONE
+
+Resolves Phase B OPEN direction (b) ("condition the global tangent so dd1800 is no
+longer 1e-12-fragile, then analytic-ON is safe").
+
+DIAGNOSIS (measured, env-gated SVD probe, since reverted): the single-element MS33
+tangent is 12×12; the **pressure block is intrinsically near-singular on every
+step** (4 pressure diagonals ~4e-17 vs displacement ~1e6; **cond ≈ 5.77e22**;
+null-space = a pure pressure DOF). Root of the #110 break: Eigen `IterScaling`
+(`<scaling>true>`) overflows the ~0 pressure row to **NaN**; the bare un-scaled
+matrix factorizes fine. Analytic-ON only nudges a pressure off-diagonal across the
+IterScaling overflow boundary; FD parent stays just under. So: **global
+conditioning (the scaling step), not a tangent error.**
+
+FIX (verified, no literal, no recompile): set the `<linear_solver>` to
+**`<scaling>false</scaling>`** (keep SparseLU). With analytic-ON + scaling=false,
+ALL 6 MS33 complete with parent-identical step counts (308/311/308/438/636/507) and
+parent-identical fields (≤6e-12 rel-to-scale). dd1800 #110 now passes (Δt=5720,
+0 rejects). iters/step byte-identical to parent (no global iteration gain — EOS
+bypass; the analytic tangent's value is correctness + per-GP cost, not convergence).
+scaling=false is a no-op on the current FD default (verified parent-identical on the
+clean binary), so the PRJ change is safe but only meaningful once analytic-ON ships.
+
+u-side blocks (`enable_dsm_swelling_up_jacobian`) under the fix: dd1400/1600/1800
+become parent-identical, BUT Model III gap2mm still singularizes and **Model IV /
+Model VII are NOT solution-invariant** (dry_density 12% / sigma 0.25% shifts) — the
+u-side blocks remain OPEN/unsafe, separate from this conditioning fix.
+
+Status: NO change committed pending owner decision (the fix is meaningful only
+bundled with the analytic-ON enablement, a numerical-method call → present to Vinay
+per §9). Tree clean; analytic flag + diagnostic reverted; maxjac_omp rebuilt clean
+(3b64bf9e). Full numbers in DSM/AUDIT_maxwell_local_jacobian_2026-06-09.md Phase C.

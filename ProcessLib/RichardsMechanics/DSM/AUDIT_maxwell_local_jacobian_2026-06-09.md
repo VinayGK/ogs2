@@ -322,3 +322,117 @@ blocks remain in the tree, opt-in, OFF by default, pending Phase B.
 
 Compare workspace: `~/ogs-models/maxjac_compare_2026-06-09/` (subdirs
 `*/phaseA_new`, `*/phaseA_other`; driver `run_phaseA.sh`).
+
+---
+
+## Phase C — dd1800 global-conditioning diagnosis + fix (2026-06-10, Option C)
+
+Goal: condition the global problem so the analytic micro 2×2 (and the u-side
+blocks) can run on dd1800 without the SparseLU `compute()` failure at step #110.
+Diagnostic + verification only; NO physics/residual change. Workspace:
+`~/ogs-models/dd1800_cond_2026-06-10/`. Binary: `build/maxjac_omp/bin/ogs`
+(rebuilt analytic-ON for the experiments, reverted to Phase-A default afterwards).
+
+### Mesh / DOF context
+
+The MS33 mesh `square_1e-2_quad_1e0.vtu` is a **single axisymmetric quad, 4 nodes**.
+The monolithic RM tangent is therefore **12×12** (node-interleaved `[p, u_x, u_y]`
+per node; pressure DOFs at global indices 0,3,6,9). The near-singularity is in a
+12×12 matrix — a genuine local coupling property, not a large-mesh accumulation.
+
+### Diagnosis — measured conditioning (env `DSM_DUMP_TANGENT`, since removed)
+
+A temporary env-gated SVD probe in `EigenLinearSolver::compute()` (dense SVD of the
+assembled global tangent `A`, single-element so cheap; reverted after measurement)
+gave, on the analytic-ON dd1800 run:
+
+- **Every time step** (incl. the last good #109): the 4 pressure-DOF diagonals are
+  **~4e-17 … 7e-17**, the 8 displacement diagonals **~5.8e5 … 2.4e6**. So
+  `mindiag ≈ sigma_min ≈ 4.17e-17`, `sigma_max = 2.409e6`, **cond ≈ 5.77e22 on
+  every step** (measured). The smallest-singular-value right vector is a **pure
+  pressure DOF** (`null-space dominant DOF index = 6`, |v|=1.0000) — the
+  rank-deficient direction is the **pressure block**.
+- The pressure block carries essentially **zero diagonal stiffness** because, in
+  the MS33 setup, (i) `micro_liquid_density_a=1e-16` decouples the micro EOS
+  (pressure storage ≈ 0), (ii) the Bishop χ saturation cutoff removes the p–u
+  capillary diagonal at the saturated endpoint, and (iii) intrinsic permeability
+  ~2.7e-21 m² gives near-zero flux. This is a ~15-orders block-scale imbalance
+  (pressure ~1e-17 vs displacement ~1e6) that is **intrinsic to the benchmark**,
+  present on every step.
+- **Mechanism of the #110 failure — it is the `scaling` step, NOT the bare matrix.**
+  At step #110 (first full step after the suction ramp plateau, t=1.749927e6 s,
+  Δt=5720 s) the 4 pressure diagonals reported by the probe **go to NaN** *under
+  `<scaling>true</scaling>`* (Eigen `IterScaling`, Ruiz equilibration). With
+  `<scaling>false</scaling>` the **same** step #110 tangent has finite ~4e-17
+  pressure diagonals (cond ≈ 5.77e22) and SparseLU factorizes it cleanly — **no
+  NaN anywhere in the run**. IterScaling normalises each row/col by ∝1/√(∞-norm);
+  on a numerically-~0 pressure row that factor overflows, and `inf·(tiny offdiag)
+  → NaN`, destroying a matrix that was *barely* factorizable un-scaled. The
+  analytic-ON FP perturbation (~1e-12, skipping the 4 FD `evaluate()` calls) only
+  pushes a pressure off-diagonal across the IterScaling overflow boundary at #110;
+  the FD parent stays just under it. So the blocker is **the equilibration of an
+  intrinsically near-singular pressure block**, confirming the Phase-B
+  reattribution to global conditioning (not a micro-tangent error).
+
+### Conditioning options tested (analytic-ON dd1800)
+
+| option | recompile? | literal? | dd1800 result |
+|--------|:----------:|:--------:|---------------|
+| (a1) **SparseLU, `<scaling>false</scaling>`** | no | no | **COMPLETES**, 308 steps, 0 rejects — *recommended* |
+| (a2) GMRES + ILUT precon (scaling on/off) | no | tol literal in PRJ | COMPLETES, 308 steps, 0 rejects |
+| (a3) BiCGSTAB + ILUT | no | tol literal | FAILS at #110 (BiCGSTAB breakdown on the near-singular non-SPD system) |
+| (b) Tikhonov ε·I | yes | ε is a §1.2/§3 literal | not needed — (a1) fixes it with no literal |
+| (c) time-stepper/abstols around #110 | no | PRJ literals | not needed — (a1) fixes it with no literal |
+
+### Verification — all 6 MS33, analytic-ON + `<scaling>false</scaling>` vs parent-FD
+
+Analytic-ON (`use_analytic_micro_jacobian=true`) **no-scale** binary vs the parent
+FD binary (`build/mxconj_omp/bin/ogs`, commit d98f5f8324) on the original PRJs.
+Accepted-step counts **identical**; final-VTU fields parent-identical to round-off:
+
+| case | accepted steps (both) | max rel-to-scale | iters/step (analytic = parent) |
+|------|:---------------------:|:----------------:|:------------------------------:|
+| Model I dd1400 | 308 | 5.0e-15 | identical |
+| Model I dd1600 | 311 | 1.5e-15 | identical |
+| **Model I dd1800** | **308** | **2.3e-15** | identical (mean 2.667) |
+| Model III gap2mm | 438 | 2.7e-14 | identical (mean 8.364) |
+| Model IV pellets_kref20x | 636 | 1.6e-12 | identical |
+| Model VII freeswelling | 507 | 6.0e-12 | identical (mean 12.850) |
+
+Measured: iters/step are **byte-identical** analytic-ON vs parent-FD on every case
+(EOS-bypass `a=1e-16`, near-linear per step) — the analytic micro tangent gives
+**no global iteration gain** here; its value is a verified-correct tangent + a
+per-GP cost saving (4 fewer `evaluate()` calls per micro-Newton iter), not faster
+global convergence. Whether to ship analytic-ON by default is an owner decision.
+
+`<scaling>false</scaling>` is a **no-op on the current shipped FD default**:
+re-run on the clean Phase-A binary (analytic-OFF, commit 3b64bf9e) it completes
+dd1800 in 308 steps, parent-identical to the FD scaling=true baseline (≤3.4e-15).
+So the PRJ change is safe to land independent of the analytic-ON decision, but is
+*only meaningful* once analytic-ON (or the u-side blocks) are enabled.
+
+### u-side blocks under the conditioning fix — STILL NOT SAFE (separate issue)
+
+With `enable_dsm_swelling_up_jacobian=true` + analytic-ON + `<scaling>false>`:
+- dd1400/dd1600/dd1800 complete and stay **parent-identical** (≤9e-16). The
+  conditioning fix **does** rescue dd1800 from the u-side singularization.
+- **Model III gap2mm still FAILS** (~t=8.9e5 s, 33 nonlinear-solver-fail events) —
+  the u-side blocks drive a genuine singularity on the gap geometry that
+  `scaling=false` does NOT fix.
+- **Model IV and Model VII complete but are NOT solution-invariant** under the
+  u-side blocks: measured final-time field diffs vs parent-FD are **dry_density_solid
+  12% (mIV), sigma 0.25% (mVII)** — real solution changes, well above round-off,
+  with different accepted-step trajectories. A consistent tangent must leave the
+  fixed point unchanged; a 12% shift indicates the u-side blocks are not yet
+  safe to enable (tangent/residual inconsistency or a path-dependent convergence
+  under the loose `reltols=1e-6`). The u-side blocks therefore remain **parked OFF**;
+  fixing them is separate from this conditioning work — owner decision.
+
+### Bottom line
+
+The dd1800 #110 break is **global conditioning** (the Ruiz `IterScaling` of an
+intrinsically near-singular pressure block — cond ≈ 5.8e22, a ~1e-17 pressure
+diagonal — overflowing to NaN), **not** a tangent error. The clean fix is
+**`<linear_solver>` `<scaling>false</scaling>`** (no literal, no recompile, all 6
+MS33 verified parent-identical). It unblocks the analytic micro 2×2 on dd1800. The
+u-side blocks need separate work (mIII singularizes, mIV/mVII solution-shift).
