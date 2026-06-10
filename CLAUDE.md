@@ -443,6 +443,18 @@ Conversational discussion is exempt from this section.
 
 ---
 
+### §6.9 Parallel dispatch — standing rule (Vinay, 2026-06-10)
+
+When a task involves multiple INDEPENDENT simulations, models, builds,
+or analysis sub-tasks, START THEM SIMULTANEOUSLY — one per available
+processor-budget slot (`sysctl -n hw.physicalcpu`; size OMP threads so
+total ≈ cores) — NEVER one-at-a-time. The same applies to agent
+sub-tasks: independent work is fanned out in one dispatch, not queued.
+Sequence only genuinely dependent steps (design → build → verify).
+Don't fan out trivial seconds-long tasks (spawn overhead exceeds the
+gain). Mirrors the global profile rule of 2026-06-08; codified here at
+Vinay's instruction so it binds every agent operating in this repo.
+
 ## §7 Authorship and commit hygiene
 
 You MUST NOT write commit messages, code comments, or docs that imply
