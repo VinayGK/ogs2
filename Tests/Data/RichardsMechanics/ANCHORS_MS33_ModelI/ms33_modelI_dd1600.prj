@@ -100,7 +100,8 @@ Official benchmark specs (MSXX theoretical_benchmarking.tex, Table TH-G_model_pa
                      (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
                       Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
-            </potential_exchange>
+                  <micro_water_content_floor>7.06e-5</micro_water_content_floor>
+    </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>
                 <youngs_modulus>E</youngs_modulus>

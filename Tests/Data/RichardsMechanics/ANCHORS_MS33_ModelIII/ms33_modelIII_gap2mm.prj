@@ -43,7 +43,7 @@ Boundary conditions (official spec):
                        median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
         dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27), clay rho_d=1600 kg/m3
         target sigma : 14.161 MPa
-        fitted K     : 103879.0 J/kg (clay; potential_augmentation_prefactor)
+        fitted K     : 103879 J/kg (clay; Dixon EMDD=rho_d dd1600 = 14.161 MPa (Dixon 2023 Fig.1), re-fit on maxwell_conjugate 2026-06-09 -> Ps 14.01; potential_augmentation_prefactor)
       Material parameters (source per group):
         elastic (E, nu)              : EURAD-2 MS33 spec, Table TH-G_model_parameters  [TODO(Vinay): confirm]
         retention (P0=27MPa, a=0.45)  : EURAD-2 MS33 spec (van Genuchten)
@@ -101,12 +101,13 @@ Boundary conditions (official spec):
                 <!-- K [Villar-calibrated; SUPERSEDED 2026-06-01 -> Dixon recalibrated value below] at rho_d=1600 kg/m³ via Pi-path;
                      Π uses bulk ρ_LR (Gibbs–Duhem consistent); steps 2+3, 2026-05-21 -->
                 <!-- K recalibrated 2026-06-01: dt-converged Dixon(2023) reference K (P* basis); prev value 71900 -->
-                <potential_augmentation_prefactor>103879.0</potential_augmentation_prefactor>
+                <potential_augmentation_prefactor>103879</potential_augmentation_prefactor>
                 <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
                      (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
                       Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
-            </potential_exchange>
+                  <micro_water_content_floor>7.06e-5</micro_water_content_floor>
+    </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>
                 <youngs_modulus>E</youngs_modulus>
@@ -166,9 +167,7 @@ Boundary conditions (official spec):
                 <property><name>biot_coefficient</name><type>Constant</type><value>1.0</value></property>
                 <property>
                     <name>permeability</name>
-                    <type>KozenyCarman</type>
-                    <initial_permeability>k0_clay</initial_permeability>
-                    <initial_porosity>phi0_clay</initial_porosity>
+                    <type>Constant</type><value>1.17406e-19</value>
                 </property>
                 <property>
                     <name>porosity</name>

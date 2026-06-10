@@ -39,7 +39,7 @@ Official benchmark spec (MSXX §Model IV):
                        properties of MX-80 bentonite", Applied Clay Science 241:106998;
                        median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
         dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27)
-        bentonite    : rho_d=1600 kg/m3, target 14.161 MPa, fitted K=103879.0 J/kg (potential_augmentation_prefactor)
+        bentonite    : rho_d=1600 kg/m3, target 14.161 MPa, fitted K=103879 J/kg (clay; Dixon dd1600 EMDD=rho_d, maxwell_conjugate 2026-06-09 -> Ps 14.01; pellet override 20600, dd900 NaN) (potential_augmentation_prefactor)
         pellet       : rho_d=900 kg/m3, target sigma_sat=0.400 MPa (Vinay 2026-06-08), fitted
                        K_pellet=20600 J/kg via the per-medium <medium id="1"> override (calibrated in
                        a standalone constant-volume cell; gentle-VG calibration WRC, sigma_sat
@@ -108,7 +108,7 @@ Official benchmark spec (MSXX §Model IV):
                      Pellet zone carries its OWN calibrated K override K_pellet=20600 (see medium id=1 below), NOT this K; n_s_pellet=0.324 → smaller Pi contribution
                      (n_s enters delta_sigma_sw computation). Calibrated 2026-05-21. -->
                 <!-- K recalibrated 2026-06-01: dt-converged Dixon(2023) reference K (P* basis); prev value 71900 -->
-                <potential_augmentation_prefactor>103879.0</potential_augmentation_prefactor>
+                <potential_augmentation_prefactor>103879</potential_augmentation_prefactor>
                 <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length
                      (smectite long-range exponential regime h>1.4 nm; Leneveu & Rand 1977,
                       Israelachvili & Adams 1978 as reviewed in Israelachvili 2011 §13) -->
@@ -127,7 +127,8 @@ Official benchmark spec (MSXX §Model IV):
                     <initial_micro_water_content>6.59e-4</initial_micro_water_content>
                     <potential_augmentation_prefactor>20600</potential_augmentation_prefactor>
                 </medium>
-            </potential_exchange>
+                  <micro_water_content_floor>7.06e-5</micro_water_content_floor>
+    </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>
                 <youngs_modulus>E</youngs_modulus>
@@ -187,9 +188,7 @@ Official benchmark spec (MSXX §Model IV):
                 <property><name>biot_coefficient</name><type>Constant</type><value>1.0</value></property>
                 <property>
                     <name>permeability</name>
-                    <type>KozenyCarman</type>
-                    <initial_permeability>k0_clay</initial_permeability>
-                    <initial_porosity>phi0_clay</initial_porosity>
+                    <type>Constant</type><value>1.17406e-19</value>
                 </property>
                 <property>
                     <name>porosity</name>
@@ -259,9 +258,7 @@ Official benchmark spec (MSXX §Model IV):
                 <property><name>biot_coefficient</name><type>Constant</type><value>1.0</value></property>
                 <property>
                     <name>permeability</name>
-                    <type>KozenyCarman</type>
-                    <initial_permeability>k0_pellet</initial_permeability>
-                    <initial_porosity>phi0_pellet</initial_porosity>
+                    <type>Constant</type><value>1.17406e-18</value>
                 </property>
                 <property>
                     <name>porosity</name>

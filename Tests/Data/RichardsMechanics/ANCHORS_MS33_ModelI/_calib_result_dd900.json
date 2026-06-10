@@ -1,0 +1,16 @@
+{
+  "dd": 900,
+  "converged": false,
+  "reason": "initial run failed",
+  "logtail": "info: Number of threads: 1\ninfo: [time] Assembly took 0.00012 s.\ninfo: [time] Applying Dirichlet BCs took 3e-06 s.\ninfo: ------------------------------------------------------------------\ninfo: *** Eigen solver compute()\ninfo: -> scale\ninfo: -> compute with Eigen iterative linear solver BiCGSTAB (precon ILUT)\ninfo: ------------------------------------------------------------------\ninfo: *** Eigen solver solve()\ninfo: -> solve with Eigen iterative linear solver BiCGSTAB (precon ILUT)\ninfo: \t iteration: 0/10000\ninfo: \t residual: nan\n\nerror: Failed during Eigen linear solve\ninfo: [time] Linear solver took 2.5e-05 s.\nerror: Newton: The linear solver failed.\ninfo: [time] Solving process #0 took 0.000163 s in time step #103\nerror: The nonlinear solver failed in time step #103 at t = 1893877.2233632712 s for process #0.\ninfo: [time] Time step #103 took 0.000171 s.\nwarning: Time step will be rejected due to nonlinear solver divergence.\ncritical: /Users/vinaykumar/git/ogs-worktrees/dsm_native_maxwell_conjugate_wt/ProcessLib/TimeLoop.cpp:393 computeTimeStepping() \nerror: The new step size of 0.10000000000000001 is the same as that of the previous rejected time step. \nPlease re-run ogs with a proper adjustment in the numerical settings, \ne.g. those for time stepper, local or global non-linear solver.\nerror: OGS terminated with error on 2026-06-09 22:41:47+0200.\n",
+  "target": 0.050945441162984856,
+  "history": [
+    {
+      "K": 103879.0,
+      "Ps_sim": null,
+      "ok": false,
+      "info": "info: Number of threads: 1\ninfo: [time] Assembly took 0.00012 s.\ninfo: [time] Applying Dirichlet BCs took 3e-06 s.\ninfo: ------------------------------------------------------------------\ninfo: *** Eigen solver compute()\ninfo: -> scale\ninfo: -> compute with Eigen iterative linear solver BiCGSTAB (precon ILUT)\ninfo: ------------------------------------------------------------------\ninfo: *** Eigen solver solve()\ninfo: -> solve with Eigen iterative linear solver BiCGSTAB (precon ILUT)\ninfo: \t iteration: 0/10000\ninfo: \t residual: nan\n\nerror: Failed during Eigen linear solve\ninfo: [time] Linear solver took 2.5e-05 s.\nerror: Newton: The linear solver failed.\ninfo: [time] Solving process #0 took 0.000163 s in time step #103\nerror: The nonlinear solver failed in time step #103 at t = 1893877.2233632712 s for process #0.\ninfo: [time] Time step #103 took 0.000171 s.\nwarning: Time step will be rejected due to nonlinear solver divergence.\ncritical: /Users/vinaykumar/git/ogs-worktrees/dsm_native_maxwell_conjugate_wt/ProcessLib/TimeLoop.cpp:393 computeTimeStepping() \nerror: The new step size of 0.10000000000000001 is the same as that of the previous rejected time step. \nPlease re-run ogs with a proper adjustment in the numerical settings, \ne.g. those for time stepper, local or global non-linear solver.\nerror: OGS terminated with error on 2026-06-09 22:41:47+0200.\n"
+    }
+  ],
+  "wall_s": 0.15513181686401367
+}
