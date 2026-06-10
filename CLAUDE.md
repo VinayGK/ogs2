@@ -392,6 +392,38 @@ Conversational discussion is exempt from this section.
 6. **Resolved TODOs must be marked DONE with date.** Never leave a
    resolved item open; never mark an item DONE unless verified.
 
+7. **Provenance & traceability gate — before EVERY commit and push.**
+   This gate fires on every commit/push; failing any check is a
+   FLAG, STOP (announce per §0.1) — never commit/push through it.
+   Before staging, verify and report:
+
+   1. **Header–value consistency.** For every DSM PRJ (or
+      parameter-bearing artifact) in the change, each literal cited in
+      its §12 provenance block / header (fitted K, target sigma,
+      densities, E, ν, …) MUST equal the live `<…>` value in the same
+      file. A header naming a different number than the value it
+      documents is a STOP. (Incident 2026-06-10: III/IV headers cited
+      K=43182 while the value and the frozen run used 103879.)
+
+   2. **Cross-artifact consistency.** A committed value MUST agree
+      across the PRJ, its calibration record (`_calib_result*.json`),
+      and any report / manifest / metrics that quote it. A value that
+      differs between the PRJ and the doc citing it is a STOP.
+      (Incident 2026-06-10: dd1400 carried a superseded K=45217 against
+      the maxwell re-fit K=46431.6 used in the report.)
+
+   3. **Traceability.** Every committed numerical literal MUST trace to
+      a source per §1.1 / §12.1 — cited locator, a converged
+      calibration run, or a prior approved commit. No orphan literals,
+      no stale values silently carried over from a superseded run.
+
+   4. **Frozen-copy currency.** When a submission bundle freezes copies
+      of PRJs / figures / provenance headers, the frozen copies MUST be
+      re-synced from the corrected source at commit time — never commit
+      a bundle whose frozen copy predates a provenance fix.
+
+   Run the check, state what was verified, and only then commit/push.
+
 ---
 
 ## §7 Authorship and commit hygiene
@@ -446,6 +478,7 @@ If unclear where docs should go → ASK before committing.
 | DSM PRJ missing §12 provenance header              | FLAG, STOP  |
 | DSM PRJ calibration K from non-{Dixon,Villar} src  | FLAG, STOP  |
 | DSM PRJ material param from non-§12 source         | ASK USER    |
+| Provenance/traceability inconsistency at commit/push | FLAG, STOP |
 | Coding / refactor / formatting                     | PROCEED     |
 | Documentation update reflecting approved work      | PROCEED     |
 
