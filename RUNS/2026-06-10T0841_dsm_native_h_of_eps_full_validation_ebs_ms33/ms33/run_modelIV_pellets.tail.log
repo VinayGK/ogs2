@@ -1,0 +1,98 @@
+### run_modelIV_pellets — first 15 lines ###
+info: OGS started on 2026-06-10 08:30:48+0200 in serial mode.
+info: This is OpenGeoSys-6 version archive/dsm_consolidate_on_film_2026-06-08-4-gd98f5f83.dirty. Log version: 2, Log level: info.
+info: Output directory /Users/vinaykumar/git/ogs/RUNS/_INPROGRESS_full_validation/ms33/out_modelIV_pellets created.
+info: OMP_NUM_THREADS is set to: 3
+info: Eigen use 3 threads
+info: Reading project file ms33_modelIV_pellets.prj.
+info: readRasters ...
+info: readRasters done
+info: FunctionParameter: sigma0
+info: GroupBasedParameter: E
+info: ConstantParameter: nu
+info: ConstantParameter: phi0_clay
+info: ConstantParameter: k0_clay
+info: ConstantParameter: phi0_pellet
+info: ConstantParameter: k0_pellet
+
+### last 80 lines ###
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.010773 s.
+info: Convergence criterion, component 0: |dx|=1.6855e+02, |x|=1.1294e+09, |dx|/|x|=1.4924e-07
+info: Convergence criterion, component 1: |dx|=1.3209e-17, |x|=4.5181e-16, |dx|/|x|=2.9235e-02
+info: Convergence criterion, component 2: |dx|=2.7567e-08, |x|=1.1369e-01, |dx|/|x|=2.4248e-07
+info: [time] Iteration #1 took 0.057539 s.
+info: [time] Solving process #0 took 0.05755 s in time step #633
+info: [time] Time step #633 took 0.101186 s.
+info: Time step #634 started. Time: 17116737.913620051. Step size: 86400.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.045492 s.
+info: [time] Applying Dirichlet BCs took 0.000191 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.01022 s.
+info: Convergence criterion, component 0: |dx|=1.6169e+02, |x|=1.1294e+09, |dx|/|x|=1.4316e-07
+info: Convergence criterion, component 1: |dx|=9.9229e-18, |x|=4.5178e-16, |dx|/|x|=2.1964e-02
+info: Convergence criterion, component 2: |dx|=2.6422e-08, |x|=1.1369e-01, |dx|/|x|=2.3240e-07
+info: [time] Iteration #1 took 0.056107 s.
+info: [time] Solving process #0 took 0.056116 s in time step #634
+info: [time] Time step #634 took 0.10053 s.
+info: Time step #635 started. Time: 17203137.913620051. Step size: 86400.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.046879 s.
+info: [time] Applying Dirichlet BCs took 0.000204 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.010622 s.
+info: Convergence criterion, component 0: |dx|=1.5511e+02, |x|=1.1294e+09, |dx|/|x|=1.3734e-07
+info: Convergence criterion, component 1: |dx|=1.1074e-17, |x|=4.5154e-16, |dx|/|x|=2.4526e-02
+info: Convergence criterion, component 2: |dx|=2.5325e-08, |x|=1.1369e-01, |dx|/|x|=2.2275e-07
+info: [time] Iteration #1 took 0.057916 s.
+info: [time] Solving process #0 took 0.057925 s in time step #635
+info: [time] Time step #635 took 0.101536 s.
+info: Time step #636 started. Time: 17280000. Step size: 76862.086379949003.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.045955 s.
+info: [time] Applying Dirichlet BCs took 0.000196 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.010136 s.
+info: Convergence criterion, component 0: |dx|=1.3707e+02, |x|=1.1294e+09, |dx|/|x|=1.2137e-07
+info: Convergence criterion, component 1: |dx|=1.0625e-17, |x|=4.5168e-16, |dx|/|x|=2.3524e-02
+info: Convergence criterion, component 2: |dx|=2.1926e-08, |x|=1.1369e-01, |dx|/|x|=1.9286e-07
+info: [time] Iteration #1 took 0.056498 s.
+info: [time] Solving process #0 took 0.056508 s in time step #636
+info: [time] Time step #636 took 0.098148 s.
+info: [time] Output of timestep 636 took 0.005346 s.
+info: The whole computation of the time stepping took 636 steps, in which
+	 the accepted steps are 636, and the rejected steps are 0.
+
+info: [time] Simulation completed. It took 164.584 s.
+info: OGS completed on 2026-06-10 08:33:32+0200.
+real 164.68
+user 161.73
+sys 1.39
+EXIT=0 EPOCH=1781073212

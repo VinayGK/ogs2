@@ -1,0 +1,83 @@
+<process>
+    <name>RM</name>
+    <type>RICHARDS_MECHANICS</type>
+    <integration_order>4</integration_order>
+    <!-- <dimension> removed: OGS MR !4766 takes dimension from the main mesh. -->
+    <constitutive_relation>
+      <type>MFront</type>
+      <behaviour>ModCamClay_semiExpl_constE</behaviour>
+      <material_properties>
+        <material_property name="YoungModulus" parameter="YoungModulus"/>
+        <material_property name="PoissonRatio" parameter="PoissonRatio"/>
+        <material_property name="CriticalStateLineSlope" parameter="CriticalStateLineSlope0"/>
+        <material_property name="SwellingLineSlope" parameter="SwellingLineSlope0"/>
+        <material_property name="VirginConsolidationLineSlope" parameter="VirginConsolidationLineSlope0"/>
+        <material_property name="CharacteristicPreConsolidationPressure" parameter="InitialPreConsolidationPressure0"/>
+      </material_properties>
+      <initial_values>
+                    <state_variable name="PreConsolidationPressure" parameter="InitialPreConsolidationPressure0"/>
+                    <state_variable name="VolumeRatio" parameter="InitialVolumeRatio"/>
+                </initial_values>
+    </constitutive_relation>
+    <process_variables>
+      <pressure>pressure</pressure>
+      <displacement>displacement</displacement>
+    </process_variables>
+    <secondary_variables>
+      <secondary_variable internal_name="ElasticStrain" output_name="ElasticStrain"/>
+      <secondary_variable internal_name="EquivalentPlasticStrain" output_name="EquivalentPlasticStrain"/>
+      <secondary_variable internal_name="sigma" output_name="sigma"/>
+      <secondary_variable internal_name="swelling_stress" output_name="swelling_stress"/>
+      <secondary_variable internal_name="epsilon" output_name="epsilon"/>
+      <secondary_variable internal_name="velocity" output_name="velocity"/>
+      <secondary_variable internal_name="saturation" output_name="saturation"/>
+      <secondary_variable internal_name="porosity" output_name="porosity"/>
+      <secondary_variable internal_name="transport_porosity" output_name="transport_porosity"/>
+      <secondary_variable internal_name="dry_density_solid" output_name="dry_density_solid"/>
+      <!-- micro_saturation removed: Pi-path tracks adsorbed water via micro_water_content -->
+      <secondary_variable internal_name="micro_pressure" output_name="micro_pressure"/>
+      <secondary_variable internal_name="micro_water_content" output_name="micro_water_content"/>
+      <secondary_variable internal_name="micro_porosity" output_name="micro_porosity"/>
+      <secondary_variable internal_name="micro_exchange_source" output_name="micro_exchange_source"/>
+      <secondary_variable internal_name="PreConsolidationPressure" output_name="PCPr"/>
+      <secondary_variable internal_name="PlasticVolumetricStrain" output_name="PlVolStr"/>
+      <secondary_variable internal_name="VolumeRatio" output_name="VolumeRatio"/>
+    </secondary_variables>
+    <specific_body_force>0 0</specific_body_force>
+    <micro_porosity>
+      <nonlinear_solver>
+        <maximum_iterations>100000</maximum_iterations>
+        <residuum_tolerance>1e-10</residuum_tolerance>
+        <increment_tolerance>1e-12</increment_tolerance>
+      </nonlinear_solver>
+      <mass_exchange_coefficient>10e-14</mass_exchange_coefficient>
+    </micro_porosity>
+    <!-- ============================================================
+         NATIVE HIERARCHICAL DSM (Pi-path vdW) micro engine.
+         Tuller/vdW micro-geometry from ANCHORS MS33-ModelI dd1800 (Tuller-Or 2002 family).
+         vdW prefactor K RECALIBRATED to Task-13's swelling pressure 11.46 MPa
+         (single-element constant-volume fit in calibrate_K/: K=58000 -> 11.484 MPa).
+         micro_solid_volume_fraction_reference = 1 - phi0(Task-13 0.37037) = 0.62963.
+         ============================================================ -->
+    <potential_exchange>
+      <enabled>true</enabled>
+      <pressure_tolerance>1e-12</pressure_tolerance>
+      <hamaker_constant>2.2e-20</hamaker_constant>
+      <specific_surface>523.0</specific_surface>
+      <micro_solid_density_reference>2780.0</micro_solid_density_reference>
+      <micro_solid_volume_fraction_reference>0.6296296296296297</micro_solid_volume_fraction_reference>
+      <micro_solid_volume_fraction_mode>current_porosity_split</micro_solid_volume_fraction_mode>
+      <micro_liquid_density_reference>100.0</micro_liquid_density_reference>
+      <micro_liquid_density_a>1e-16</micro_liquid_density_a>
+      <micro_liquid_density_b>1.0</micro_liquid_density_b>
+      <initial_micro_water_content>1.3162e-3</initial_micro_water_content>
+      <local_nonlinear_solve_mode>scalar_micro_macro_mass_storage_mode</local_nonlinear_solve_mode>
+      <micro_potential_convention>negative_attractive</micro_potential_convention>
+      <use_micro_liquid_density_for_micro_pressure>true</use_micro_liquid_density_for_micro_pressure>
+      <vdw_augmentation_prefactor>58000</vdw_augmentation_prefactor>
+      <vdw_augmentation_decay_length>7.5e-7</vdw_augmentation_decay_length>
+    </potential_exchange>
+    <explicit_hm_coupling_in_unsaturated_zone>false</explicit_hm_coupling_in_unsaturated_zone>
+    <initial_stress>sigma0</initial_stress>
+    <mass_lumping>true</mass_lumping>
+  </process>

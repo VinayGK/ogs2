@@ -677,6 +677,32 @@ A change that alters a material-parameter literal in a DSM PRJ MUST:
 
 ---
 
+## §13 Run-bundle snapshots — the standard results mechanism
+
+Adopted 2026-06-10 at Vinay's explicit instruction.
+
+Every completed simulation campaign MUST be archived as ONE
+self-contained snapshot bundle under `RUNS/` (committed and pushed),
+named
+
+```
+RUNS/<YYYY-MM-DD>T<HHMM>_<branch>_<short-slug>/
+```
+
+(date+time = campaign finish; branch = the binary's git branch).
+The bundle README opens with the RUN BUNDLE header: bundle name,
+finish time, branch @ commit, binary path, the local path of the
+full raw outputs, and pointers to report / beamer / tex artifacts
+(or explicit `TODO`). Contents: as-run PRJs, all post-processing
+scripts, all figures and CSVs, run logs, `final_state/` VTUs.
+Full VTU time series stay OUT of git (local; path recorded).
+Bundles are HISTORICAL RECORDS: never edited retroactively —
+superseded by a new bundle with a cross-link. Full specification:
+`RUNS/README.md`. README claims obey §5 (predicted ≠ verified);
+DSM PRJs in bundles keep their §12 provenance headers.
+
+---
+
 ## Scope
 
 These rules apply to all work within `/Users/vinaykumar/git/ogs`.

@@ -1,0 +1,43 @@
+=== COLUMN BVP run Mon Jun  1 00:21:00 CEST 2026 ===
+Warning: VTU ASCII files are only meant for debugging.
+Warning: VTU ASCII files are only meant for debugging.
+Warning: VTU ASCII files are only meant for debugging.
+Warning: VTU ASCII files are only meant for debugging.
+Warning: VTU ASCII files are only meant for debugging.
+splitting column boundary (lab dims R=17.5mm, H=12.5mm):
+  left: 41 nodes, 40 line cells -> col_r175_h125_left.vtu
+  right: 41 nodes, 40 line cells -> col_r175_h125_right.vtu
+  bottom: 9 nodes, 8 line cells -> col_r175_h125_bottom.vtu
+  top: 9 nodes, 8 line cells -> col_r175_h125_top.vtu
+done.
+-- meshes --
+col_r175_h125.vtu
+col_r175_h125_bdry.vtu
+col_r175_h125_bottom.vtu
+col_r175_h125_left.vtu
+col_r175_h125_right.vtu
+col_r175_h125_top.vtu
+-- running ogs --
+ogs EXIT=0
+Time: 17280000.
+-- phi_M(z) profile --
+file: beacon_t33_column_le_ts_281_t_17280000.000000.vtu  t= 17280000.0
+  z[mm]      S     phi     n_l    phi_M suction[MPa]
+   0.00  0.000  0.5299  0.5299   0.0000        0.000
+   1.25  0.000  0.5295  0.5295   0.0000       19.060
+   2.50  0.000  0.5285  0.5285   0.0000       26.423
+   3.75  0.000  0.5280  0.5280   0.0000       29.268
+   5.00  0.000  0.5278  0.5278   0.0000       30.376
+   6.25  0.000  0.5277  0.5277   0.0000       30.843
+   7.50  0.000  0.5271  0.5246   0.0054       31.128
+   8.75  0.000  0.5263  0.5193   0.0146       31.371
+  10.00  0.000  0.5257  0.5153   0.0215       31.559
+  11.25  0.000  0.5253  0.5128   0.0257       31.677
+  12.50  0.000  0.5252  0.5120   0.0271       31.717
+
+phi_M: min=-0.0001 max=0.0271 mean=0.0082  (phi_M0 ~ 0.42)
+fraction of column with phi_M<0.02 (macro gone): 78.0%
+
+VERDICT: if max phi_M ~0 everywhere -> floor NOT lifted (sharp-Pi over-homogenises, mesh-independent).
+         if phi_M survives behind the front -> floor IS lifted (gap recoverable by BVP).
+=== END ===

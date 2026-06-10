@@ -1,0 +1,8 @@
+=== MGR23 block-k0 CALIBRATION sweep (lambda=0 held; pellet k0 6.5e-16 lambda=9 frozen) ===
+MEASURED MGR23: pellet 1.34, block 1.51, gap 0.17 (~43% closure); init gap 0.30
+case    block_k0  done  lastT  pel_rd  blk_rd    gap  blk_nl  pel_nl    szz
+base     5.0e-19  True    210   1.350   1.541  0.192   0.426   0.145   2.89
+x10      5.0e-18  True    210   1.351   1.539  0.188   0.430   0.095   2.89
+x100     5.0e-17  True    210   1.352   1.538  0.187   0.430   0.063   2.85
+x1k      5.0e-16  True    210   1.352   1.538  0.186   0.430   0.059   2.84
+x10k     5.0e-15  True    210   1.352   1.538  0.186   0.430   0.058   2.84

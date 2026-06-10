@@ -1,0 +1,12 @@
+run,quantity,value,units,t_s
+modelI_dd1400,sigma_zz_mean_final,-4.9218,MPa,17280000
+modelI_dd1600,sigma_zz_mean_final,-14.1602,MPa,17280000
+modelI_dd1800,sigma_zz_mean_final,-40.8448,MPa,17280000
+modelIII_gap2mm,mean_stress_Top,9.6354,MPa,17280000
+modelIII_gap2mm,mean_stress_Central,9.6324,MPa,17280000
+modelIII_gap2mm,mean_stress_Bottom,9.6059,MPa,17280000
+modelIV_pellets,mean_stress_Top,6.4902,MPa,17280000
+modelIV_pellets,mean_stress_Central,6.4944,MPa,17280000
+modelIV_pellets,mean_stress_Bottom,1.2068,MPa,17280000
+modelVII_freeswelling,void_ratio_e_end_free_swelling,1.4995,-,17280000
+modelVII_freeswelling,void_ratio_e_end,1.4954,-,20736000

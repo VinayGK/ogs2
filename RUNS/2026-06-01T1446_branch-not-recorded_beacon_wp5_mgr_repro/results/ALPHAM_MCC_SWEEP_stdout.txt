@@ -1,0 +1,8 @@
+=== MGR23 MCC alpha_M sweep (constE, FEBEX pc_pel=0.4, ramp10d, dt0.1d) ===
+LE ref: gap 0.192 (pel 1.350/blk 1.541); pellet elastic cap ~1.353 (rho_d>1.36 => YIELDED)
+ alpha_M  done lastT[d]  rej  pel_rd  blk_rd    gap  verdict
+   1e-13 False      9.4   52   1.300   1.600  0.301  WALLED @9.4d
+   1e-14 False     14.3   52   1.306   1.593  0.288  WALLED @14.3d
+   1e-15 False     64.1   46   1.323   1.573  0.250  WALLED @64.1d
+   1e-16  True    210.0    1   1.321   1.574  0.253  elastic-only; gap 0.253
+   1e-17  True    210.0    1   1.302   1.598  0.296  elastic-only; gap 0.296

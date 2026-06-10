@@ -1,0 +1,32 @@
+info: OGS started on 2026-06-09 06:02:57+0200 in serial mode.
+info: This is OpenGeoSys-6 version archive/dsm_consolidate_on_film_2026-06-08-2-g295dc649. Log version: 2, Log level: info.
+info: Eigen use 1 threads
+info: Reading project file beacon_t33_column_le.prj.
+info: readRasters ...
+info: readRasters done
+info: FunctionParameter: sigma0
+info: ConstantParameter: E
+info: ConstantParameter: nu
+info: ConstantParameter: phi0
+info: ConstantParameter: k0
+info: ConstantParameter: displacement0
+info: ConstantParameter: pressure_ic
+info: ConstantParameter: zero
+info: ConstantParameter: p_bc_scale
+info: CurveScaledParameter: pressure_bc
+info: Configure mesh 'col_r175_h125_left' for boundary condition or source term.
+info: Configure mesh 'col_r175_h125_right' for boundary condition or source term.
+info: Configure mesh 'col_r175_h125_bottom' for boundary condition or source term.
+info: No source terms for process variable 'displacement' found.
+info: Configure mesh 'col_r175_h125_bottom' for boundary condition or source term.
+info: No source terms for process variable 'pressure' found.
+critical: /Users/vinaykumar/git/ogs-worktrees/dsm_native_maxwell_conjugate_wt/BaseLib/ConfigTree.cpp:265 onerror() 
+error: ConfigTree: In file `/Users/vinaykumar/git/ogs/validation_2026-06-09/epfl_t33/model/beacon_t33_column_le.prj' at path <processes/process/potential_exchange>: Key <vdw_augmentation_decay_length> has been read 1 time(s) less than it was present in the configuration tree.
+info: Threads used for ParallelVectorMatrixAssembler: 1.
+info: RichardsMechanics process initializeSubmeshOutput().
+info: Initialize processes.
+error: ConfigTree: There have been errors when parsing the configuration file(s):
+error: ConfigTree: In file `/Users/vinaykumar/git/ogs/validation_2026-06-09/epfl_t33/model/beacon_t33_column_le.prj' at path <processes/process/potential_exchange>: Key <vdw_augmentation_decay_length> has been read 1 time(s) less than it was present in the configuration tree.
+critical: /Users/vinaykumar/git/ogs-worktrees/dsm_native_maxwell_conjugate_wt/BaseLib/ConfigTree.cpp:293 assertNoSwallowedErrors() 
+error: There have been errors when parsing the configuration file(s).
+error: OGS terminated with error on 2026-06-09 06:02:58+0200.

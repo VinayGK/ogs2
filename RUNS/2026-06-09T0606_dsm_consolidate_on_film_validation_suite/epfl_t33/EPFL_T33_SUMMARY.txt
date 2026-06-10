@@ -1,0 +1,15 @@
+=== EPFL Task-3.3 on mc_20260608 (dsm_consolidate_on_film) ===
+binary: /Users/vinaykumar/git/build/mc_20260608/bin/ogs
+started: Tue Jun  9 06:02:57 CEST 2026
+
+### beacon_t33_column_le : rc=1 1s | terminated with error | no-time | vtus=0
+
+### beacon_t33_path1_P1-3_dsm_mcc : rc=1 0s | terminated with error | no-time | vtus=0
+
+### beacon_t33_path2_P2-1_dsm_mcc : rc=1 0s | terminated with error | no-time | vtus=0
+
+### beacon_t33_path2_P2-1_swellingpressure_dsm_mcc : rc=1 0s | terminated with error | no-time | vtus=0
+
+### beacon_t33_path2_compression_homogeneous_mcc : rc=0 0s | Simulation completed | Time: 3456000. | vtus=9
+
+=== DONE Tue Jun  9 06:02:58 CEST 2026 ===

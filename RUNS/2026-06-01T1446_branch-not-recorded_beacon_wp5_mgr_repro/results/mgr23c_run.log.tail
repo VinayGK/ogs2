@@ -1,0 +1,200 @@
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001846 s.
+info: Convergence criterion, component 0: |dx|=1.3995e+01, |x|=4.2425e+08, |dx|/|x|=3.2987e-08
+info: Convergence criterion, component 1: |dx|=1.8402e-19, |x|=8.7998e-19, |dx|/|x|=2.0912e-01
+info: Convergence criterion, component 2: |dx|=2.3309e-09, |x|=7.9700e-04, |dx|/|x|=2.9246e-06
+info: [time] Iteration #1 took 0.008608 s.
+info: Iteration #2 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006745 s.
+info: [time] Applying Dirichlet BCs took 8.2e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001722 s.
+info: Convergence criterion, component 0: |dx|=1.3313e+00, |x|=4.2425e+08, |dx|/|x|=3.1380e-09
+info: Convergence criterion, component 1: |dx|=1.1327e-19, |x|=8.7283e-19, |dx|/|x|=1.2978e-01
+info: Convergence criterion, component 2: |dx|=6.6732e-11, |x|=7.9700e-04, |dx|/|x|=8.3728e-08
+info: [time] Iteration #2 took 0.008614 s.
+info: [time] Solving process #0 took 0.017232 s in time step #316
+info: [time] Time step #316 took 0.01955 s.
+info: Time step #317 started. Time: 17854050.079802118. Step size: 86400.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006693 s.
+info: [time] Applying Dirichlet BCs took 7.8e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001804 s.
+info: Convergence criterion, component 0: |dx|=1.4070e+01, |x|=4.2425e+08, |dx|/|x|=3.3164e-08
+info: Convergence criterion, component 1: |dx|=1.2692e-19, |x|=8.7239e-19, |dx|/|x|=1.4548e-01
+info: Convergence criterion, component 2: |dx|=2.1154e-09, |x|=7.9700e-04, |dx|/|x|=2.6542e-06
+info: [time] Iteration #1 took 0.008659 s.
+info: Iteration #2 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006746 s.
+info: [time] Applying Dirichlet BCs took 8.6e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001908 s.
+info: Convergence criterion, component 0: |dx|=1.2795e+00, |x|=4.2425e+08, |dx|/|x|=3.0160e-09
+info: Convergence criterion, component 1: |dx|=1.4628e-19, |x|=8.0501e-19, |dx|/|x|=1.8171e-01
+info: Convergence criterion, component 2: |dx|=7.0918e-11, |x|=7.9700e-04, |dx|/|x|=8.8981e-08
+info: [time] Iteration #2 took 0.008835 s.
+info: [time] Solving process #0 took 0.017505 s in time step #317
+info: [time] Time step #317 took 0.020023 s.
+info: Time step #318 started. Time: 17940450.079802118. Step size: 86400.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006753 s.
+info: [time] Applying Dirichlet BCs took 8.4e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001898 s.
+info: Convergence criterion, component 0: |dx|=1.4124e+01, |x|=4.2425e+08, |dx|/|x|=3.3291e-08
+info: Convergence criterion, component 1: |dx|=2.4207e-19, |x|=9.5647e-19, |dx|/|x|=2.5309e-01
+info: Convergence criterion, component 2: |dx|=1.9118e-09, |x|=7.9700e-04, |dx|/|x|=2.3987e-06
+info: [time] Iteration #1 took 0.008816 s.
+info: Iteration #2 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006734 s.
+info: [time] Applying Dirichlet BCs took 8.7e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001899 s.
+info: Convergence criterion, component 0: |dx|=1.2307e+00, |x|=4.2425e+08, |dx|/|x|=2.9009e-09
+info: Convergence criterion, component 1: |dx|=2.7263e-19, |x|=7.8870e-19, |dx|/|x|=3.4567e-01
+info: Convergence criterion, component 2: |dx|=7.4382e-11, |x|=7.9700e-04, |dx|/|x|=9.3328e-08
+info: [time] Iteration #2 took 0.008811 s.
+info: [time] Solving process #0 took 0.017639 s in time step #318
+info: [time] Time step #318 took 0.020031 s.
+info: Time step #319 started. Time: 18026850.079802118. Step size: 86400.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006693 s.
+info: [time] Applying Dirichlet BCs took 9.3e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001835 s.
+info: Convergence criterion, component 0: |dx|=1.4148e+01, |x|=4.2425e+08, |dx|/|x|=3.3349e-08
+info: Convergence criterion, component 1: |dx|=2.6621e-19, |x|=8.9568e-19, |dx|/|x|=2.9721e-01
+info: Convergence criterion, component 2: |dx|=1.7197e-09, |x|=7.9700e-04, |dx|/|x|=2.1578e-06
+info: [time] Iteration #1 took 0.008702 s.
+info: Iteration #2 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006647 s.
+info: [time] Applying Dirichlet BCs took 7.9e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001747 s.
+info: Convergence criterion, component 0: |dx|=1.1844e+00, |x|=4.2425e+08, |dx|/|x|=2.7918e-09
+info: Convergence criterion, component 1: |dx|=1.1813e-19, |x|=8.8004e-19, |dx|/|x|=1.3423e-01
+info: Convergence criterion, component 2: |dx|=7.7177e-11, |x|=7.9700e-04, |dx|/|x|=9.6835e-08
+info: [time] Iteration #2 took 0.008541 s.
+info: [time] Solving process #0 took 0.017253 s in time step #319
+info: [time] Time step #319 took 0.019595 s.
+info: Time step #320 started. Time: 18113250.079802118. Step size: 86400.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006651 s.
+info: [time] Applying Dirichlet BCs took 8.4e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001835 s.
+info: Convergence criterion, component 0: |dx|=1.4139e+01, |x|=4.2425e+08, |dx|/|x|=3.3327e-08
+info: Convergence criterion, component 1: |dx|=1.5127e-19, |x|=9.5147e-19, |dx|/|x|=1.5898e-01
+info: Convergence criterion, component 2: |dx|=1.5391e-09, |x|=7.9700e-04, |dx|/|x|=1.9311e-06
+info: [time] Iteration #1 took 0.008661 s.
+info: Iteration #2 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006604 s.
+info: [time] Applying Dirichlet BCs took 8.2e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001824 s.
+info: Convergence criterion, component 0: |dx|=1.1404e+00, |x|=4.2425e+08, |dx|/|x|=2.6879e-09
+info: Convergence criterion, component 1: |dx|=1.5698e-19, |x|=9.4742e-19, |dx|/|x|=1.6569e-01
+info: Convergence criterion, component 2: |dx|=7.9355e-11, |x|=7.9700e-04, |dx|/|x|=9.9567e-08
+info: [time] Iteration #2 took 0.008592 s.
+info: [time] Solving process #0 took 0.017264 s in time step #320
+info: [time] Time step #320 took 0.019706 s.
+info: Time step #321 started. Time: 18144000. Step size: 30749.920197881758.
+info: Solving process #0 started.
+info: Iteration #1 started.
+info: Number of threads: 1
+info: [time] Assembly took 0.006534 s.
+info: [time] Applying Dirichlet BCs took 7.8e-05 s.
+info: ------------------------------------------------------------------
+info: *** Eigen solver compute()
+info: -> scale
+info: -> compute with Eigen direct linear solver SparseLU
+info: ------------------------------------------------------------------
+info: *** Eigen solver solve()
+info: -> solve with Eigen direct linear solver SparseLU
+info: [time] Linear solver took 0.001876 s.
+info: Convergence criterion, component 0: |dx|=4.8861e+00, |x|=4.2425e+08, |dx|/|x|=1.1517e-08
+info: Convergence criterion, component 1: |dx|=1.6636e-19, |x|=8.8083e-19, |dx|/|x|=1.8887e-01
+info: Convergence criterion, component 2: |dx|=5.1149e-10, |x|=7.9700e-04, |dx|/|x|=6.4177e-07
+info: [time] Iteration #1 took 0.008564 s.
+info: [time] Solving process #0 took 0.008577 s in time step #321
+info: [time] Time step #321 took 0.010909 s.
+info: [time] Output of timestep 321 took 0.00249 s.
+info: The whole computation of the time stepping took 321 steps, in which
+	 the accepted steps are 321, and the rejected steps are 0.
+
+info: [time] Simulation completed. It took 13.6547 s.
+info: OGS completed on 2026-06-01 01:39:22+0200.

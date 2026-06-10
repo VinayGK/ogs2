@@ -1,0 +1,125 @@
+<parameter>
+      <name>sigma0</name>
+      <!-- small isotropic confinement (-0.15 MPa) to keep p'>0 off the MCC apex (p'=0 is
+           the ill-conditioned return-mapping singularity). Source: native ModelV_MCC uses
+           sigma0=-1.5e5; consistent with 'align to native reference'. -->
+      <type>Function</type>
+      <expression>-1.5e5</expression>
+      <expression>-1.5e5</expression>
+      <expression>-1.5e5</expression>
+      <expression>0</expression>
+    </parameter>
+    <parameter>
+      <name>YoungModulus</name>
+      <type>Constant</type>
+      <value>30e6</value>
+    </parameter>
+    <parameter>
+      <name>PoissonRatio</name>
+      <type>Constant</type>
+      <value>0.4</value>
+      <!-- nu=0.4 (FEBEX). Source: Task-9 Final Report, Table 6. Was 0.2. -->
+    </parameter>
+   <parameter>
+      <name>phi0</name>
+      <type>Constant</type>
+      <!--calculated from specifications-->
+      <value>0.37037037037037035</value>
+    </parameter>
+    <parameter>
+      <name>phi_tr0</name>
+      <type>Constant</type>
+    <value>0.15982998912721152</value>
+    </parameter>
+    <parameter>
+      <name>k0</name>
+      <!-- KozenyCarman initial intrinsic permeability at phi0 (native model);
+           = Task-13 bentonite intrinsic perm at dd~1.7 g/cm3 (was PermeabilityOrthotropicPowerLaw 2.5e-20). -->
+      <type>Constant</type>
+      <value>2.5e-20</value>
+    </parameter>
+     <parameter>
+            <name>CriticalStateLineSlope0</name>
+            <type>Constant</type>
+            <value>1.0</value>
+            <!-- M=1.0 (FEBEX). Source: EBS Task-9 FEBEX Final Report, Table 6 (CODE_BRIGHT TEP/BBM).
+                 Was 0.24 -> degenerate flat yield surface, MFront MCC crash. -->
+        </parameter>
+        <parameter>
+            <name>SwellingLineSlope0</name>
+            <type>Constant</type>
+            <value>0.05</value>
+            <!-- kappa = kio = 0.05 (FEBEX). Source: Task-9 Final Report, Table 6. Was 0.12. -->
+        </parameter>
+        <parameter>
+            <name>VirginConsolidationLineSlope0</name>
+            <type>Constant</type>
+            <value>0.15</value>
+        </parameter>
+        <parameter>
+            <name>InitialPreConsolidationPressure0</name>
+            <type>Constant</type>
+            <value>12000000.0</value>
+            <!--Pa; p0*=12 MPa (FEBEX). Source: Task-9 Final Report, Table 6 (CODE_BRIGHT TEP).
+                Was 1e6 -> overrun by the 11.46 MPa swelling at IC, MFront MCC crash. Now > swelling. -->
+        </parameter>
+        <parameter>
+            <name>InitialPorosity0</name>
+            <type>Constant</type>
+            <value>0.37037037037037035</value>
+        </parameter>
+    <!-- Hydraulic parameters -->
+    <parameter>
+      <name>displacement0</name>
+      <type>Constant</type>
+      <values>0 0</values>
+    </parameter>
+    <parameter>
+      <name>pressure_ic</name>
+      <!--Sw=WC/Porosity, pressure at Sw=0.35-->
+      <type>Constant</type>
+      <values>-120e6</values>
+    </parameter>
+    <parameter>
+      <name>dirichlet0</name>
+      <type>Constant</type>
+      <value>0</value>
+    </parameter>
+    <parameter>
+      <name>dirichlet_pressure</name>
+      <type>Constant</type>
+      <value>1.0</value>
+    </parameter>
+    <parameter>
+            <name>InitialVolumeRatio</name>
+            <type>Constant</type>
+            <value>1.588235294117647</value> <!--= 1+void_ratio)-->
+        </parameter>
+    <parameter>
+      <name>dirichlet_pressure_ramp</name>
+      <type>CurveScaled</type>
+      <curve>pressure_ramp</curve>
+      <parameter>dirichlet_pressure</parameter>
+    </parameter>
+    <parameter>
+      <name>NeumannStress</name>
+      <type>Constant</type>
+      <value>0	</value>
+    </parameter>
+    <parameter>
+            <name>neumann_ramp</name>
+            <type>CurveScaled</type>
+            <curve>flux_Ramp</curve>
+            <parameter>neumann_term</parameter>
+        </parameter>
+        <parameter>
+            <name>neumann_term</name>
+            <type>Constant</type>
+            <value>2</value>
+        </parameter>
+        <!-- EBS T-13 stg. 2 injection rate / pi r^2 as neumann-->
+        <!--parameter>
+            <name>NeumannFLux</name>
+            <type>Constant</type>
+            <value>9.902974236829044e-06</value>
+        </parameter-->

@@ -1,0 +1,105 @@
+    <medium>
+      <!-- ================================================================
+           NATIVE HIERARCHICAL TULLER + MCC media (stage 1).
+           Reconstructed from ANCHORS MS33-ModelI dd1800 (native hierarchical):
+           SaturationTuller macro WRC + KozenyCarman perm + GeneralizedPower relperm.
+           Tuller/perm params BORROWED from MS33-ModelI dd1800 (provenance: Tuller-Or 2002 +
+           EURAD-2 MS33), FLAGGED for Task-13 recalibration. Mechanics = Task-13 MFront MCC
+           (process-common.xml). Swelling now from Pi-path (potential_exchange), so
+           SaturationDependentSwelling / saturation_micro / transport_porosity are removed.
+           ================================================================ -->
+      <phases>
+        <phase>
+          <type>AqueousLiquid</type>
+          <properties>
+            <property>
+              <name>density</name>
+              <type>Constant</type>
+              <value>1e3</value>
+            </property>
+            <property>
+              <name>viscosity</name>
+              <type>Constant</type>
+              <value>1e-3</value>
+            </property>
+          </properties>
+        </phase>
+        <phase>
+          <type>Solid</type>
+          <properties>
+            <property>
+              <name>density</name>
+              <type>Constant</type>
+              <!--spec document wants us to use 2700-->
+              <value>2700.0</value>
+            </property>
+            <!-- swelling_stress_rate (SaturationDependentSwelling, 11.46 MPa) REMOVED:
+                 native Pi-path swelling is driven by the disjoining pressure Pi
+                 (potential_exchange in process-common.xml), not a phenomenological
+                 saturation-dependent swelling law. -->
+          </properties>
+        </phase>
+      </phases>
+      <properties>
+        <property>
+          <name>biot_coefficient</name>
+          <type>Constant</type>
+          <value>1.0</value>
+        </property>
+        <property>
+          <name>permeability</name>
+          <!-- native KozenyCarman, k0 at phi0. k0 = Task-13 intrinsic perm (~2.5e-20 m^2). -->
+          <type>KozenyCarman</type>
+          <initial_permeability>k0</initial_permeability>
+          <initial_porosity>phi0</initial_porosity>
+        </property>
+        <property>
+          <name>porosity</name>
+          <type>PorosityFromMassBalance</type>
+          <initial_porosity>phi0</initial_porosity>
+          <minimal_porosity>0</minimal_porosity>
+          <maximal_porosity>1</maximal_porosity>
+        </property>
+        <!-- transport_porosity REMOVED: native hierarchical split computes
+             phi_M = (phi - n_l)/(1 - n_l) internally (Pi-path). -->
+        <property>
+          <name>reference_temperature</name>
+          <type>Constant</type>
+          <value>293.15</value>
+        </property>
+        <property>
+          <!-- NATIVE Tuller macro WRC. Tuller geometry params borrowed from MS33-ModelI dd1800
+               (Tuller-Or 2002 family; under BishopsSaturationCutoff=1 the swelling pressure is
+               K-governed and insensitive to shapefactor/char_pore_size per the MS33 note).
+               FLAGGED MS33-provenance, pending Task-13 WRC re-fit. -->
+          <name>saturation</name>
+          <type>SaturationTuller</type>
+          <residual_liquid_saturation>0.0</residual_liquid_saturation>
+          <residual_gas_saturation>0.0</residual_gas_saturation>
+          <area_factor_tuller>1.0</area_factor_tuller>
+          <pore_area_shapefactor_tuller>0.8584073464102069</pore_area_shapefactor_tuller>
+          <characteristic_pore_size>1e-5</characteristic_pore_size>
+          <surface_tension>0.0715</surface_tension>
+          <!-- cavitation_pressure removed: not consumed by this binary's SaturationTuller
+               (May-28 build predates the field; uses built-in default). -->
+        </property>
+        <!-- saturation_micro REMOVED: Pi-path has no capillary micro-saturation
+             (adsorbed water tracked by micro_water_content). -->
+        <property>
+          <name>relative_permeability</name>
+          <type>RelativePermeabilityGeneralizedPower</type>
+          <residual_liquid_saturation>0.0</residual_liquid_saturation>
+          <residual_gas_saturation>0.0</residual_gas_saturation>
+          <min_relative_permeability>1e-2</min_relative_permeability>
+          <enhancement_factor>1.0</enhancement_factor>
+          <exponent>3</exponent>
+        </property>
+        <property>
+          <name>bishops_effective_stress</name>
+          <type>BishopsSaturationCutoff</type>
+          <!-- changed from Task-13's 0.85 to 1 for self-consistency with the borrowed
+               native dd1800 K-calibration (Pi-path swelling is K-governed at cutoff=1). FLAGGED. -->
+          <cutoff_value>1</cutoff_value>
+        </property>
+      </properties>
+    </medium>
