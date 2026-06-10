@@ -1,4 +1,0 @@
-variant   e@200d(end swelling)  e@5MPa(peak load)  e@end(unload 0.4MPa)  n_l@end
-off             1.4995    1.4548    1.4954  0.599259
-kinematic       1.3534    1.3214    1.3503  0.574327
-equilibrium     1.4995    1.4548    1.4954  0.599268
