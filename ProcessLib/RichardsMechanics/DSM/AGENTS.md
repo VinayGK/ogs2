@@ -376,3 +376,14 @@ Status: NO change committed pending owner decision (the fix is meaningful only
 bundled with the analytic-ON enablement, a numerical-method call → present to Vinay
 per §9). Tree clean; analytic flag + diagnostic reverted; maxjac_omp rebuilt clean
 (3b64bf9e). Full numbers in DSM/AUDIT_maxwell_local_jacobian_2026-06-09.md Phase C.
+
+DONE 2026-06-10: LANDED. Vinay chose "land it" (GUARDRAIL EXEMPTION §9/§12.3,
+user-approved). `use_analytic_micro_jacobian` flipped false->true (analytic micro
+2x2 = default); all 9 registered DSM ctests carrying `<potential_exchange>` set
+`<scaling>false</scaling>` (Eigen SparseLU; per-PRJ inline block; solver-only, no
+§12.2 material change). Rebuilt maxjac_omp. VERIFIED (measured): all 9 ctests
+complete to identical final ts and parent-identical to round-off vs FD baseline
+(mxconj_omp, scaling=true) — max rel diff <= 6e-12 (table in AUDIT Phase D). MS LE
+standard (ModelI/III/IV/VII) passes. Run-only ctests (no reference VTU) => no
+reference-VTU refresh, no §3/§12.5 flag. u-side blocks STILL parked OFF (unsafe;
+mIII singularizes, mIV/mVII solution-shift — separate work). See AUDIT Phase D.

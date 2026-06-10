@@ -436,3 +436,43 @@ diagonal — overflowing to NaN), **not** a tangent error. The clean fix is
 **`<linear_solver>` `<scaling>false</scaling>`** (no literal, no recompile, all 6
 MS33 verified parent-identical). It unblocks the analytic micro 2×2 on dd1800. The
 u-side blocks need separate work (mIII singularizes, mIV/mVII solution-shift).
+
+---
+
+## Phase D — LANDED (2026-06-10): analytic micro 2x2 = default + scaling=false on DSM PRJs
+
+User (Vinay) chose "land it" — a §9/§12.3 owner decision on the linear-solver /
+Jacobian default for the registered DSM ctest PRJs. GUARDRAIL EXEMPTION
+§9/§12.3 (2026-06-10): user-approved.
+
+Changes:
+- `RichardsMechanicsFEM-impl.h`: `use_analytic_micro_jacobian` flipped
+  `false -> true` (analytic micro 2x2 now default). u-side blocks and the
+  fp-contract(off) pragma left as-is (u-side stays parked OFF — still not safe,
+  see Phase C above).
+- All 9 registered DSM ctests carrying `<potential_exchange>` set
+  `<scaling>true>` -> `<scaling>false>` in their Eigen `<linear_solver>` block
+  (each PRJ has its own inline block; no shared include). Solver setting only —
+  no §12.2 material-parameter change.
+
+Verification (measured 2026-06-10): each registered DSM ctest run on
+`maxjac_omp` (analytic-default + scaling=false) vs the pre-change FD baseline on
+`mxconj_omp` (FD micro + scaling=true). All 9 COMPLETE to the same final
+timestep and are parent-identical to round-off:
+
+| ctest                         | final ts | max abs diff | max rel diff |
+| :---------------------------- | :------- | :----------- | :----------- |
+| ModelI dd1400                 | 308      | 2.2e-08      | 5.0e-15      |
+| ModelI dd1600                 | 311      | 2.2e-08      | 1.5e-15      |
+| ModelI dd1800                 | 308      | 6.0e-08      | 2.3e-15      |
+| ModelIII gap2mm               | 438      | 3.9e-07      | 2.7e-14      |
+| ModelIV pellets               | 636      | 1.5e-06      | 1.6e-12      |
+| ModelIV pellets_kref20x       | 636      | 1.5e-06      | 1.6e-12      |
+| ModelIV pellets_kofdd         | 636      | 1.5e-06      | 1.6e-12      |
+| ModelVII freeswelling         | 507      | 2.7e-06      | 6.0e-12      |
+| ModelVII freeswelling_kofdd   | 493      | 1.0e-06      | 2.2e-12      |
+
+(abs diffs are on Pa-scale stress/pressure fields; rel diffs are round-off.)
+These 9 ctests are run-only (no registered reference VTU / vtkdiff), so no
+reference-VTU refresh is needed (§3/§12.5: no flag). The MS LE standard
+(ModelI/III/IV/VII) passes.

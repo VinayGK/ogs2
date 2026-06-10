@@ -348,7 +348,7 @@ initial micro water content is set to the 99 MPa-equilibrium value.
         <nonlinear_solver><name>basic_newton</name><type>Newton</type><max_iter>60</max_iter><linear_solver>ls</linear_solver></nonlinear_solver>
     </nonlinear_solvers>
     <linear_solvers>
-        <linear_solver><name>ls</name><eigen><solver_type>SparseLU</solver_type><scaling>true</scaling></eigen></linear_solver>
+        <linear_solver><name>ls</name><eigen><solver_type>SparseLU</solver_type><scaling>false</scaling></eigen></linear_solver>
     </linear_solvers>
     <curves>
         <curve>

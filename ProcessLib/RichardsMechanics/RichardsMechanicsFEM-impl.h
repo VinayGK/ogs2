@@ -1108,17 +1108,24 @@ solveReferenceMassStorageCoupledState(
     constexpr double residual_tolerance = 1e-10;
     constexpr double increment_tolerance = 1e-10;
 
-    // Phase A (2026-06-09): the micro 2x2 local Jacobian defaults to the FD
-    // central-difference path — bit-for-bit the parent (commit d98f5f8324)
-    // behaviour. The analytic micro 2x2 (evaluate_analytic_jacobian) is RETAINED
-    // but parked OFF: on the dense / EOS-active case it carries a J11/J12 error
-    // (masked on dd1400 because micro_liquid_density_a=1e-16 bypasses the EOS),
-    // so it is NOT solution-invariant on dd1800 — see
-    // DSM/AUDIT_maxwell_local_jacobian_2026-06-09.md (Phase B will correct it).
-    // Flip to true to opt in (Phase B development only). Deliberately decoupled
-    // from use_fd_jacobian_for_exchange (the block #3 macro p-p tangent flag),
-    // which keeps its own default so block #3 stays analytic exactly as parent.
-    constexpr bool use_analytic_micro_jacobian = false;
+    // Phase D (2026-06-10): the analytic micro 2x2 local Jacobian is now the
+    // DEFAULT. It was verified correct in Phase B — analytic == FD central
+    // difference to round-off on every MS33 case, INCLUDING the dense /
+    // EOS-active dd1800 (the earlier suspected J11/J12 error did not exist; the
+    // dd1800 break was a global linear-solver conditioning fragility, not a
+    // micro-tangent error — see DSM/AUDIT_maxwell_local_jacobian_2026-06-09.md).
+    // REQUIREMENT: this path needs <scaling>false</scaling> in the Eigen
+    // <linear_solver> block of the DSM PRJs. With Eigen's IterScaling (Ruiz)
+    // enabled, the row/column equilibration overflows on the intrinsically
+    // near-singular pressure block (cond ~5.8e22 from micro_liquid_density_a=
+    // 1e-16 + Bishop saturation cutoff + tiny intrinsic-k); with scaling off and
+    // SparseLU the system factorizes cleanly. The fp-contract(off) pragma and
+    // the u-side analytic blocks (still OFF) are left as-is.
+    // Deliberately decoupled from use_fd_jacobian_for_exchange (the block #3
+    // macro p-p tangent flag), which keeps its own default so block #3 stays
+    // analytic exactly as parent; setting use_fd_jacobian_for_exchange still
+    // forces the FD micro path here.
+    constexpr bool use_analytic_micro_jacobian = true;
 
     for (int iter = 0; iter < max_iterations; ++iter)
     {
