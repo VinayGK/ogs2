@@ -41,3 +41,4 @@ nohup.out
 /Applications/Python/_version.py
 
 web/.hugo_build.lock
+_full_outputs/
