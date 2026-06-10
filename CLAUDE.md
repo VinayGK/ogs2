@@ -424,6 +424,23 @@ Conversational discussion is exempt from this section.
 
    Run the check, state what was verified, and only then commit/push.
 
+8. **Per-run result snapshots (standard mechanism, Vinay 2026-06-10).**
+   Every completed simulation campaign that produces deliverables
+   (figures, report, beamer, metrics) gets ONE snapshot folder in the
+   results repo (`~/git/eurad-anchors/runs/`), named
+   `<YYYY-MM-DD>_<HHMM>_<ogs-branch>/` (local completion time). Each
+   folder is the complete frozen picture of that run and MUST carry a
+   `README.md` run card with: branch + commit (+ binary), models run,
+   key numbers, calibration anchor / parameter provenance, what changed
+   vs the previous run, and open items. Conventions:
+   - Snapshots are COPIES; canonical living sources stay where they
+     are. Run-output VTU series are not committed (size) — the README
+     says where they live; PRJs and input meshes are welcome.
+   - A pushed snapshot is immutable: corrections go into a NEW run
+     folder; the old README is annotated "superseded by <run>".
+   - The §6.7 provenance gate applies to the snapshot before pushing.
+   See `runs/README.md` in the results repo for the full template.
+
 ---
 
 ## §7 Authorship and commit hygiene
