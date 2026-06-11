@@ -690,6 +690,62 @@ inline void applyFilmPressureMicroPotential(
         return;  // flag OFF or NaN p_conf -> unchanged (pure vdW), bit-for-bit.
     }
 
+    // ── EXACT energy route (film_energy_route = exact; PI_OF_NL_EV §4.4) ───
+    // REPLACES the operational mu assembly below: the bare adsorption part
+    // stays evaluated at the TRUE n_l (already in `out`, cutoff-folded above —
+    // mirror of the shipped Off-path structure), and the strain coupling is
+    // the one-Psi partner mu_mech from computeStrainedFilmEnergyPair (closed-
+    // form strain integrals; Maxwell-exact pair with the unchanged eigenstress
+    // half). No +b*p_conf/rho_lR bolt-on. The macro-floor cutoff factor g is
+    // recovered from post/pre bare values and product-ruled into the n_l
+    // chain. nS chains FROZEN (B1), as in the operational route.
+    if (potential_exchange_params.film_strain_coupling !=
+            FilmStrainCouplingMode::Off &&
+        potential_exchange_params.film_energy_route == FilmEnergyRoute::Exact)
+    {
+        if (potential_exchange_params.film_strain_coupling !=
+            FilmStrainCouplingMode::Kinematic)
+        {
+            OGS_FATAL(
+                "film_energy_route = 'exact' requires film_strain_coupling = "
+                "'kinematic' (create-time validated; "
+                "DSM/PI_OF_NL_EV_IMPLEMENTATION.md §3).");
+        }
+        double const eps_v_ex = local_context.volumetric_strain;
+        double const sign_ex =
+            microPotentialSignFactorFromParameters(potential_exchange_params);
+        double const kappa_ex =
+            potential_exchange_params.film_strain_kappa ==
+                    FilmStrainKappaMode::Aggregate
+                ? active_nS
+                : 1.0;
+        auto const pair = computeStrainedFilmEnergyPair(
+            n_l, eps_v_ex, kappa_ex, local_context.biot_coefficient,
+            local_context.drained_bulk_modulus, true /*include_S, route R3*/,
+            rho_lR_used, active_nS,
+            potential_exchange_params.micro_solid_density_reference,
+            potential_exchange_params.hamaker_constant,
+            potential_exchange_params.specific_surface, sign_ex,
+            potential_exchange_params.potential_augmentation_prefactor,
+            potential_exchange_params.potential_augmentation_exponent,
+            0.0 /*dnS_dnl: frozen nS (B1)*/,
+            potential_exchange_params.micro_water_content_floor);
+
+        // Macro-floor cutoff factor g = mu_post/mu_pre (g == 1 when the
+        // cutoff is inactive; g == 0 at full bulk -> film physics off).
+        // |mu_bare_pre| > 0 is guaranteed by the bare law's OGS_FATALs.
+        double const g_cut = out.mu_lR / pair.mu_bare_pre;            // [-]
+        double const dg_dnl =
+            (out.dmu_lR_dnl - g_cut * pair.dmu_bare_dnl_pre) /
+            pair.mu_bare_pre;  // [1 per n_l]
+
+        out.mu_lR += g_cut * pair.mu_mech;  // J/kg, additive (never =)
+        out.dmu_lR_dnl +=
+            g_cut * pair.dmu_mech_dnl + pair.mu_mech * dg_dnl;  // J/kg per n_l
+        out.dmu_lR_drho_lR += g_cut * pair.dmu_mech_drho_lR;  // (J/kg)/(kg/m^3)
+        return;
+    }
+
     // ── Strained-film modes (DSM/STRAINED_FILM_IMPLEMENTATION.md) ───────────
     // film_strain_coupling != Off REPLACES the frozen-geometry path below: the
     // bare law is evaluated at the strained film state w_eff and mu_lR carries

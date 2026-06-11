@@ -243,3 +243,42 @@ residual stays a future flow rule. Design + decision record:
 - PROVISIONAL: linear knot interpolation (shape undecided); dK tangent
   OMITTED first cut [PRED: extra Newton iterations, not benchmarked]; no
   live-mode production run yet (behavior under live K = predicted only).
+
+## Equipresent Pi(n_l, eps_v) + compressible-liquid carrier D2 (2026-06-11, branch dsm_native_Pi_fofnlev)
+
+Goal (Vinay, 2026-06-11): make the load coupling energetically compliant —
+"Pi does not carry p_conf; the p_conf is still a bolt-on to the micro, not an
+energetically compliant bolt-on; equipresence says Pi(n_l, <mech. state>)."
+Equipresent argument is eps_v (configuration), not p_conf (force). Two
+deliverables, PRJ-selectable, default off (bit-for-bit):
+(E) exact one-Psi film pair (closes STRAINED_FILM_IMPLEMENTATION.md §9a) and
+(L) compressible-liquid carrier (D2 proper — over-pressure from Psi_liq with
+confined K_liq instead of the bolted +b*p_conf/rho_lR).
+
+Design + decision record: **PI_OF_NL_EV_IMPLEMENTATION.md** (this directory) —
+complete implementation/test/docs/beamer plan, written for an implementing
+agent; decision queue Q1–Q5 (Vinay) inside.
+
+- DONE 2026-06-11: branch + worktree created off 7ff8861847; design doc
+  written; memory file project_dsm_pi_fofnlev + MEMORY.md pointer; beamer
+  maxwell_from_psi.tex Step 19/23 "in design" markers.
+- DONE 2026-06-11 (was: blocked on Q1; resolved by Vinay's "implement that
+  now"): (E) implemented — FilmEnergyRoute enum/param/predicate,
+  computeStrainedFilmEnergyPair (x_over_kappa-stable closed forms), exact
+  fold branch (bare at TRUE n_l + one-Psi partner, g-cutoff product rule,
+  eigenstress site unchanged), film_energy_route parsing + mode-matrix
+  OGS_FATAL, ExactFilmEnergyPair.cpp (8 tests: 6 active + 2 Q3/Q4 skips).
+  VERIFIED: 36/36 unit tests; T-5 loop measured |∮|/scale 8.4e-9 (exact) vs
+  0.93 (operational — §9a "small" prediction corrected by measurement);
+  T-1 dd1400 off-mode bitwise-identical (12/12 VTUs, parent-head binary vs
+  new, one input). Build ~/git/build/Pi_fofnlev_20260611. UNCOMMITTED.
+- PARKED 2026-06-11 (Vinay: "park it, this is getting very intricate"):
+  (L) computeMicroLiquidCompression + tests T-6/T-8. Self-contained decision
+  brief (routes (a)/(b), K_liq candidate + magnitudes, Q3<->Q4 coupling,
+  unpark conditions) is in PI_OF_NL_EV_IMPLEMENTATION.md §8 — read THAT
+  before any (L) work; do not unpark without Vinay's Q3+Q4 answers.
+- DONE 2026-06-11 (partial): STRAINED_FILM_IMPLEMENTATION.md §9a annotated
+  (measured correction); beamer Step 21/23/7b updated to implemented+measured
+  status. STILL TODO: "Step 24 first numbers" frame (gated on T-8 / MS33 VII
+  runs); Doxygen tag doc for film_energy_route (joint TODO with the
+  undocumented film_strain tags).

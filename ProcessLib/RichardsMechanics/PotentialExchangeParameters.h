@@ -64,6 +64,32 @@ enum class FilmStrainKappaMode
     Unity
 };
 
+// ── Film energy route (DSM/PI_OF_NL_EV_IMPLEMENTATION.md, Vinay 2026-06-11) ──
+// Operational: the shipped Derjaguin cut — bare law evaluated at w_eff plus the
+//              hand-added load term +b*p_conf/rho_lR (NOT Maxwell-exact; defect
+//              O(Pi*eps_v), strained-film design doc §9a). Default, bit-for-bit.
+// Exact:       the one-Psi energy route — Psi_film(n_l, eps_v) with closed-form
+//              strain integrals of the disjoining law along the kinematic
+//              h-law; mu_mech = (1/(nS*rho_lR)) dPsi/dn_l. Maxwell holds
+//              identically; kappa->0 reduces EXACTLY to the shipped integrable
+//              partner. Requires film_strain_coupling == Kinematic (the closed
+//              forms are for the kinematic h-law).
+enum class FilmEnergyRoute
+{
+    Operational,
+    Exact
+};
+
+// Create-time admissibility of the (film_strain_coupling, film_energy_route)
+// combination (PI_OF_NL_EV_IMPLEMENTATION.md §3 mode matrix). Pure predicate so
+// it is unit-testable; the OGS_FATAL lives at the parse site.
+inline constexpr bool isValidFilmEnergyRouteCombination(
+    FilmStrainCouplingMode const mode, FilmEnergyRoute const route)
+{
+    return route == FilmEnergyRoute::Operational ||
+           mode == FilmStrainCouplingMode::Kinematic;
+}
+
 inline constexpr char const* toString(
     MicroPotentialConvention const convention)
 {
@@ -145,6 +171,18 @@ inline constexpr char const* toString(FilmStrainKappaMode const mode)
             return "aggregate";
         case FilmStrainKappaMode::Unity:
             return "unity";
+    }
+    return "unknown";
+}
+
+inline constexpr char const* toString(FilmEnergyRoute const route)
+{
+    switch (route)
+    {
+        case FilmEnergyRoute::Operational:
+            return "operational";
+        case FilmEnergyRoute::Exact:
+            return "exact";
     }
     return "unknown";
 }
@@ -249,6 +287,14 @@ struct PotentialExchangeParameters
     // is bit-for-bit the current behavior.
     FilmStrainCouplingMode film_strain_coupling = FilmStrainCouplingMode::Off;
     FilmStrainKappaMode film_strain_kappa = FilmStrainKappaMode::Aggregate;
+
+    // ── Film energy route (DSM/PI_OF_NL_EV_IMPLEMENTATION.md) ───────────────
+    // Operational (default): shipped Derjaguin cut, bit-for-bit. Exact: the
+    // one-Psi pair — REPLACES the operational mu assembly when ON (kinematic
+    // only; create-time validated). The eigenstress half is identical in both
+    // routes (Pi at w_eff with the actual p_conf), so only the fold-point mu
+    // assembly differs.
+    FilmEnergyRoute film_energy_route = FilmEnergyRoute::Operational;
 
     // ── K(rho_d): augmentation prefactor as a function of dry density ──────
     // Optional piecewise-linear table K = K(rho_d) [J/kg vs kg/m^3]. When set

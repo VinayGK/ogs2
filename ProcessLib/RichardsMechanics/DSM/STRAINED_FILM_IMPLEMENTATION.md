@@ -273,6 +273,16 @@ before they are coded. Until then: do NOT cite this branch as "Maxwell-exact";
 the reversibility-loop verification (§8.4) is expected to show a small ∮ ≠ 0
 of the operational form, which the exact pair will close. [PRED]
 
+> UPDATE 2026-06-11: the exact route IS now implemented on the follow-up
+> branch `dsm_native_Pi_fofnlev` (design doc PI_OF_NL_EV_IMPLEMENTATION.md;
+> `film_energy_route = exact`, PRJ-selectable; this branch's operational cut
+> stays the default). MEASURED there (loop test, N=400): |∮dW|/scale =
+> 8.4e-9 for the exact pair vs 0.93 for the operational form — the "small
+> ∮ ≠ 0" wording above is corrected by measurement: on a Pi-dominant loop
+> with augmentation the operational Maxwell defect is O(1) of the path work,
+> NOT small. The [PRED] is thereby resolved: closure verified for the exact
+> pair, defect measured (and large) for the operational cut.
+
 ## 10. Status
 
 - 2026-06-09: branch + worktree created; design doc written; D1–D4 resolved

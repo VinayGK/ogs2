@@ -112,6 +112,26 @@ FilmStrainKappaMode parseFilmStrainKappaMode(std::string const& mode)
         mode);
 }
 
+FilmEnergyRoute parseFilmEnergyRoute(std::string const& route)
+{
+    if (route == "operational")
+    {
+        return FilmEnergyRoute::Operational;
+    }
+    if (route == "exact")
+    {
+        return FilmEnergyRoute::Exact;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "film_energy_route '{}'. Currently supported: 'operational' (shipped "
+        "Derjaguin cut, default) and 'exact' (one-Psi energy pair; requires "
+        "film_strain_coupling = 'kinematic'). "
+        "(DSM/PI_OF_NL_EV_IMPLEMENTATION.md)",
+        route);
+}
+
 MacroPorosityUpdateMode parseMacroPorosityUpdateMode(
     std::string const& mode)
 {
@@ -659,6 +679,24 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "film_strain_kappa",
             defaults ? toString(defaults->film_strain_kappa) : "aggregate"));
 
+    // ── Film energy route (DSM/PI_OF_NL_EV_IMPLEMENTATION.md §3) ───────────
+    // 'operational' (default, bit-for-bit): shipped Derjaguin cut. 'exact':
+    // the one-Psi pair; admissible only with film_strain_coupling='kinematic'
+    // (the closed-form strain integrals are for the kinematic h-law).
+    auto const film_energy_route = parseFilmEnergyRoute(
+        config.getConfigParameter<std::string>(
+            "film_energy_route",
+            defaults ? toString(defaults->film_energy_route) : "operational"));
+    if (!isValidFilmEnergyRouteCombination(film_strain_coupling,
+                                           film_energy_route))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} film_energy_route = 'exact' requires "
+            "film_strain_coupling = 'kinematic', got '{}'. "
+            "(DSM/PI_OF_NL_EV_IMPLEMENTATION.md §3 mode matrix)",
+            context, toString(film_strain_coupling));
+    }
+
     // Macro-porosity floor phi_M,min: keeps the macro pore from collapsing into
     // the interlayer (n_l capped at (phi-floor)/(1-floor)); 0 -> no floor.
     auto const macro_porosity_floor = config.getConfigParameter<double>(
@@ -725,6 +763,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         macro_floor_cutoff_width,
         film_strain_coupling,
         film_strain_kappa,
+        film_energy_route,
         potential_augmentation_prefactor_vs_dry_density,
         dry_density,
         potential_augmentation_prefactor_live_dry_density};
