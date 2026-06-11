@@ -3,13 +3,11 @@
 
 #pragma once
 
+#include <cmath>
 #include <memory>
 #include <optional>
 
-namespace MathLib
-{
-class PiecewiseLinearInterpolation;
-}
+#include "MathLib/InterpolationAlgorithms/PiecewiseLinearInterpolation.h"
 
 namespace ProcessLib::RichardsMechanics
 {
@@ -266,5 +264,39 @@ struct PotentialExchangeParameters
     std::shared_ptr<MathLib::PiecewiseLinearInterpolation const>
         potential_augmentation_prefactor_vs_dry_density = nullptr;
     std::optional<double> dry_density;  // rho_d [kg/m^3], initial/target
+
+    // ── LIVE K(rho_d) (K_OF_RHO_D_LIVE.md; Vinay 2026-06-10 "K(rho_d) try
+    // it") ──. When true, the table above is NOT frozen at parse time;
+    // instead K is re-evaluated at the EVOLVING dry density rho_d =
+    // rho_SR*(1-phi) at every evaluation site that has the current total
+    // porosity phi in scope (see effectiveAugmentationPrefactor below).
+    // Sites without phi fall back to the scalar `potential_augmentation_
+    // prefactor`. The analytic dK/drho_d tangent is OMITTED in this first
+    // cut — Newton may pay iterations (predicted, not benchmarked). false
+    // (default) -> parse-time freeze, bit-for-bit the existing behavior.
+    bool potential_augmentation_prefactor_live_dry_density = false;
 };
+
+// Effective augmentation prefactor K [J/kg] at the current state.
+// Live mode + table + finite phi -> K(rho_d) with rho_d = rho_SR*(1-phi)
+// [kg/m^3] (rho_SR = micro_solid_density_reference; phi = current TOTAL
+// porosity). PiecewiseLinearInterpolation::getValue holds the endpoint
+// values outside [rho_d_min, rho_d_max] (verified: MathLib/
+// InterpolationAlgorithms/PiecewiseLinearInterpolation.cpp, getValue),
+// so K is clamped at the table range ends. Any other case (mode off, no
+// table, phi sentinel/NaN) -> the parse-time scalar, bit-for-bit.
+inline double effectiveAugmentationPrefactor(
+    PotentialExchangeParameters const& params, double const phi)
+{
+    if (params.potential_augmentation_prefactor_live_dry_density &&
+        params.potential_augmentation_prefactor_vs_dry_density &&
+        std::isfinite(phi))
+    {
+        // rho_d = rho_SR * (1 - phi)  [kg/m^3]
+        return params.potential_augmentation_prefactor_vs_dry_density
+            ->getValue(params.micro_solid_density_reference *
+                       (1.0 - phi));  // K [J/kg]
+    }
+    return params.potential_augmentation_prefactor;  // K [J/kg]
+}
 }  // namespace ProcessLib::RichardsMechanics

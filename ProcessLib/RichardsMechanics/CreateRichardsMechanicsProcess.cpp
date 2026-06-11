@@ -509,6 +509,29 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         dry_density = defaults->dry_density;
     }
 
+    // ── LIVE K(rho_d) (K_OF_RHO_D_LIVE.md; Vinay 2026-06-10) ───────────────
+    // When true, the parse-time freeze below is SKIPPED for the live
+    // evaluation path: the table stays live and K is re-evaluated at the
+    // evolving rho_d = rho_SR*(1-phi) at run time (see
+    // effectiveAugmentationPrefactor). The scalar stored into
+    // potential_augmentation_prefactor then only serves as the FALLBACK for
+    // evaluation sites without a porosity in scope.
+    auto const potential_augmentation_prefactor_live_dry_density =
+        config.getConfigParameter<bool>(
+            "potential_augmentation_prefactor_live_dry_density",
+            defaults
+                ? defaults->potential_augmentation_prefactor_live_dry_density
+                : false);
+    if (potential_augmentation_prefactor_live_dry_density &&
+        !potential_augmentation_prefactor_vs_dry_density)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} "
+            "potential_augmentation_prefactor_live_dry_density=true requires "
+            "a <potential_augmentation_prefactor_vs_dry_density> table.",
+            context);
+    }
+
     auto const potential_augmentation_prefactor_scalar =
         config.getConfigParameterOptional<double>(
             "potential_augmentation_prefactor");
@@ -525,7 +548,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "given; they are mutually exclusive.",
                 context);
         }
-        if (!dry_density)
+        if (!dry_density && !potential_augmentation_prefactor_live_dry_density)
         {
             OGS_FATAL(
                 "RichardsMechanics: {} "
@@ -533,9 +556,15 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "<dry_density> (rho_d, kg/m^3) to evaluate K(rho_d).",
                 context);
         }
+        // Live mode: this is NOT a freeze — the table stays live; the value
+        // stored here is only the fallback K for phi-less evaluation sites
+        // (initial/target rho_d if given, else inherited scalar / 0).
         potential_augmentation_prefactor =
-            potential_augmentation_prefactor_vs_dry_density->getValue(
-                *dry_density);
+            dry_density
+                ? potential_augmentation_prefactor_vs_dry_density->getValue(
+                      *dry_density)
+                : (defaults ? defaults->potential_augmentation_prefactor
+                            : 0.0);
     }
     else
     {
@@ -697,7 +726,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         film_strain_coupling,
         film_strain_kappa,
         potential_augmentation_prefactor_vs_dry_density,
-        dry_density};
+        dry_density,
+        potential_augmentation_prefactor_live_dry_density};
 }
 
 template <int DisplacementDim>

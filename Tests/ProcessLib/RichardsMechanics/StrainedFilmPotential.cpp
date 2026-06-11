@@ -284,3 +284,97 @@ TEST(RichardsMechanicsStrainedFilm, ReplacementIsExclusiveAtZeroStrain)
     EXPECT_NE(mu_for(FilmStrainCouplingMode::Off, eps_v, p_conf),
               mu_for(FilmStrainCouplingMode::Kinematic, eps_v, p_conf));
 }
+
+// ── Live K(rho_d) helper (K_OF_RHO_D_LIVE.md; Vinay 2026-06-10) ────────────
+// Physics anchor (CLAUDE.md §3a): analytical limit / derived identity — the
+// helper must reproduce the piecewise-linear table exactly at its knots and
+// hold the endpoint values outside the range; off-mode must return the
+// parse-time scalar bit-for-bit. The knot values below are STRUCTURAL
+// in-test constants (not physical material parameters); expected values are
+// derived in-file from the linear-interpolation identity.
+namespace
+{
+PotentialExchangeParameters liveKSampleParams()
+{
+    PotentialExchangeParameters params;
+    params.micro_solid_density_reference = 2650.0;  // rho_SR, mirrors the
+        // prior approved sample state above (kg/m^3).
+    params.potential_augmentation_prefactor = 7.0;  // structural scalar K
+    // Structural knots: K(1000) = 10, K(2000) = 30 (J/kg vs kg/m^3).
+    params.potential_augmentation_prefactor_vs_dry_density =
+        std::make_shared<MathLib::PiecewiseLinearInterpolation const>(
+            std::vector<double>{1000.0, 2000.0},
+            std::vector<double>{10.0, 30.0});
+    return params;
+}
+
+// phi such that rho_d = rho_SR*(1-phi) equals the requested dry density.
+double phiForDryDensity(PotentialExchangeParameters const& params,
+                        double const rho_d)
+{
+    return 1.0 - rho_d / params.micro_solid_density_reference;
+}
+}  // namespace
+
+TEST(RichardsMechanicsLiveKOfRhoD, OffModeReturnsScalar)
+{
+    auto params = liveKSampleParams();
+    params.potential_augmentation_prefactor_live_dry_density = false;
+    // Off mode: scalar, regardless of table presence and finite phi.
+    EXPECT_DOUBLE_EQ(7.0, effectiveAugmentationPrefactor(
+                              params, phiForDryDensity(params, 1500.0)));
+
+    // No table: scalar even when the mode flag is on.
+    auto params_no_table = liveKSampleParams();
+    params_no_table.potential_augmentation_prefactor_live_dry_density = true;
+    params_no_table.potential_augmentation_prefactor_vs_dry_density = nullptr;
+    EXPECT_DOUBLE_EQ(7.0,
+                     effectiveAugmentationPrefactor(
+                         params_no_table, phiForDryDensity(params, 1500.0)));
+}
+
+TEST(RichardsMechanicsLiveKOfRhoD, LiveModeEvaluatesTable)
+{
+    auto params = liveKSampleParams();
+    params.potential_augmentation_prefactor_live_dry_density = true;
+
+    // At the knots: exact knot values.
+    EXPECT_DOUBLE_EQ(10.0, effectiveAugmentationPrefactor(
+                               params, phiForDryDensity(params, 1000.0)));
+    EXPECT_DOUBLE_EQ(30.0, effectiveAugmentationPrefactor(
+                               params, phiForDryDensity(params, 2000.0)));
+
+    // Interior points (two distinct phis): linear-interpolation identity
+    // K(rho_d) = 10 + 20*(rho_d - 1000)/1000, derived in-file.
+    double const rho_d_1 = 1500.0;
+    double const rho_d_2 = 1750.0;
+    double const expected_1 = 10.0 + 20.0 * (rho_d_1 - 1000.0) / 1000.0;
+    double const expected_2 = 10.0 + 20.0 * (rho_d_2 - 1000.0) / 1000.0;
+    EXPECT_DOUBLE_EQ(expected_1,
+                     effectiveAugmentationPrefactor(
+                         params, phiForDryDensity(params, rho_d_1)));
+    EXPECT_DOUBLE_EQ(expected_2,
+                     effectiveAugmentationPrefactor(
+                         params, phiForDryDensity(params, rho_d_2)));
+
+    // Non-finite phi (the context sentinel): fall back to the scalar.
+    EXPECT_DOUBLE_EQ(7.0,
+                     effectiveAugmentationPrefactor(
+                         params, std::numeric_limits<double>::infinity()));
+    EXPECT_DOUBLE_EQ(7.0,
+                     effectiveAugmentationPrefactor(
+                         params, std::numeric_limits<double>::quiet_NaN()));
+}
+
+TEST(RichardsMechanicsLiveKOfRhoD, ClampsAtTableRangeEnds)
+{
+    auto params = liveKSampleParams();
+    params.potential_augmentation_prefactor_live_dry_density = true;
+
+    // Below rho_d_min and above rho_d_max the endpoint values are held
+    // (PiecewiseLinearInterpolation::getValue endpoint hold).
+    EXPECT_DOUBLE_EQ(10.0, effectiveAugmentationPrefactor(
+                               params, phiForDryDensity(params, 500.0)));
+    EXPECT_DOUBLE_EQ(30.0, effectiveAugmentationPrefactor(
+                               params, phiForDryDensity(params, 2600.0)));
+}

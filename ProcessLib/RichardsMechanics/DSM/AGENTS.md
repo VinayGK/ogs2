@@ -225,3 +225,21 @@ residual stays a future flow rule. Design + decision record:
 - TODO: build + unit tests + dd1400 off-mode regression (in progress
   2026-06-09); §9a exact forms; confined expulsion probe; K re-calibration
   [PRED: saturated swelling-pressure equilibrium shifts in both modes].
+
+## 2026-06-11 — LIVE K(rho_d) variant (Vinay: "K(rho_d) try it")
+
+- DONE (2026-06-11): live (evolving dry-density) K(rho_d) implemented per
+  Vinay's order; see K_OF_RHO_D_LIVE.md. New PRJ bool
+  `potential_augmentation_prefactor_live_dry_density` (default false =
+  parse-time freeze, bit-for-bit); helper effectiveAugmentationPrefactor
+  (PotentialExchangeParameters.h) evaluates K_table(rho_SR*(1-phi)) at all
+  FEM sites with porosity in scope (context phi / new defaulted
+  total_porosity arg on the swelling increment / assembly phi); scalar
+  fallback where no phi exists. Endpoint-clamped (getValue endpoint hold).
+- Verified: 31/31 RichardsMechanics unit tests (3 new
+  RichardsMechanicsLiveKOfRhoD, structural knots); dd1400 off-mode
+  regression sigma_zz = -4.9218 MPa = recorded baseline
+  (runs/2026-06-10_0841_dsm_native_h_of_eps_successful).
+- PROVISIONAL: linear knot interpolation (shape undecided); dK tangent
+  OMITTED first cut [PRED: extra Newton iterations, not benchmarked]; no
+  live-mode production run yet (behavior under live K = predicted only).

@@ -706,6 +706,10 @@ inline void applyFilmPressureMicroPotential(
         double const eps_v_sf = local_context.volumetric_strain;
         double const sign_sf =
             microPotentialSignFactorFromParameters(potential_exchange_params);
+        // Live K(rho_d) (K_OF_RHO_D_LIVE.md): rho_d = rho_SR*(1-phi) from the
+        // context's total porosity; off-mode / phi sentinel -> parse scalar.
+        double const K_aug_sf = effectiveAugmentationPrefactor(
+            potential_exchange_params, local_context.phi);  // K [J/kg]
 
         auto const film_state = computeStrainedFilmState(
             potential_exchange_params.film_strain_coupling,
@@ -714,7 +718,7 @@ inline void applyFilmPressureMicroPotential(
             potential_exchange_params.micro_solid_density_reference,
             potential_exchange_params.hamaker_constant,
             potential_exchange_params.specific_surface, sign_sf,
-            potential_exchange_params.potential_augmentation_prefactor,
+            K_aug_sf,
             potential_exchange_params.potential_augmentation_exponent,
             potential_exchange_params.micro_water_content_floor,
             rho_lR_used /*rho_pi: mirrors Pi = -rho_lR_used*mu_lR below*/);
@@ -725,7 +729,7 @@ inline void applyFilmPressureMicroPotential(
             potential_exchange_params.micro_solid_density_reference,
             potential_exchange_params.hamaker_constant,
             potential_exchange_params.specific_surface, sign_sf,
-            potential_exchange_params.potential_augmentation_prefactor,
+            K_aug_sf,
             potential_exchange_params.potential_augmentation_exponent,
             0.0 /*dnS_dnl: frozen nS in strained modes*/,
             potential_exchange_params.micro_water_content_floor);
@@ -846,7 +850,10 @@ solveReferenceMassStoragePredictorState(
             potential_exchange_params.micro_solid_density_reference, potential_exchange_params.hamaker_constant,
             potential_exchange_params.specific_surface,
             microPotentialSignFactorFromParameters(potential_exchange_params),
-            potential_exchange_params.potential_augmentation_prefactor,
+            // Live K(rho_d): rho_d = rho_SR*(1-phi); off / phi sentinel ->
+            // parse scalar (K_OF_RHO_D_LIVE.md).
+            effectiveAugmentationPrefactor(potential_exchange_params,
+                                           local_context.phi),  // K [J/kg]
             potential_exchange_params.potential_augmentation_exponent,
             0.0 /*dnS_dnl*/,
             potential_exchange_params.micro_water_content_floor);
@@ -1021,7 +1028,10 @@ solveReferenceMassStorageCoupledState(
             n_l, rho_lR, active_nS, potential_exchange_params.micro_solid_density_reference,
             potential_exchange_params.hamaker_constant, potential_exchange_params.specific_surface,
             microPotentialSignFactorFromParameters(potential_exchange_params),
-            potential_exchange_params.potential_augmentation_prefactor,
+            // Live K(rho_d): rho_d = rho_SR*(1-phi); off / phi sentinel ->
+            // parse scalar (K_OF_RHO_D_LIVE.md).
+            effectiveAugmentationPrefactor(potential_exchange_params,
+                                           local_context.phi),  // K [J/kg]
             potential_exchange_params.potential_augmentation_exponent,
             0.0 /*dnS_dnl*/,
             potential_exchange_params.micro_water_content_floor);
@@ -1292,7 +1302,10 @@ inline VanDerWaalsMicroPotentialData computeActiveMicroPotential(
         n_l, rho_lR_effective, active_nS, potential_exchange_params.micro_solid_density_reference,
         potential_exchange_params.hamaker_constant, potential_exchange_params.specific_surface,
         microPotentialSignFactorFromParameters(potential_exchange_params),
-            potential_exchange_params.potential_augmentation_prefactor,
+            // Live K(rho_d): rho_d = rho_SR*(1-phi); off / phi sentinel ->
+            // parse scalar (K_OF_RHO_D_LIVE.md).
+            effectiveAugmentationPrefactor(potential_exchange_params,
+                                           local_context.phi),  // K [J/kg]
             potential_exchange_params.potential_augmentation_exponent, dnS_dnl,
             potential_exchange_params.micro_water_content_floor);
 
@@ -1895,9 +1908,17 @@ computeReferenceMicroPorositySwellingStressIncrement(
     double const biot_coefficient = 1.0,
     double const p_conf = std::numeric_limits<double>::quiet_NaN(),
     double const eps_v = std::numeric_limits<double>::quiet_NaN(),
-    double const eps_v_prev = std::numeric_limits<double>::quiet_NaN())
+    double const eps_v_prev = std::numeric_limits<double>::quiet_NaN(),
+    // TOTAL porosity phi for live K(rho_d) (K_OF_RHO_D_LIVE.md); NaN sentinel
+    // (callers without porosity in scope) -> parse-time scalar K.
+    double const total_porosity = std::numeric_limits<double>::quiet_NaN())
 {
     using KV = MathLib::KelvinVector::KelvinVectorType<DisplacementDim>;
+    // Live K(rho_d): rho_d = rho_SR*(1-phi) [kg/m^3]; one K for BOTH the prev
+    // and curr Pi evaluations of this increment (phi is the current state —
+    // mirrors the held-fixed p_conf telescoping convention).
+    double const K_aug_sw = effectiveAugmentationPrefactor(
+        potential_exchange_params, total_porosity);  // K [J/kg]
     auto const& params = potential_exchange_params;
 
     // C_el is unused on BOTH branches now (the film-ON branch is a transmitted
@@ -2003,7 +2024,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
                     n_l_prev, active_nS_prev_film, eps_v_prev_used, p_conf,
                     rho_lR_prev, params.micro_solid_density_reference,
                     params.hamaker_constant, params.specific_surface,
-                    sign_factor_film, params.potential_augmentation_prefactor,
+                    sign_factor_film, K_aug_sw /*live K(rho_d), J/kg*/,
                     params.potential_augmentation_exponent,
                     params.micro_water_content_floor, rho_pi_prev)
                     .w_eff;
@@ -2013,7 +2034,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
                     active_nS_curr_film, eps_v, p_conf, rho_lR,
                     params.micro_solid_density_reference,
                     params.hamaker_constant, params.specific_surface,
-                    sign_factor_film, params.potential_augmentation_prefactor,
+                    sign_factor_film, K_aug_sw /*live K(rho_d), J/kg*/,
                     params.potential_augmentation_exponent,
                     params.micro_water_content_floor, rho_pi_curr)
                     .w_eff;
@@ -2023,7 +2044,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
                 w_eval_prev, rho_lR_prev, active_nS_prev_film,
                 params.micro_solid_density_reference, params.hamaker_constant,
                 params.specific_surface, sign_factor_film,
-                params.potential_augmentation_prefactor,
+                K_aug_sw /*live K(rho_d), J/kg*/,
                 params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
                 params.micro_water_content_floor)
                 .mu_lR;
@@ -2032,7 +2053,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
                 w_eval_curr, rho_lR, active_nS_curr_film,
                 params.micro_solid_density_reference, params.hamaker_constant,
                 params.specific_surface, sign_factor_film,
-                params.potential_augmentation_prefactor,
+                K_aug_sw /*live K(rho_d), J/kg*/,
                 params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
                 params.micro_water_content_floor)
                 .mu_lR;
@@ -2161,7 +2182,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
             n_l_prev, rho_lR_prev, active_nS_prev,
             params.micro_solid_density_reference, params.hamaker_constant,
             params.specific_surface, sign_factor,
-            params.potential_augmentation_prefactor,
+            K_aug_sw /*live K(rho_d), J/kg*/,
             params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
             params.micro_water_content_floor)
             .mu_lR;
@@ -2170,7 +2191,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
             n_l, rho_lR, active_nS_curr,
             params.micro_solid_density_reference, params.hamaker_constant,
             params.specific_surface, sign_factor,
-            params.potential_augmentation_prefactor,
+            K_aug_sw /*live K(rho_d), J/kg*/,
             params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
             params.micro_water_content_floor)
             .mu_lR;
@@ -2203,12 +2224,15 @@ computeSwellingStressIncrement(
     double const biot_coefficient = 1.0,
     double const p_conf = std::numeric_limits<double>::quiet_NaN(),
     double const eps_v = std::numeric_limits<double>::quiet_NaN(),
-    double const eps_v_prev = std::numeric_limits<double>::quiet_NaN())
+    double const eps_v_prev = std::numeric_limits<double>::quiet_NaN(),
+    // TOTAL porosity phi for live K(rho_d) (K_OF_RHO_D_LIVE.md); NaN sentinel
+    // -> parse-time scalar K.
+    double const total_porosity = std::numeric_limits<double>::quiet_NaN())
 {
     return computeReferenceMicroPorositySwellingStressIncrement<DisplacementDim>(
         n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
         potential_exchange_params, biot_coefficient, p_conf, eps_v,
-        eps_v_prev);
+        eps_v_prev, total_porosity);
 }
 
 template <int DisplacementDim>
@@ -2277,7 +2301,11 @@ inline void updateSwellingState(
         computeSwellingStressIncrement<DisplacementDim>(
             n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
             potential_exchange_params, biot_coefficient, p_conf_swelling,
-            variables.volumetric_strain, variables_prev.volumetric_strain);
+            variables.volumetric_strain, variables_prev.volumetric_strain,
+            // TOTAL porosity (live K(rho_d); rho_d = rho_SR*(1-phi)).
+            std::get<ProcessLib::ThermoRichardsMechanics::PorosityData>(
+                state_current)
+                .phi);
 
     auto const C_el_inverse = C_el.inverse().eval();
 
@@ -4371,8 +4399,10 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         potential_exchange_params_ptr->specific_surface,
                         microPotentialSignFactorFromParameters(
                             *potential_exchange_params_ptr),
-                        potential_exchange_params_ptr
-                            ->potential_augmentation_prefactor,
+                        // Live K(rho_d): rho_d = rho_SR*(1-phi) (total
+                        // porosity in scope); off -> parse scalar.
+                        effectiveAugmentationPrefactor(
+                            *potential_exchange_params_ptr, phi),  // K [J/kg]
                         potential_exchange_params_ptr
                             ->potential_augmentation_exponent,
                         dnS_dnl_pu,
@@ -4556,8 +4586,11 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             potential_exchange_params_ptr->specific_surface,
                             microPotentialSignFactorFromParameters(
                                 *potential_exchange_params_ptr),
-                            potential_exchange_params_ptr
-                                ->potential_augmentation_prefactor,
+                            // Live K(rho_d): rho_d = rho_SR*(1-phi) (total
+                            // porosity in scope); off -> parse scalar.
+                            effectiveAugmentationPrefactor(
+                                *potential_exchange_params_ptr,
+                                phi),  // K [J/kg]
                             potential_exchange_params_ptr
                                 ->potential_augmentation_exponent,
                             0.0 /*dnS_dnl*/,
