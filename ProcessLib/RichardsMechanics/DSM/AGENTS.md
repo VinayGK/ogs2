@@ -282,3 +282,28 @@ agent; decision queue Q1–Q5 (Vinay) inside.
   status. STILL TODO: "Step 24 first numbers" frame (gated on T-8 / MS33 VII
   runs); Doxygen tag doc for film_energy_route (joint TODO with the
   undocumented film_strain tags).
+
+## Form (a) vs Form (b) paired comparison (2026-06-12) — READ BEFORE TOUCHING THE FILM ROUTES
+
+Definitions (the two FORMS of the micro potential; beamer maxwell_from_psi.tex Step 21b):
+- FORM (a): mu(Pi(n_l), eps_v) — Pi frozen at n_l, strain a separate argument
+  (the ch.1 maxwell partner; default/off mode; maxwell_conjugate lineage).
+- FORM (b): mu(Pi(n_l, eps_v)) — strain enters THROUGH the film state
+  (film_strain_coupling=kinematic + film_energy_route=exact on THIS branch).
+- [D] (a) = (b) Taylor-truncated at eps_v->0. Mutually exclusive at runtime
+  (create-time guard); coexistent in one build as limit test + baseline.
+
+Paired runs (common pre-recalibration K base, two binaries:
+mc_20260608 d98f5f8324 for (a), pi_fofnlev_20260611 @4c7a5d03b2 for (b)),
+record: ogs/formAB_2026-06-12/FORMAB_RESULTS.md + eurad-anchors snapshot. MEASURED:
+1. dd1600 control (eps_v~0): BITWISE identical across forms AND binaries —
+   the truncation identity holds exactly in running code.
+2. VII discriminator: e_end 1.4995 (a) vs 1.3530 (b) — self-relaxing drive
+   removes 0.146 of the over-swell; exact within 3e-4 of operational here.
+3. OPPOSITE PULL: Task-13 DD 1.4592 (a) vs 1.4839 (b) vs expt 1.4139 —
+   (b) helps VII but hurts Task-13. No reversible form satisfies both =>
+   Task-13 residual is the IRREVERSIBLE channel (see TASK13_MCC_BLOCKAGE.md
+   + MCC_INTERNAL_SWELLING_IMPLEMENTATION.md design).
+4. (b) also better-conditioned on the Task-13 wetting front (1256 steps/138 s
+   vs 2673/713 s) and ends force-balanced (Pi +0.55 MPa ~ load vs -1.85).
+Variant PRJs committed next to the base files (suffix _formB_piexact_2026-06-12).
