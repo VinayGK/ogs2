@@ -3,14 +3,52 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <iterator>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "MathLib/InterpolationAlgorithms/PiecewiseLinearInterpolation.h"
 
 namespace ProcessLib::RichardsMechanics
 {
+// Piecewise-linear K(rho_d) table with an EXACT per-segment slope accessor.
+// MathLib::PiecewiseLinearInterpolation::getDerivative blends the two
+// adjacent segment slopes (quadratic smoothing, see its .cpp), which is NOT
+// the derivative of getValue's clamped piecewise-linear evaluation. The
+// live-K(rho_d) Jacobian (K_OF_RHO_D_LIVE.md) needs the slope of the VALUE
+// actually fed into the residual, so this thin subclass exposes the exact
+// segment slope via the protected knot vectors.
+class AugmentationPrefactorTable final
+    : public MathLib::PiecewiseLinearInterpolation
+{
+public:
+    using MathLib::PiecewiseLinearInterpolation::PiecewiseLinearInterpolation;
+
+    // Exact d(getValue)/dx of the clamped piecewise-linear evaluation.
+    // Convention (documented choice, mirrors getValue's branch structure):
+    //  - x <= x_min or x >= x_max: 0 (getValue holds the endpoint value, so
+    //    the clamped evaluation is FLAT there; this is the one-sided outward
+    //    slope AT the edge knots as well).
+    //  - interior knots: the LEFT segment slope (one-sided), consistent with
+    //    getValue's lower_bound interval selection (idx = lower_bound - 1).
+    double getSegmentSlope(double const x) const
+    {
+        if (x <= supp_pnts_.front() || supp_pnts_.back() <= x)
+        {
+            return 0.0;
+        }
+        auto const it =
+            std::lower_bound(supp_pnts_.begin(), supp_pnts_.end(), x);
+        std::size_t const i = std::distance(supp_pnts_.begin(), it) - 1;
+        return (values_at_supp_pnts_[i + 1] - values_at_supp_pnts_[i]) /
+               (supp_pnts_[i + 1] - supp_pnts_[i]);
+    }
+};
+
 enum class MicroPotentialConvention
 {
     PositiveReduced,
@@ -307,7 +345,7 @@ struct PotentialExchangeParameters
     // and dry density are carried here only so a per-<medium id> override can
     // inherit the shared table from the global block as its default.
     // getValue() clamps outside [rho_d_min, rho_d_max] (endpoint hold).
-    std::shared_ptr<MathLib::PiecewiseLinearInterpolation const>
+    std::shared_ptr<AugmentationPrefactorTable const>
         potential_augmentation_prefactor_vs_dry_density = nullptr;
     std::optional<double> dry_density;  // rho_d [kg/m^3], initial/target
 
@@ -317,9 +355,13 @@ struct PotentialExchangeParameters
     // rho_SR*(1-phi) at every evaluation site that has the current total
     // porosity phi in scope (see effectiveAugmentationPrefactor below).
     // Sites without phi fall back to the scalar `potential_augmentation_
-    // prefactor`. The analytic dK/drho_d tangent is OMITTED in this first
-    // cut — Newton may pay iterations (predicted, not benchmarked). false
-    // (default) -> parse-time freeze, bit-for-bit the existing behavior.
+    // prefactor`. The analytic dK/dphi = -rho_SR*(table segment slope)
+    // tangent is wired into the live p-u augmentation Jacobian block since
+    // 2026-06-12 (Vinay's approved completion; see
+    // effectiveAugmentationPrefactorPhiDerivative below and
+    // K_OF_RHO_D_LIVE.md) — the first cut's omission note is historical.
+    // false (default) -> parse-time freeze, bit-for-bit the existing
+    // behavior.
     bool potential_augmentation_prefactor_live_dry_density = false;
 };
 
@@ -344,5 +386,31 @@ inline double effectiveAugmentationPrefactor(
                        (1.0 - phi));  // K [J/kg]
     }
     return params.potential_augmentation_prefactor;  // K [J/kg]
+}
+
+// d K_eff/d phi of effectiveAugmentationPrefactor above, at the same state.
+// Chain (analytic derivation, this file; Vinay 2026-06-12 approved Jacobian
+// completion of live K(rho_d)): rho_d = rho_SR*(1-phi) [kg/m^3], so
+//   dK/dphi = (dK/drho_d) * (drho_d/dphi) = (table segment slope) * (-rho_SR).
+// Returns 0 in EVERY case where effectiveAugmentationPrefactor returns the
+// parse-time scalar (mode off, no table, phi sentinel/NaN) and at/outside the
+// clamped table edges (where the clamped value is flat in rho_d) — exactly
+// the one-sided/zero-slope convention documented on getSegmentSlope. The
+// RESIDUAL is untouched by this helper; it feeds the Jacobian only.
+inline double effectiveAugmentationPrefactorPhiDerivative(
+    PotentialExchangeParameters const& params, double const phi)
+{
+    if (params.potential_augmentation_prefactor_live_dry_density &&
+        params.potential_augmentation_prefactor_vs_dry_density &&
+        std::isfinite(phi))
+    {
+        double const rho_SR = params.micro_solid_density_reference;  // kg/m^3
+        return -rho_SR *
+               params.potential_augmentation_prefactor_vs_dry_density
+                   ->getSegmentSlope(
+                       rho_SR * (1.0 - phi));  // dK/dphi [J/kg per unit phi]:
+                                               // [kg/m^3]*[J/kg / (kg/m^3)]
+    }
+    return 0.0;  // J/kg per unit phi
 }
 }  // namespace ProcessLib::RichardsMechanics

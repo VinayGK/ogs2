@@ -307,3 +307,26 @@ record: ogs/formAB_2026-06-12/FORMAB_RESULTS.md + eurad-anchors snapshot. MEASUR
 4. (b) also better-conditioned on the Task-13 wetting front (1256 steps/138 s
    vs 2673/713 s) and ends force-balanced (Pi +0.55 MPa ~ load vs -1.85).
 Variant PRJs committed next to the base files (suffix _formB_piexact_2026-06-12).
+
+## Live-K(rho_d) analytic tangent completion (2026-06-12)
+
+- DONE 2026-06-12: analytic dK/dphi = -rho_SR*(table segment slope) tangent
+  (Vinay-approved completion of the live-K first cut; Jacobian-only,
+  residual untouched) wired into the live p-u augmentation Jacobian block.
+  New `AugmentationPrefactorTable::getSegmentSlope` (exact clamped
+  piecewise-linear slope; zero outside/at edges, left slope at interior
+  knots), `effectiveAugmentationPrefactorPhiDerivative`, mu-level exact
+  K-partials `dmu_lR_dK`/`ddmu_lR_dnl_dK` (mu_aug linear in K), and the
+  `PorosityFromMassBalance` dphi/deps_v = (alpha-phi)/(1+w) chain. Details +
+  measured verification: K_OF_RHO_D_LIVE.md "Analytic tangent completion".
+- MEASURED: 41 RM unit tests (39 pass + 2 designed skips; 2 new FD-vs-
+  analytic tangent tests); dd1400 off-mode bitwise-identical vs the
+  pre-tangent h_of_eps_20260609 binary (12/12 VTUs); truncated 1a_robin_A_Kl
+  live-K sanity converges with iterations equal to before (17/2/2).
+- CURE TEST (task42 1b *_Kl step-1 singularity): NOT CURED — both 1b_A_Kl
+  and 1b_B_Kl still die in step #1, but the Newton trajectory measurably
+  changed (contraction to |dx|_uz=1.09 over 7 its before the it.8 blow-up,
+  vs pre-tangent monotonic divergence). Second mechanism suspected
+  (hypothesis, not verified); evidence in task42_case1_2026-06-12/
+  out_1b_{A,B}_Kl/run.log + _diagnostics_1bKl/README_DIAG.md addendum.
+  OPEN: Vinay's call on the next probe; no further patching done.

@@ -77,6 +77,17 @@ struct VanDerWaalsMicroPotentialData
     // second partial (tangent-only path; the integrable partner's n_l-tangent
     // is used in the analytic predictor/scalar micro-solve Jacobians only).
     double d2mu_lR_dnl2 = 0.0;
+    // PARTIAL derivatives w.r.t. the augmentation prefactor K (all other
+    // state held fixed), needed by the live-K(rho_d) Jacobian chain
+    // (K_OF_RHO_D_LIVE.md; Vinay 2026-06-12): every K-channel below is
+    // LINEAR in K, so these are exact:
+    //   mu_aug = sign*K*exp(-xi)        -> dmu_lR/dK        = sign*exp(-xi)
+    //   d mu_aug/d n_l = -mu_aug*xi/n_l -> d(dmu_lR/dnl)/dK = -dmu_lR_dK*xi/n_l
+    // Both are 0 when the augmentation is inactive (K == 0: the residual then
+    // carries no aug term; the tangent at that isolated point is left 0) and
+    // ddmu_lR_dnl_dK is 0 when the disjoining floor clamps (flat in n_l).
+    double dmu_lR_dK = 0.0;        // [-] = (J/kg) per (J/kg)
+    double ddmu_lR_dnl_dK = 0.0;   // [1/n_l] = (J/kg per n_l) per (J/kg)
 };
 
 // DSM dsm_micromacro microscale vdW potential helper:
@@ -269,6 +280,11 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
         // 0 when clamped (flat in n_l).
         out.d2mu_lR_dnl2 +=
             clamped ? 0.0 : mu_aug * xi * xi / (n_l_eff * n_l_eff);  // J/kg
+        // Exact K-partials (mu_aug LINEAR in K; live-K(rho_d) Jacobian chain,
+        // K_OF_RHO_D_LIVE.md). Clamped: value flat in n_l -> mixed partial 0.
+        out.dmu_lR_dK = potential_sign_factor * std::exp(-xi);  // [-]
+        out.ddmu_lR_dnl_dK =
+            clamped ? 0.0 : -out.dmu_lR_dK * xi / n_l_eff;  // [1/n_l]
     }
 
     // ── F2 (2026-06-06, tangent-only): live-nS chain for dmu_lR/dnl ──────────

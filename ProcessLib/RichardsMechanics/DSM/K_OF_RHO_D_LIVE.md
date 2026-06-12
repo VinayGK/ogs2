@@ -87,10 +87,10 @@ makes every site bit-for-bit identical to before.
   PiecewiseLinearInterpolation shape); the interpolation shape between
   calibration anchors is UNDECIDED (memory: `project_dsm_k_of_dry_density`)
   — linear is the provisional placeholder, Vinay's call pending.
-- The analytic dK/drho_d (= dK/dphi → strain chain) tangent contribution is
-  OMITTED in this first cut: the residual sees the live K but the Jacobian
-  does not carry its derivative. Predicted, not benchmarked: Newton may pay
-  extra iterations — accepted for this trial (Vinay's "try it").
+- [HISTORICAL — superseded 2026-06-12, see "Analytic tangent completion"
+  below] The analytic dK/drho_d (= dK/dphi → strain chain) tangent
+  contribution was OMITTED in the first cut: the residual saw the live K but
+  the Jacobian did not carry its derivative.
 - NO double counting: only the K value fed to the UNCHANGED augmentation
   law `mu_aug = sign*K*exp(-h/lambda)` varies with rho_d; no new physical
   term, no second rho_d-dependence is introduced anywhere.
@@ -110,3 +110,64 @@ makes every site bit-for-bit identical to before.
 - A live-mode production run (e.g. free-swelling Model VII with a Dixon
   K(rho_d) table) has NOT been performed yet — behavior under live K is
   PREDICTED only, pending Vinay's run plan.
+
+## Analytic tangent completion (2026-06-12, Vinay approved)
+
+The first-cut omission above is closed. Implemented as specified by Vinay
+(2026-06-12): **Jacobian-only — the residual is untouched.**
+
+- Chain: `rho_d = rho_SR*(1-phi)` => `drho_d/dphi = -rho_SR` =>
+  `dK/dphi = -rho_SR * (dK/drho_d)` with `dK/drho_d` the EXACT per-segment
+  slope of the piecewise-linear table — slope 0 at/outside the clamped
+  edges, LEFT-segment slope at interior knots (mirrors `getValue`'s
+  lower_bound interval selection). Exposed by `AugmentationPrefactorTable::
+  getSegmentSlope` (`PotentialExchangeParameters.h`); NOT MathLib's
+  `getDerivative`, which quadratically blends adjacent segment slopes and is
+  not the derivative of the clamped value the residual actually uses.
+- `effectiveAugmentationPrefactorPhiDerivative(params, phi)` returns
+  `dK/dphi` [J/kg per unit phi]; 0 in every case where
+  `effectiveAugmentationPrefactor` falls back to the parse-time scalar
+  (mode off, no table, sentinel/NaN phi).
+- mu-level K-partials: `mu_aug = sign*K*exp(-h/lambda)` is LINEAR in K, so
+  `VanDerWaalsMicroPotentialData` carries exact `dmu_lR_dK` and
+  `ddmu_lR_dnl_dK` (0 when the disjoining floor clamps).
+- Wired into the live p-u augmentation Jacobian block in
+  `RichardsMechanicsFEM-impl.h` (`assembleWithJacobian`): an additional
+  `dmu_lR_dK_tot * dK/dphi * dphi/deps_v` contribution to d mu_lR/d eps_v,
+  with `dphi/deps_v = (alpha - phi)/(1 + w)` derived analytically from
+  `PorosityFromMassBalance` (the MS33 porosity law); other porosity laws are
+  treated as strain-independent (chain 0, exact for Constant). The
+  default-OFF `enable_dsm_swelling_up_jacobian` block carries a NOTE and is
+  left without the chain (dead code).
+- Off mode / frozen table / clamped edge: `dK/dphi == 0` -> the new block is
+  skipped entirely -> bit-for-bit identical Jacobian (off-mode verified
+  bitwise, see below).
+
+### Verification (2026-06-12, measured)
+
+- New unit tests `RichardsMechanicsLiveKOfRhoD.AnalyticPhiTangentMatchesFD
+  InsideSegment` and `...ClampedEdgesAndKnots` (FD-vs-analytic, derived
+  identity; scale-derived tolerances; structural in-test knots): PASS.
+  Full RichardsMechanics suite: 41 tests, 39 PASS + 2 designed skips
+  (build `Pi_fofnlev_20260611`, incremental).
+- Off-mode regression: `ANCHORS_MS33_ModelI/ms33_modelI_dd1400.prj` run
+  with the reference binary (`h_of_eps_20260609`, pre-tangent) vs this
+  build: all 12 output VTUs bitwise-identical field data (points + every
+  point/cell array).
+- Live-K sanity (2-step truncated `1a_robin_A_Kl` copy,
+  `task42_case1_2026-06-12/_diagnostics_1bKl/1a_robin_A_Kl_trunc2_diag.prj`):
+  converges; measured Newton iterations 17/2/2 for steps 1-3, EQUAL to the
+  pre-tangent full-run counts (no regression, no measured gain on this
+  confined-path case).
+- CURE TEST (the motivating 1b `*_Kl` step-1 singularity,
+  `task42_case1_2026-06-12/_diagnostics_1bKl/README_DIAG.md`): NOT CURED.
+  Both `1b_A_Kl` and `1b_B_Kl` still fail in time step #1 ("time stepper
+  cannot reduce the time step size further"). Measured CHANGE in the
+  Newton trajectory, though: with the tangent, |dx|_uz CONTRACTS for 7
+  iterations (14.6 -> 11.4 -> 17.7 -> 14.0 -> 5.9 -> 2.4 -> 1.09) before
+  blowing up at iteration 8 (168 -> 4.3e3 -> 5.1e4 -> ...), vs the
+  pre-tangent monotonic divergence (14.6 -> 26 -> 44 -> 64 -> inf). The
+  missing-tangent hypothesis is therefore PARTIALLY supported (basin
+  improved) but the 1b compliant-top failure has an additional, still
+  unidentified mechanism — evidence in `out_1b_{A,B}_Kl/run.log`
+  (2026-06-12 17:04/17:05 runs); no further patching without Vinay's call.

@@ -16,6 +16,7 @@
 #include "ConstitutiveRelations/PotentialExchange.h"
 #include "IntegrationPointData.h"
 #include "MaterialLib/MPL/Medium.h"
+#include "MaterialLib/MPL/Properties/PorosityFromMassBalance.h"
 #include "MaterialLib/MPL/Utils/FormEigenTensor.h"
 #include "MaterialLib/SolidModels/SelectSolidConstitutiveRelation.h"
 #include "MathLib/EigenBlockMatrixView.h"
@@ -4493,6 +4494,74 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         N_p.transpose() *
                         (alpha_M_eff_film * mech_pu.dmu_lR_mech_deps_v) *
                         identity2.transpose() * B * w;
+
+                    // ── Live K(rho_d) analytic tangent (K_OF_RHO_D_LIVE.md;
+                    // Vinay 2026-06-12 approved Jacobian completion) ─────────
+                    // JACOBIAN-ONLY: the residual's live K is untouched. In
+                    // live mode K = K_table(rho_SR*(1-phi)) makes mu_lR depend
+                    // on eps_v through phi, so the exchange p-u tangent gains
+                    // the product-rule chain
+                    //   d mu_lR/d eps_v |_K = dmu_lR/dK * dK/dphi * dphi/deps_v
+                    // with dK/dphi = -rho_SR*(table segment slope) (exact,
+                    // clamped-edge slope 0; PotentialExchangeParameters.h) and
+                    // dmu_lR/dK covering the two LINEAR K-channels the residual
+                    // mu_lR carries: the direct mu_aug term and, via Pi/Pi' in
+                    // the integrable mechanical partner mu_lR_mech,
+                    //   d mu_lR_mech/dK = (dmu_lR/dK + n_l*d(dmu_lR/dnl)/dK)
+                    //                     * eps_v
+                    // (computeIntegrableMechanicalMicroPotential form; Pi =
+                    // -rho*mu_lR makes the rho factors cancel). Off-mode /
+                    // frozen table / clamped edge -> dK/dphi == 0 -> block
+                    // skipped, bit-for-bit identical Jacobian.
+                    double const dK_dphi_pu =
+                        effectiveAugmentationPrefactorPhiDerivative(
+                            *potential_exchange_params_ptr,
+                            phi);  // J/kg per unit phi
+                    if (dK_dphi_pu != 0.0)
+                    {
+                        // dphi/deps_v of the porosity law the residual actually
+                        // evaluated. PorosityFromMassBalance (the MS33 law):
+                        //   phi = (phi_prev + alpha*w)/(1 + w),
+                        //   w = delta_eps_v + delta_p_eff*beta_SR
+                        // => dphi/deps_v = (alpha - phi)/(1 + w)  (analytic,
+                        // derived here from that law's value()). Any other
+                        // porosity law (e.g. Constant: exact) is treated as
+                        // strain-independent -> chain 0.
+                        double dphi_deps_v_pu = 0.0;  // [-]
+                        if (dynamic_cast<
+                                MPL::PorosityFromMassBalance const*>(
+                                &medium->property(MPL::PropertyType::porosity)))
+                        {
+                            double const w_phi_pu =
+                                (variables.volumetric_strain -
+                                 variables_prev.volumetric_strain) +
+                                (variables.effective_pore_pressure -
+                                 variables_prev.effective_pore_pressure) *
+                                    beta_SR;  // [-]
+                            dphi_deps_v_pu =
+                                (alpha - phi) / (1.0 + w_phi_pu);  // [-]
+                        }
+                        if (dphi_deps_v_pu != 0.0)
+                        {
+                            double const dmu_lR_dK_tot_pu =
+                                vdw_pu.dmu_lR_dK +
+                                (vdw_pu.dmu_lR_dK +
+                                 n_l * vdw_pu.ddmu_lR_dnl_dK) *
+                                    variables.volumetric_strain;  // [-]
+                            // Same sign/shape as the dmu_lR_mech_deps_v block
+                            // above: an additional contribution to
+                            // d mu_lR/d eps_v in d rho_L_hat/d u.
+                            local_Jac
+                                .template block<pressure_size,
+                                                displacement_size>(
+                                    pressure_index, displacement_index)
+                                .noalias() -=
+                                N_p.transpose() *
+                                (alpha_M_eff_film * dmu_lR_dK_tot_pu *
+                                 dK_dphi_pu * dphi_deps_v_pu) *  // J/kg per eps_v
+                                identity2.transpose() * B * w;
+                        }
+                    }
                 }
                 use_fd_jacobian_for_direct_macro_derivative =
                     potential_exchange_params_ptr
@@ -4644,6 +4713,10 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                 *potential_exchange_params_ptr),
                             // Live K(rho_d): rho_d = rho_SR*(1-phi) (total
                             // porosity in scope); off -> parse scalar.
+                            // NOTE (2026-06-12): the live-K dK/dphi chain is
+                            // NOT added in this default-OFF block (dead code,
+                            // enable_dsm_swelling_up_jacobian=false); wire it
+                            // per the live p-u block above if ever enabled.
                             effectiveAugmentationPrefactor(
                                 *potential_exchange_params_ptr,
                                 phi),  // K [J/kg]

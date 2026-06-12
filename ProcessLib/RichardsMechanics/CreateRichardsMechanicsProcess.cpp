@@ -494,7 +494,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
     // in time (initial/target rho_d, Vinay 2026-06-08) so no Jacobian term is
     // introduced. The shared table inherits into per-<medium id> overrides via
     // `defaults`, while each medium supplies its own <dry_density>.
-    std::shared_ptr<MathLib::PiecewiseLinearInterpolation const>
+    std::shared_ptr<AugmentationPrefactorTable const>
         potential_augmentation_prefactor_vs_dry_density =
             defaults ? defaults->potential_augmentation_prefactor_vs_dry_density
                      : nullptr;
@@ -518,7 +518,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 context, dry_densities.size(), prefactors.size());
         }
         potential_augmentation_prefactor_vs_dry_density =
-            std::make_shared<MathLib::PiecewiseLinearInterpolation const>(
+            std::make_shared<AugmentationPrefactorTable const>(
                 std::move(dry_densities), std::move(prefactors));
     }
 

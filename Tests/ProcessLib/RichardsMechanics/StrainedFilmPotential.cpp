@@ -302,7 +302,7 @@ PotentialExchangeParameters liveKSampleParams()
     params.potential_augmentation_prefactor = 7.0;  // structural scalar K
     // Structural knots: K(1000) = 10, K(2000) = 30 (J/kg vs kg/m^3).
     params.potential_augmentation_prefactor_vs_dry_density =
-        std::make_shared<MathLib::PiecewiseLinearInterpolation const>(
+        std::make_shared<AugmentationPrefactorTable const>(
             std::vector<double>{1000.0, 2000.0},
             std::vector<double>{10.0, 30.0});
     return params;
@@ -377,4 +377,134 @@ TEST(RichardsMechanicsLiveKOfRhoD, ClampsAtTableRangeEnds)
                                params, phiForDryDensity(params, 500.0)));
     EXPECT_DOUBLE_EQ(30.0, effectiveAugmentationPrefactor(
                                params, phiForDryDensity(params, 2600.0)));
+}
+
+// ── Live K(rho_d) analytic tangent (Vinay 2026-06-12 Jacobian completion) ──
+// Physics anchor (per Vinay's task spec, 2026-06-12): FD-vs-analytic
+// agreement (derived identity) of the live-K tangent against a central
+// finite difference of the VALUE actually used in the residual. Inside a
+// table segment the value is exactly linear in phi, so the central FD is
+// exact to roundoff; tolerances are derived in-file from the tangent scale.
+// Knot values are STRUCTURAL in-test constants (not physical parameters),
+// mirroring the approved live-K tests above.
+TEST(RichardsMechanicsLiveKOfRhoD, AnalyticPhiTangentMatchesFDInsideSegment)
+{
+    auto params = liveKSampleParams();
+    params.potential_augmentation_prefactor_live_dry_density = true;
+
+    // Derived in-file: segment slope dK/drho_d = (30-10)/(2000-1000)
+    // = 0.02 (J/kg)/(kg/m^3); chain dK/dphi = -rho_SR * slope.
+    double const slope = (30.0 - 10.0) / (2000.0 - 1000.0);
+    double const expected_dK_dphi =
+        -params.micro_solid_density_reference * slope;
+
+    double const phi_mid = phiForDryDensity(params, 1500.0);  // mid-segment
+    double const analytic =
+        effectiveAugmentationPrefactorPhiDerivative(params, phi_mid);
+    EXPECT_NEAR(expected_dK_dphi, analytic,
+                1e-12 * std::abs(expected_dK_dphi));
+
+    // Central FD of the residual-side value (stays within the segment).
+    double const d_phi = 1e-6;  // step on the O(1) phi scale
+    double const fd = (effectiveAugmentationPrefactor(params, phi_mid + d_phi) -
+                       effectiveAugmentationPrefactor(params, phi_mid - d_phi)) /
+                      (2.0 * d_phi);
+    // Linear-in-phi value -> FD exact up to roundoff of the difference.
+    EXPECT_NEAR(fd, analytic, 1e-9 * std::abs(analytic));
+
+    // Off mode / sentinel phi / no table: tangent identically zero
+    // (residual uses the parse-time scalar there).
+    auto params_off = liveKSampleParams();
+    params_off.potential_augmentation_prefactor_live_dry_density = false;
+    EXPECT_DOUBLE_EQ(
+        0.0, effectiveAugmentationPrefactorPhiDerivative(params_off, phi_mid));
+    EXPECT_DOUBLE_EQ(0.0,
+                     effectiveAugmentationPrefactorPhiDerivative(
+                         params, std::numeric_limits<double>::quiet_NaN()));
+
+    // The mu-level aug K-partials feeding the Jacobian chain: mu_aug is
+    // LINEAR in K, so central FD in K of the vdW helper is exact to
+    // roundoff. Sample state mirrors the approved StrainedFilmSampleState
+    // (file header citation); lambda chosen so xi = h/lambda is O(1)
+    // (structural, not physical).
+    StrainedFilmSampleState st;
+    st.K_aug = 10.0;     // structural K (J/kg), matches the table knot
+    st.lambda_aug = 2e-7;  // m, structural; h = n_l/(nS*rho_SR*Sa) ~ 1.9e-7 m
+    auto const vdw = computeVanDerWaalsMicroPotential(
+        st.n_l, st.rho_lR, st.active_nS, st.rho_SR, st.hamaker, st.Sa, st.sign,
+        st.K_aug, st.lambda_aug, 0.0, st.floor);
+    double const dK = 1e-3 * st.K_aug;  // step derived from K scale
+    auto const mu_at_K = [&](double const K)
+    {
+        return computeVanDerWaalsMicroPotential(
+            st.n_l, st.rho_lR, st.active_nS, st.rho_SR, st.hamaker, st.Sa,
+            st.sign, K, st.lambda_aug, 0.0, st.floor);
+    };
+    double const fd_dmu_dK =
+        (mu_at_K(st.K_aug + dK).mu_lR - mu_at_K(st.K_aug - dK).mu_lR) /
+        (2.0 * dK);
+    EXPECT_NEAR(fd_dmu_dK, vdw.dmu_lR_dK, 1e-9 * std::abs(vdw.dmu_lR_dK));
+    double const fd_ddmudnl_dK = (mu_at_K(st.K_aug + dK).dmu_lR_dnl -
+                                  mu_at_K(st.K_aug - dK).dmu_lR_dnl) /
+                                 (2.0 * dK);
+    EXPECT_NEAR(fd_ddmudnl_dK, vdw.ddmu_lR_dnl_dK,
+                1e-9 * std::abs(vdw.ddmu_lR_dnl_dK));
+}
+
+TEST(RichardsMechanicsLiveKOfRhoD, AnalyticPhiTangentClampedEdgesAndKnots)
+{
+    // Three structural knots so an INTERIOR knot exists:
+    // K(1000)=10, K(1500)=16, K(2000)=30 (J/kg vs kg/m^3); slopes 0.012
+    // and 0.028 (derived in-file).
+    PotentialExchangeParameters params;
+    params.micro_solid_density_reference = 2650.0;  // mirrors sample state
+    params.potential_augmentation_prefactor_live_dry_density = true;
+    params.potential_augmentation_prefactor_vs_dry_density =
+        std::make_shared<AugmentationPrefactorTable const>(
+            std::vector<double>{1000.0, 1500.0, 2000.0},
+            std::vector<double>{10.0, 16.0, 30.0});
+    auto const phi_of = [&](double const rho_d)
+    { return 1.0 - rho_d / params.micro_solid_density_reference; };
+
+    // Outside the range: the clamped evaluation is flat -> tangent 0.
+    // (Strictly-outside points only here: the phi round-trip
+    // rho_SR*(1 - phi_of(rho_d)) is not exact to the last ulp, so the
+    // AT-knot convention is tested on the table directly below.)
+    for (double const rho_d : {500.0, 2600.0})
+    {
+        EXPECT_DOUBLE_EQ(0.0, effectiveAugmentationPrefactorPhiDerivative(
+                                  params, phi_of(rho_d)));
+    }
+    // AT the edge knots (exact arguments): slope 0, the documented
+    // one-sided/zero convention of AugmentationPrefactorTable, mirroring
+    // getValue's <=/>= clamp branches.
+    auto const& table = *params.potential_augmentation_prefactor_vs_dry_density;
+    EXPECT_DOUBLE_EQ(0.0, table.getSegmentSlope(1000.0));
+    EXPECT_DOUBLE_EQ(0.0, table.getSegmentSlope(2000.0));
+    double const d_phi = 1e-6;
+    double const phi_out = phi_of(500.0);  // fully outside, FD stays outside
+    EXPECT_DOUBLE_EQ(
+        0.0, (effectiveAugmentationPrefactor(params, phi_out + d_phi) -
+              effectiveAugmentationPrefactor(params, phi_out - d_phi)) /
+                 (2.0 * d_phi));
+
+    // Interior knot rho_d = 1500 (exact argument): LEFT-segment slope
+    // (one-sided), consistent with getValue's lower_bound interval
+    // selection. Derived in-file: (16-10)/500 = 0.012 (J/kg)/(kg/m^3).
+    double const expected_left_slope = (16.0 - 10.0) / 500.0;
+    EXPECT_NEAR(expected_left_slope, table.getSegmentSlope(1500.0),
+                1e-12 * expected_left_slope);
+
+    // Interior of each segment: FD-vs-analytic (exact, linear value).
+    for (double const rho_d : {1250.0, 1750.0})
+    {
+        double const phi_c = phi_of(rho_d);
+        double const analytic =
+            effectiveAugmentationPrefactorPhiDerivative(params, phi_c);
+        double const fd =
+            (effectiveAugmentationPrefactor(params, phi_c + d_phi) -
+             effectiveAugmentationPrefactor(params, phi_c - d_phi)) /
+            (2.0 * d_phi);
+        EXPECT_NEAR(fd, analytic, 1e-9 * std::abs(analytic));
+    }
 }
