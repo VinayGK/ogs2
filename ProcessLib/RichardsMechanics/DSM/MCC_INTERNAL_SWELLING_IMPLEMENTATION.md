@@ -798,3 +798,22 @@ eigenstress shock that killed constE at yield onset [PRED, testable today:
 MS33 MCC ABSP suite III/IV under form (b) vs (a), before the port exists].
 Extra interface cost vs (i): Pi-law parameters + n_l as ESVs (the
 Temperature-only ESV unpinning, plan item 9.5, covers this anyway).
+
+### D1-amendment [PRED] — TESTED 2026-06-12: NOT confirmed
+
+MS33 MCC ABSP III/IV under forms (a) vs (b) (floored, 2x2; record:
+ogs/ms33_mcc_AB_2026-06-12_failed/MCC_AB_RESULTS.md): form (b) did NOT
+outlast form (a) — III died 2.75 vs 3.15 d, IV byte-identical step-#1 death.
+ROOT CAUSE OF THE PREDICTION FAILURE: the MCC yield onset sits at ~3 d where
+eps_v is still small, and there the truncation identity makes (a)=(b) — the
+self-relaxing eigenstress cannot act in a regime where the forms coincide.
+The prediction was applied outside its validity domain (an avoidable error:
+the bitwise dd1600 control already implied it).
+
+STANDING FINDINGS from the same test: (1) Model III is the FIRST MS33 run
+documented to reach the MCC yield surface (both forms enter the plastic
+corrector at ~3 d) — the integrator's "Negative plastic increment!" failure,
+not the physics, blocks traversal. (2) The wall is ModCamClay_semiExpl
+itself, form-independent — consistent with TASK13_MCC_BLOCKAGE.md. The
+option-(ii) port + integrator robustness work is therefore THE path; no
+form choice substitutes for it.
