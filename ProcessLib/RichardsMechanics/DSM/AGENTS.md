@@ -2198,3 +2198,50 @@ canonical JSON/figures — pending): the old committed reading used frozen K
 (103879 bentonite / 20600 pellet); today's live-K, both-zones-shared-table
 result at 160x is a materially different number and needs the same
 figure/JSON refresh already done for III and VII.
+
+## 2026-08-26 — Live K(rho_d) interpolation switched to LOG-LINEAR (Vinay's decision)
+
+### 24. DONE 2026-08-26 — log-linear K(rho_d) promoted from diagnostic to production
+
+Vinay's scientific decision (2026-08-26): the LIVE K(rho_d) path interpolates
+log-linearly between table knots — K(x) = K_l*exp(t*ln(K_r/K_l)),
+t=(x-x_l)/(x_r-x_l) — with the exact companion tangent
+dK/dx = K(x)*ln(K_r/K_l)/(x_r-x_l). Physics rationale: the Dixon (2023)
+swelling-pressure-vs-EMDD law is itself exponential (Ps = 0.003*exp(5.2883*EMDD),
+Fig. 1 as reproduced in the MS33 organizer spec, pixel-digitized 2026-08-26),
+K was calibrated to Dixon-anchored targets at the 4 knots, and a linear chord
+under a convex function overestimates every interior point (Jensen); log-linear
+is the scheme consistent with the calibration's own functional form and is
+node-preserving, so the fitted K values are untouched.
+
+Implementation: `PotentialExchangeParameters.h` — new
+`AugmentationPrefactorTable::getValueLogLinear()` / `getSegmentSlopeLogLinear()`
+(clamp/one-sided conventions mirror `getValue()`/`getSegmentSlope()` exactly);
+`effectiveAugmentationPrefactor()` / `effectiveAugmentationPrefactorPhiDerivative()`
+retargeted to them. The ORIGINAL linear methods are untouched and still used by
+the parse-time frozen-K path (`CreateRichardsMechanicsProcess.cpp:584`,
+re-verified) — frozen-K (non-live) PRJs are completely unaffected.
+
+Audit (this landing): node preservation machine-precision at all 4 live knots
+(900/1800 bitwise via clamp, 1600 rounds exact, 1400 low by 1 ULP, rel 1.6e-16
+— negligible vs all codebase tolerances); `getSegmentSlopeLogLinear(1400.0)`
+picks the LEFT segment one-sided value per the idx=lower_bound-1 convention,
+finite, no NaN.
+
+Tests (`Tests/ProcessLib/RichardsMechanics/StrainedFilmPotential.cpp`, per
+Vinay's ruling 2026-08-26 "keep linear tests, add log-linear tests"):
+`LiveModeEvaluatesTable` / `AnalyticPhiTangentMatchesFDInsideSegment`
+RETARGETED at the table's linear methods (renamed
+`TableLinear{GetValue,SegmentSlope}AnchorsFrozenKParsePath`, linear literals
+preserved — they pin the frozen-K parse path); NEW
+`LiveModeEvaluatesTableLogLinear` (K(1500)=10*sqrt(3)=17.320508075688775,
+K(1750)=10*3^0.75=22.795070569547775 on the structural K(1000)=10/K(2000)=30
+table, derived in-file, approved Vinay 2026-08-26) and
+`AnalyticPhiTangentMatchesFDLogLinear` (dK/dphi=-50.425585997506346 at
+rho_d=1500 + FD-vs-analytic self-consistency). 15/15 StrainedFilm+LiveKOfRhoD
+pass; 14/14 DSMMicroMacro pass (build maxwell_floor_20260619, 2026-08-26).
+
+Supersedes the "diagnostic-only, never committed" status of the 2026-08-25
+exploration (worktree dsm_loglin_diagnostic_2026-08-25_wt). Downstream MS33
+stress/void-ratio consequences: NOT claimed here — predicted only until the
+Verify-phase reruns land (§5).

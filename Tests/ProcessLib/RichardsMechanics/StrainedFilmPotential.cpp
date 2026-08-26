@@ -287,11 +287,15 @@ TEST(RichardsMechanicsStrainedFilm, ReplacementIsExclusiveAtZeroStrain)
 
 // ── Live K(rho_d) helper (K_OF_RHO_D_LIVE.md; Vinay 2026-06-10) ────────────
 // Physics anchor (CLAUDE.md §3a): analytical limit / derived identity — the
-// helper must reproduce the piecewise-linear table exactly at its knots and
-// hold the endpoint values outside the range; off-mode must return the
-// parse-time scalar bit-for-bit. The knot values below are STRUCTURAL
-// in-test constants (not physical material parameters); expected values are
-// derived in-file from the linear-interpolation identity.
+// helper must reproduce the table exactly at its knots (both schemes are
+// node-preserving) and hold the endpoint values outside the range; off-mode
+// must return the parse-time scalar bit-for-bit. Since 2026-08-26 (Vinay's
+// interpolation-scheme decision) the LIVE path interpolates log-linearly
+// (getValueLogLinear) while the parse-time frozen-K path keeps the linear
+// getValue(); the tests below anchor BOTH schemes accordingly. The knot
+// values below are STRUCTURAL in-test constants (not physical material
+// parameters); expected values are derived in-file from the respective
+// interpolation identity.
 namespace
 {
 PotentialExchangeParameters liveKSampleParams()
@@ -333,31 +337,78 @@ TEST(RichardsMechanicsLiveKOfRhoD, OffModeReturnsScalar)
                          params_no_table, phiForDryDensity(params, 1500.0)));
 }
 
-TEST(RichardsMechanicsLiveKOfRhoD, LiveModeEvaluatesTable)
+// 2026-08-26 RESTRUCTURE (Vinay's decision, 2026-08-26: "keep linear
+// tests, add log-linear tests"): the LIVE free-function path switched to
+// log-linear interpolation (getValueLogLinear). This test — formerly
+// LiveModeEvaluatesTable, which asserted the same linear literals on
+// effectiveAugmentationPrefactor() — was RETARGETED to the table's own
+// LINEAR getValue(), preserving its linear expected literals unchanged.
+// It anchors the still-present K-linear scheme, which the parse-time
+// frozen-K path (CreateRichardsMechanicsProcess.cpp, ->getValue(
+// *dry_density)) still uses. The live path is now covered by
+// LiveModeEvaluatesTableLogLinear below. Physics anchor (CLAUDE.md §3a):
+// linear-interpolation identity, derived in-file.
+TEST(RichardsMechanicsLiveKOfRhoD, TableLinearGetValueAnchorsFrozenKParsePath)
 {
-    auto params = liveKSampleParams();
-    params.potential_augmentation_prefactor_live_dry_density = true;
+    auto const params = liveKSampleParams();
+    auto const& table = *params.potential_augmentation_prefactor_vs_dry_density;
 
     // At the knots: exact knot values.
-    EXPECT_DOUBLE_EQ(10.0, effectiveAugmentationPrefactor(
-                               params, phiForDryDensity(params, 1000.0)));
-    EXPECT_DOUBLE_EQ(30.0, effectiveAugmentationPrefactor(
-                               params, phiForDryDensity(params, 2000.0)));
+    EXPECT_DOUBLE_EQ(10.0, table.getValue(1000.0));
+    EXPECT_DOUBLE_EQ(30.0, table.getValue(2000.0));
 
-    // Interior points (two distinct phis): linear-interpolation identity
+    // Interior points: linear-interpolation identity
     // K(rho_d) = 10 + 20*(rho_d - 1000)/1000, derived in-file.
     double const rho_d_1 = 1500.0;
     double const rho_d_2 = 1750.0;
     double const expected_1 = 10.0 + 20.0 * (rho_d_1 - 1000.0) / 1000.0;
     double const expected_2 = 10.0 + 20.0 * (rho_d_2 - 1000.0) / 1000.0;
-    EXPECT_DOUBLE_EQ(expected_1,
-                     effectiveAugmentationPrefactor(
-                         params, phiForDryDensity(params, rho_d_1)));
-    EXPECT_DOUBLE_EQ(expected_2,
-                     effectiveAugmentationPrefactor(
-                         params, phiForDryDensity(params, rho_d_2)));
+    EXPECT_DOUBLE_EQ(expected_1, table.getValue(rho_d_1));
+    EXPECT_DOUBLE_EQ(expected_2, table.getValue(rho_d_2));
+}
 
-    // Non-finite phi (the context sentinel): fall back to the scalar.
+// 2026-08-26 NEW (companion to the retarget above; Vinay's decision,
+// 2026-08-26): the LIVE path now evaluates the table log-linearly — ln(K)
+// linear in rho_d between knots (getValueLogLinear). Physics anchor
+// (CLAUDE.md §3a, analytical limit): expected values derived in-file from
+// the log-linear identity K(x) = K_l * exp(t * ln(K_r/K_l)),
+// t = (x - 1000)/1000, on the structural knots K(1000)=10, K(2000)=30;
+// approved Vinay 2026-08-26.
+TEST(RichardsMechanicsLiveKOfRhoD, LiveModeEvaluatesTableLogLinear)
+{
+    auto params = liveKSampleParams();
+    params.potential_augmentation_prefactor_live_dry_density = true;
+
+    // At the knots: node-preserving — exact knot values (the boundary-knot
+    // clamp branches are byte-identical to getValue's).
+    EXPECT_DOUBLE_EQ(10.0, effectiveAugmentationPrefactor(
+                               params, phiForDryDensity(params, 1000.0)));
+    EXPECT_DOUBLE_EQ(30.0, effectiveAugmentationPrefactor(
+                               params, phiForDryDensity(params, 2000.0)));
+
+    // Interior points, derived in-file (approved Vinay 2026-08-26):
+    //   K(1500) = 10*exp(0.5*ln(30/10)) = 10*sqrt(3)
+    //           = 17.320508075688775
+    //   K(1750) = 10*exp(0.75*ln(3))   = 10*3^0.75
+    //           = 22.795070569547775
+    // Tolerance derived in-file: the phi round-trip rho_SR*(1 - phi) is
+    // not ulp-exact (perturbs rho_d by O(rho_SR*eps) ~ 5e-13 kg/m^3;
+    // |dK/drho_d| ~ 0.02 -> |dK| <~ 1e-14), so assert to 1e-12 relative,
+    // two orders above that round-trip noise.
+    double const expected_1500 = 17.320508075688775;
+    double const expected_1750 = 22.795070569547775;
+    EXPECT_NEAR(expected_1500,
+                effectiveAugmentationPrefactor(
+                    params, phiForDryDensity(params, 1500.0)),
+                1e-12 * expected_1500);
+    EXPECT_NEAR(expected_1750,
+                effectiveAugmentationPrefactor(
+                    params, phiForDryDensity(params, 1750.0)),
+                1e-12 * expected_1750);
+
+    // Non-finite phi (the context sentinel): fall back to the scalar —
+    // dispatch is untouched by the interpolation scheme (moved here from
+    // the retargeted linear test, 2026-08-26).
     EXPECT_DOUBLE_EQ(7.0,
                      effectiveAugmentationPrefactor(
                          params, std::numeric_limits<double>::infinity()));
@@ -387,20 +438,59 @@ TEST(RichardsMechanicsLiveKOfRhoD, ClampsAtTableRangeEnds)
 // exact to roundoff; tolerances are derived in-file from the tangent scale.
 // Knot values are STRUCTURAL in-test constants (not physical parameters),
 // mirroring the approved live-K tests above.
-TEST(RichardsMechanicsLiveKOfRhoD, AnalyticPhiTangentMatchesFDInsideSegment)
+// 2026-08-26 RESTRUCTURE (Vinay's decision, 2026-08-26: "keep linear
+// tests, add log-linear tests"): the LIVE tangent
+// effectiveAugmentationPrefactorPhiDerivative() switched to the log-linear
+// companion slope (getSegmentSlopeLogLinear). This test — formerly
+// AnalyticPhiTangentMatchesFDInsideSegment, which asserted the linear
+// segment-slope chain on the free function — was RETARGETED to the table's
+// own LINEAR getSegmentSlope(), preserving its linear expected literals
+// unchanged. It anchors the K-linear scheme still used by the parse-time
+// frozen-K path (CreateRichardsMechanicsProcess.cpp). The live-path
+// FD-vs-analytic, zero-case, and mu-level Jacobian-chain checks moved to
+// AnalyticPhiTangentMatchesFDLogLinear below. Physics anchor (CLAUDE.md
+// §3a): linear segment-slope identity, derived in-file.
+TEST(RichardsMechanicsLiveKOfRhoD, TableLinearSegmentSlopeAnchorsFrozenKParsePath)
+{
+    auto const params = liveKSampleParams();
+    auto const& table = *params.potential_augmentation_prefactor_vs_dry_density;
+
+    // Derived in-file: segment slope dK/drho_d = (30-10)/(2000-1000)
+    // = 0.02 (J/kg)/(kg/m^3); chain dK/dphi = -rho_SR * slope (= -53, the
+    // pre-2026-08-26 live-path expectation, preserved here as the
+    // LINEAR-scheme identity).
+    double const slope = (30.0 - 10.0) / (2000.0 - 1000.0);
+    EXPECT_NEAR(slope, table.getSegmentSlope(1500.0), 1e-12 * slope);
+    double const expected_dK_dphi =
+        -params.micro_solid_density_reference * slope;
+    EXPECT_NEAR(expected_dK_dphi,
+                -params.micro_solid_density_reference *
+                    table.getSegmentSlope(1500.0),
+                1e-12 * std::abs(expected_dK_dphi));
+}
+
+// 2026-08-26 NEW (successor of the retargeted linear tangent test above,
+// for the LIVE path; Vinay's decision, 2026-08-26): analytic-vs-FD
+// self-consistency of effectiveAugmentationPrefactorPhiDerivative() under
+// the log-linear tangent. Physics anchor (CLAUDE.md §3a, analytical
+// derivation in-file; approved Vinay 2026-08-26): on the structural knots
+// K(1000)=10, K(2000)=30,
+//   dK/drho_d = K(rho_d) * ln(30/10)/(2000-1000) = K(rho_d)*ln(3)/1000
+//   dK/dphi   = -rho_SR * dK/drho_d
+//             = -2650 * 17.320508075688775 * ln(3)/1000
+//             = -50.425585997506346 at rho_d = 1500.
+TEST(RichardsMechanicsLiveKOfRhoD, AnalyticPhiTangentMatchesFDLogLinear)
 {
     auto params = liveKSampleParams();
     params.potential_augmentation_prefactor_live_dry_density = true;
 
-    // Derived in-file: segment slope dK/drho_d = (30-10)/(2000-1000)
-    // = 0.02 (J/kg)/(kg/m^3); chain dK/dphi = -rho_SR * slope.
-    double const slope = (30.0 - 10.0) / (2000.0 - 1000.0);
-    double const expected_dK_dphi =
-        -params.micro_solid_density_reference * slope;
-
     double const phi_mid = phiForDryDensity(params, 1500.0);  // mid-segment
     double const analytic =
         effectiveAugmentationPrefactorPhiDerivative(params, phi_mid);
+    // Closed form derived in the comment above (approved Vinay
+    // 2026-08-26); tolerance 1e-12 relative, derived in-file from the phi
+    // round-trip noise exactly as in LiveModeEvaluatesTableLogLinear.
+    double const expected_dK_dphi = -50.425585997506346;
     EXPECT_NEAR(expected_dK_dphi, analytic,
                 1e-12 * std::abs(expected_dK_dphi));
 
@@ -409,7 +499,9 @@ TEST(RichardsMechanicsLiveKOfRhoD, AnalyticPhiTangentMatchesFDInsideSegment)
     double const fd = (effectiveAugmentationPrefactor(params, phi_mid + d_phi) -
                        effectiveAugmentationPrefactor(params, phi_mid - d_phi)) /
                       (2.0 * d_phi);
-    // Linear-in-phi value -> FD exact up to roundoff of the difference.
+    // The log-linear value is smooth (exponential) in phi inside a segment;
+    // central-FD relative truncation error ~ (ln(3)/1000 * rho_SR*d_phi)^2/6
+    // ~ 1.4e-12 (derived in-file) — far inside the 1e-9 tolerance.
     EXPECT_NEAR(fd, analytic, 1e-9 * std::abs(analytic));
 
     // Off mode / sentinel phi / no table: tangent identically zero

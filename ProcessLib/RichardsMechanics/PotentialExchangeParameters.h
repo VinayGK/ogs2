@@ -47,6 +47,69 @@ public:
         return (values_at_supp_pnts_[i + 1] - values_at_supp_pnts_[i]) /
                (supp_pnts_[i + 1] - supp_pnts_[i]);
     }
+
+    // ── Log-linear interpolant (production for the LIVE K(rho_d) path per
+    // Vinay's interpolation-scheme decision, 2026-08-26) ──────────────────
+    // ln(K) linear in rho_d between knots instead of the K-linear chord
+    // used by getValue() above (Dixon 2023's own exponential
+    // swelling-pressure-vs-density law is the physical motivation;
+    // getValue()/getSegmentSlope() remain in use by the parse-time
+    // frozen-K path). Node-preserving at the knots by construction (t=0 ->
+    // K_l, t=1 -> K_r); flat-clamped outside [x_min, x_max] exactly like
+    // getValue() -- never slope- or exp-extends past the table edges (the
+    // extrapolation scheme is a separate question, out of scope here).
+    // Mirrors getValue's <=/>= clamp branches and lower_bound interval
+    // selection exactly, so this and getValue agree on which segment owns
+    // an exact interior-knot argument.
+    double getValueLogLinear(double const x) const
+    {
+        if (x <= supp_pnts_.front())
+        {
+            return values_at_supp_pnts_.front();
+        }
+        if (supp_pnts_.back() <= x)
+        {
+            return values_at_supp_pnts_.back();
+        }
+        auto const it =
+            std::lower_bound(supp_pnts_.begin(), supp_pnts_.end(), x);
+        std::size_t const i = std::distance(supp_pnts_.begin(), it) - 1;
+        double const x_l = supp_pnts_[i];
+        double const x_r = supp_pnts_[i + 1];
+        double const K_l = values_at_supp_pnts_[i];
+        double const K_r = values_at_supp_pnts_[i + 1];
+        double const t = (x - x_l) / (x_r - x_l);
+        // K(x) = K_l * exp(t * ln(K_r/K_l)) = K_l * (K_r/K_l)^t; exact at
+        // t=0 -> K_l and t=1 -> K_r (node-preserving), matching getValue()
+        // at every knot. [J/kg]
+        return K_l * std::exp(t * std::log(K_r / K_l));
+    }
+
+    // d(getValueLogLinear)/dx, the EXACT companion tangent (chain rule of
+    // d/dx[K_l * exp(t*ln(K_r/K_l))], t=(x-x_l)/(x_r-x_l)):
+    //   dK/dx = K(x) * ln(K_r/K_l) / (x_r - x_l)   [(J/kg)/(kg/m^3)]
+    // i.e. PROPORTIONAL TO THE LOCAL K VALUE, not a per-segment constant
+    // as getSegmentSlope() is (that mismatch would give an inconsistent
+    // residual/Jacobian tangent under this scheme). Same clamp/one-sided
+    // convention as getSegmentSlope: 0 at/outside the boundary knots,
+    // LEFT-segment value at an interior knot (idx = lower_bound - 1),
+    // matching getValueLogLinear's and getValue's interval selection.
+    double getSegmentSlopeLogLinear(double const x) const
+    {
+        if (x <= supp_pnts_.front() || supp_pnts_.back() <= x)
+        {
+            return 0.0;
+        }
+        auto const it =
+            std::lower_bound(supp_pnts_.begin(), supp_pnts_.end(), x);
+        std::size_t const i = std::distance(supp_pnts_.begin(), it) - 1;
+        double const x_l = supp_pnts_[i];
+        double const x_r = supp_pnts_[i + 1];
+        double const K_l = values_at_supp_pnts_[i];
+        double const K_r = values_at_supp_pnts_[i + 1];
+        double const K_x = getValueLogLinear(x);  // J/kg
+        return K_x * std::log(K_r / K_l) / (x_r - x_l);  // (J/kg)/(kg/m^3)
+    }
 };
 
 enum class MicroPotentialConvention
@@ -370,13 +433,21 @@ struct PotentialExchangeParameters
 };
 
 // Effective augmentation prefactor K [J/kg] at the current state.
+//
+// LOG-LINEAR SCHEME (production per Vinay's K(rho_d) interpolation-scheme
+// decision, 2026-08-26): evaluates the table via getValueLogLinear() --
+// ln(K) linear in rho_d between knots -- instead of the K-linear
+// getValue() (which remains in use by the parse-time frozen-K path in
+// CreateRichardsMechanicsProcess.cpp). Node values are unchanged (both
+// schemes are node-preserving); only the INTERIOR chord shape differs.
+// Outside [rho_d_min, rho_d_max] the flat endpoint-hold clamp is
+// preserved exactly as in getValue() (verified: getValueLogLinear mirrors
+// getValue's <=/>= branches) -- this change does NOT touch the
+// extrapolation scheme, only the interior interpolant.
 // Live mode + table + finite phi -> K(rho_d) with rho_d = rho_SR*(1-phi)
 // [kg/m^3] (rho_SR = micro_solid_density_reference; phi = current TOTAL
-// porosity). PiecewiseLinearInterpolation::getValue holds the endpoint
-// values outside [rho_d_min, rho_d_max] (verified: MathLib/
-// InterpolationAlgorithms/PiecewiseLinearInterpolation.cpp, getValue),
-// so K is clamped at the table range ends. Any other case (mode off, no
-// table, phi sentinel/NaN) -> the parse-time scalar, bit-for-bit.
+// porosity). Any other case (mode off, no table, phi sentinel/NaN) -> the
+// parse-time scalar, bit-for-bit (unchanged).
 inline double effectiveAugmentationPrefactor(
     PotentialExchangeParameters const& params, double const phi)
 {
@@ -386,21 +457,29 @@ inline double effectiveAugmentationPrefactor(
     {
         // rho_d = rho_SR * (1 - phi)  [kg/m^3]
         return params.potential_augmentation_prefactor_vs_dry_density
-            ->getValue(params.micro_solid_density_reference *
-                       (1.0 - phi));  // K [J/kg]
+            ->getValueLogLinear(params.micro_solid_density_reference *
+                                (1.0 - phi));  // K [J/kg]
     }
     return params.potential_augmentation_prefactor;  // K [J/kg]
 }
 
 // d K_eff/d phi of effectiveAugmentationPrefactor above, at the same state.
-// Chain (analytic derivation, this file; Vinay 2026-06-12 approved Jacobian
-// completion of live K(rho_d)): rho_d = rho_SR*(1-phi) [kg/m^3], so
-//   dK/dphi = (dK/drho_d) * (drho_d/dphi) = (table segment slope) * (-rho_SR).
-// Returns 0 in EVERY case where effectiveAugmentationPrefactor returns the
-// parse-time scalar (mode off, no table, phi sentinel/NaN) and at/outside the
-// clamped table edges (where the clamped value is flat in rho_d) — exactly
-// the one-sided/zero-slope convention documented on getSegmentSlope. The
-// RESIDUAL is untouched by this helper; it feeds the Jacobian only.
+//
+// LOG-LINEAR SCHEME (companion to the log-linear value above, production
+// per Vinay's decision 2026-08-26 -- REQUIRED so the residual and its
+// Jacobian stay tangent-consistent; see getSegmentSlopeLogLinear
+// doc for the chain-rule derivation). Chain (analytic derivation, this
+// file): rho_d = rho_SR*(1-phi) [kg/m^3], so
+//   dK/dphi = (dK/drho_d) * (drho_d/dphi)
+//           = [K(rho_d) * ln(K_r/K_l)/(x_r-x_l)] * (-rho_SR)
+// i.e. proportional to the LOCAL K value (getSegmentSlopeLogLinear), not the
+// old per-segment constant (getSegmentSlope). Returns 0 in EVERY case where
+// effectiveAugmentationPrefactor returns the parse-time scalar (mode off, no
+// table, phi sentinel/NaN) and at/outside the clamped table edges (where the
+// clamped value is flat in rho_d) -- exactly the one-sided/zero-slope
+// convention documented on getSegmentSlopeLogLinear, unchanged from the
+// standing getSegmentSlope convention. The RESIDUAL is untouched by this
+// helper; it feeds the Jacobian only.
 inline double effectiveAugmentationPrefactorPhiDerivative(
     PotentialExchangeParameters const& params, double const phi)
 {
@@ -411,7 +490,7 @@ inline double effectiveAugmentationPrefactorPhiDerivative(
         double const rho_SR = params.micro_solid_density_reference;  // kg/m^3
         return -rho_SR *
                params.potential_augmentation_prefactor_vs_dry_density
-                   ->getSegmentSlope(
+                   ->getSegmentSlopeLogLinear(
                        rho_SR * (1.0 - phi));  // dK/dphi [J/kg per unit phi]:
                                                // [kg/m^3]*[J/kg / (kg/m^3)]
     }
