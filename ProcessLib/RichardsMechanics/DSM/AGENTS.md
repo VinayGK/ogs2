@@ -2287,3 +2287,15 @@ diagnostic e103a8906e (cherry-picked, no conflict) + two further PRJ switches in
 Derivation, premises and what else changes: `~/ogs-models/scratch/2026-09-30_massfix_V2/DERIVATION.md`. FORMULATION CHANGE: whether it is
 physically right, and whether K_fix survives it, is Vinay's call; what it changes is to be MEASURED only in the record folders
 (`2026-09-30_massfix_V1/`, `2026-09-30_massfix_V2/`), none claimed here.
+
+## 2026-09-30 (later) — code review of the mass-fix trees: what the variants are, and what they are not (NOT adopted)
+
+Review finding (must_fix 1), recorded here so the source states it: the Biot volume-change storage Kpu = S_L*rho_LR*alpha*div(u_dot)
+(`assembleWithJacobianForPressureEquations`, both trees) counts the whole pore space. With alpha = 1 and beta_SR = 0 the porosity law
+PorosityFromMassBalance, phi = (phi_prev + dEps)/(1 + dEps), gives alpha*dEps = dphi + phi*dEps, and phi = phi_M + phi_m, so Kpu contains the
+micro part S_L*rho_LR*(dphi_m + phi_m*dEps)/dt (READ + DERIVED, not yet MEASURED on a deforming deck). `macro_storage_uses_macro_porosity` moves only
+a_p and a_S to phi_M. The variant is therefore 'phi_M in a_p/a_S only', not 'macro storage is only macropores' for the volume-change
+part. Nothing was changed in the physics: removing the micro part from Kpu (option (a) of the review: subtract
+S_L*rho_LR*[(phi_m - phi_m_prev) + phi_m*dEps_v]/dt from the macro residual, with its p-p tangent) is a formulation decision and waits for
+Vinay's ruling. This commit adds only (i) a comment at the Kpu site, (ii) a one-line variant label printed to the log at parse time
+when any switch is on, (iii) this note. Switches off: no log line, numerics untouched.

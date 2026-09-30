@@ -4692,6 +4692,16 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             std::get<ProcessLib::ThermoRichardsMechanics::SaturationData>(
                 this->current_states_[ip])
                 .S_L;
+        // OPEN (code review 2026-09-30, NOT a change; Vinay's ruling needed, see
+        // ~/ogs-models/scratch/2026-09-30_massfix_V2/DERIVATION.md section 6):
+        // Kpu below is the Biot volume-change storage S_L*rho_LR*alpha*div(u_dot)
+        // of the WHOLE pore space. With alpha = 1 and beta_SR = 0 the porosity law
+        // PorosityFromMassBalance gives alpha*dEps = dphi + phi*dEps, and
+        // phi = phi_M + phi_m, so the term contains the micro part
+        // S_L*rho_LR*(dphi_m + phi_m*dEps)/dt. macro_storage_uses_macro_porosity
+        // (B') moves only a_p and a_S to phi_M and leaves this term unchanged:
+        // the variant is 'phi_M in a_p/a_S only', not 'macro storage = macro pores
+        // only'. Not removed here (formulation decision, CLAUDE.md section 9).
         if (this->process_data_.explicit_hm_coupling_in_unsaturated_zone)
         {
             double const chi_S_L_prev = std::get<PrevState<

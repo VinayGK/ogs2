@@ -589,6 +589,27 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "local_nonlinear_solve_mode = scalar_micro_macro_mass_storage_mode.",
             context);
     }
+    // Variant label (code review 2026-09-30): printed into every run log that
+    // uses a mass-fix switch, so a log states which variant it is. Log text only.
+    if (ceiling_micro_storage_exchange || macro_storage_uses_macro_porosity ||
+        micro_mass_strain_term_eulerian ||
+        ceiling_micro_storage_includes_strain)
+    {
+        INFO(
+            "MASSFIX variant label (V2 tree): ceiling_micro_storage_exchange = "
+            "{}, macro_storage_uses_macro_porosity = {}, "
+            "micro_mass_strain_term_eulerian = {}, "
+            "ceiling_micro_storage_includes_strain = {}. "
+            "macro_storage_uses_macro_porosity = 'phi_M in a_p/a_S ONLY': the "
+            "Biot volume-change term Kpu = S_L*rho_LR*alpha*div(u_dot) still "
+            "covers the whole pore-volume change, including the micro part "
+            "S_L*rho_LR*(dphi_m + phi_m*dEps)/dt (open, Vinay's ruling). "
+            "NOT adopted.",
+            ceiling_micro_storage_exchange,
+            macro_storage_uses_macro_porosity,
+            micro_mass_strain_term_eulerian,
+            ceiling_micro_storage_includes_strain);
+    }
     if (potential_augmentation_prefactor_live_dry_density &&
         !potential_augmentation_prefactor_vs_dry_density)
     {
