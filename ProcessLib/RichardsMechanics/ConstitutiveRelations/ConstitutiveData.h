@@ -8,6 +8,7 @@
 #include "LiquidDensity.h"
 #include "MicroPressure.h"
 #include "MicroSaturation.h"
+#include "MicroCeiling.h"
 #include "MicroLiquidDensity.h"
 #include "MicroPorosity.h"
 #include "MicroWaterContent.h"
@@ -41,7 +42,14 @@ using StatefulData = std::tuple<
     ProcessLib::ThermoRichardsMechanics::PorosityData,
     ProcessLib::ThermoRichardsMechanics::TransportPorosityData, MicroPressure,
     MicroSaturation, MicroWaterContent, MicroLiquidDensity, MicroPorosity,
-    MicroExchangeSource>;
+    MicroExchangeSource,
+    // KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
+    // 2026-09-30, DESIGN.md 3.3): twelve output / diagnostic fields, written
+    // only with micro_ceiling_treatment = kkt.
+    MicroCeilingStatus, MicroCeilingMultiplier, MicroExchangeReceived,
+    MicroCeilingRejectedExchange, MicroCeilingFlips, MicroCeilingNonMonotone,
+    MicroCeilingPremise, MicroCeilingEpsSeen, MicroCeilingIncLast,
+    MicroCeilingAttemptT, MicroCeilingIncAlt, MicroCeilingIncSame>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<

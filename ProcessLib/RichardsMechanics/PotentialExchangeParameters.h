@@ -191,6 +191,35 @@ inline constexpr bool isValidFilmEnergyRouteCombination(
            mode == FilmStrainCouplingMode::Kinematic;
 }
 
+// ── KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_2026-09-30) ──
+// Treatment of the micro water content ceiling n_l <= n_max(eps_v) = phi in the
+// scalar_micro_macro_mass_storage_mode local solve.
+//   Clamp (default): the shipped path, bitwise (projected Newton, the exchange
+//     that the micro cannot take is deleted from the macro).
+//   Kkt: complementarity problem, multiplier lambda >= 0, active set
+//     f(n_max) < 0 and no interior root (DERIVATION.md 2.3-2.5, 4.4 of the
+//     record folder ~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/, D-n).
+//     NOT adopted; Vinay's ruling is open.
+enum class MicroCeilingTreatment
+{
+    Clamp,
+    Kkt
+};
+
+// Q9 (DESIGN.md D1): does the consistent exchange p-u entry reach Newton?
+//   Overwritten (default): the assembly line local_Jac.pu = Kpu/dt stays as is
+//     and erases every exchange p-u entry (shipped behaviour, bitwise).
+//   KktActive: the KKT-active entries (D-5.2) are accumulated in a separate
+//     matrix and added after that line.
+//   AllExchange: the line becomes Kpu/dt plus the accumulated exchange entries
+//     (the Maxwell, film and live-K p-u entries at inactive points as well).
+enum class MicroCeilingPuTangent
+{
+    Overwritten,
+    KktActive,
+    AllExchange
+};
+
 inline constexpr char const* toString(
     MicroPotentialConvention const convention)
 {
@@ -284,6 +313,32 @@ inline constexpr char const* toString(FilmEnergyRoute const route)
             return "operational";
         case FilmEnergyRoute::Exact:
             return "exact";
+    }
+    return "unknown";
+}
+
+inline constexpr char const* toString(MicroCeilingTreatment const t)
+{
+    switch (t)
+    {
+        case MicroCeilingTreatment::Clamp:
+            return "clamp";
+        case MicroCeilingTreatment::Kkt:
+            return "kkt";
+    }
+    return "unknown";
+}
+
+inline constexpr char const* toString(MicroCeilingPuTangent const t)
+{
+    switch (t)
+    {
+        case MicroCeilingPuTangent::Overwritten:
+            return "overwritten";
+        case MicroCeilingPuTangent::KktActive:
+            return "kkt_active";
+        case MicroCeilingPuTangent::AllExchange:
+            return "all_exchange";
     }
     return "unknown";
 }
@@ -467,7 +522,34 @@ struct PotentialExchangeParameters
     // + rho_l*eps_dot (the same Eulerian balance as above) instead of the bare
     // storage rate. Requires ceiling_micro_storage_exchange.
     bool ceiling_micro_storage_includes_strain = false;
+
+    // -- KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
+    // 2026-09-30; Vinay 2026-09-30 "derivation, report, beamer, design docs,
+    // implementation, weak forms, unit tests and then the ms33 suite"). ALL
+    // default to the shipped behaviour; micro_ceiling_treatment = clamp is
+    // bitwise the tree without them. NOT adopted. Design: DESIGN.md of the record
+    // folder ~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/ (D4: enum tag).
+    MicroCeilingTreatment micro_ceiling_treatment =
+        MicroCeilingTreatment::Clamp;
+    // Q9 (DESIGN.md D1); only legal with micro_ceiling_treatment = kkt.
+    MicroCeilingPuTangent micro_ceiling_pu_tangent =
+        MicroCeilingPuTangent::Overwritten;
+    // Route-B debug flag (DESIGN.md 3.7): in-assembler central-difference check
+    // of the assembled element Jacobian, log lines prefixed KKT-FD.
+    bool micro_ceiling_fd_check = false;
+    // N_dec of the bracketed scan (DERIVATION.md 2.5; DESIGN.md D7, a PROPOSAL
+    // of 8 that needs Vinay's approval under the repo rule 1.2). >= 2.
+    int micro_ceiling_scan_nodes_per_decade = 8;
+    // Element ids whose integration points write the iteration trace
+    // (DESIGN.md 3.8). Empty = off (no cost).
+    std::vector<std::size_t> micro_ceiling_trace_elements;
 };
+
+// True when the KKT treatment of the micro-water ceiling is selected.
+inline bool isKktCeiling(PotentialExchangeParameters const& p)
+{
+    return p.micro_ceiling_treatment == MicroCeilingTreatment::Kkt;
+}
 
 // Sign s of the micro mass residual's volume-change term in the mass-storage
 // mode, written as  residual -= s*dt*rho_l*eps_dot  and in the tangents as

@@ -5,7 +5,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <exception>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "MathLib/InterpolationAlgorithms/PiecewiseLinearInterpolation.h"
@@ -69,6 +72,78 @@ LocalNonlinearSolveMode parseLocalNonlinearSolveMode(
         "'scalar_exchange', 'scalar_microstate_storage_mode', "
         "'scalar_micro_macro_mass_storage_mode'.",
         mode);
+}
+
+MicroCeilingTreatment parseMicroCeilingTreatment(std::string const& value)
+{
+    if (value == "clamp")
+    {
+        return MicroCeilingTreatment::Clamp;
+    }
+    if (value == "kkt")
+    {
+        return MicroCeilingTreatment::Kkt;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_treatment '{}'. Currently supported: 'clamp', 'kkt'.",
+        value);
+}
+
+MicroCeilingPuTangent parseMicroCeilingPuTangent(std::string const& value)
+{
+    if (value == "overwritten")
+    {
+        return MicroCeilingPuTangent::Overwritten;
+    }
+    if (value == "kkt_active")
+    {
+        return MicroCeilingPuTangent::KktActive;
+    }
+    if (value == "all_exchange")
+    {
+        return MicroCeilingPuTangent::AllExchange;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_pu_tangent '{}'. Currently supported: 'overwritten', "
+        "'kkt_active', 'all_exchange'.",
+        value);
+}
+
+// Element ids of micro_ceiling_trace_elements: whitespace separated unsigned
+// integers; empty string = no element.
+std::vector<std::size_t> parseMicroCeilingTraceElements(
+    std::string const& value)
+{
+    std::vector<std::size_t> ids;
+    std::istringstream stream(value);
+    std::string token;
+    while (stream >> token)
+    {
+        std::size_t consumed = 0;
+        unsigned long long id = 0;
+        try
+        {
+            id = std::stoull(token, &consumed);
+        }
+        catch (std::exception const&)
+        {
+            consumed = 0;
+        }
+        if (consumed != token.size())
+        {
+            OGS_FATAL(
+                "RichardsMechanics: potential_exchange "
+                "micro_ceiling_trace_elements: '{}' is not an element id "
+                "(whitespace separated non-negative integers expected).",
+                token);
+        }
+        ids.push_back(static_cast<std::size_t>(id));
+    }
+    return ids;
 }
 
 FilmStrainCouplingMode parseFilmStrainCouplingMode(std::string const& mode)
@@ -765,6 +840,124 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             context, toString(film_strain_coupling));
     }
 
+    // ── KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
+    // 2026-09-30; DESIGN.md 2.1, 2.2 of the record folder
+    // ~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/). All defaults = the
+    // shipped behaviour, bitwise. NOT adopted (Vinay's ruling is open).
+    auto const micro_ceiling_treatment = parseMicroCeilingTreatment(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_treatment",
+            defaults ? toString(defaults->micro_ceiling_treatment) : "clamp"));
+    auto const micro_ceiling_pu_tangent = parseMicroCeilingPuTangent(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_pu_tangent",
+            defaults ? toString(defaults->micro_ceiling_pu_tangent)
+                     : "overwritten"));
+    auto const micro_ceiling_fd_check = config.getConfigParameter<bool>(
+        "micro_ceiling_fd_check",
+        defaults ? defaults->micro_ceiling_fd_check : false);
+    auto const micro_ceiling_scan_nodes_per_decade =
+        config.getConfigParameter<int>(
+            "micro_ceiling_scan_nodes_per_decade",
+            defaults ? defaults->micro_ceiling_scan_nodes_per_decade : 8);
+    std::string micro_ceiling_trace_elements_default;
+    if (defaults)
+    {
+        for (auto const id : defaults->micro_ceiling_trace_elements)
+        {
+            micro_ceiling_trace_elements_default +=
+                std::to_string(id) + " ";
+        }
+    }
+    auto const micro_ceiling_trace_elements = parseMicroCeilingTraceElements(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_trace_elements",
+            micro_ceiling_trace_elements_default));
+    if (micro_ceiling_treatment == MicroCeilingTreatment::Kkt)
+    {
+        // 2.2 item 1
+        if (local_nonlinear_solve_mode !=
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_treatment = kkt requires "
+                "local_nonlinear_solve_mode = "
+                "scalar_micro_macro_mass_storage_mode.",
+                context);
+        }
+        // 2.2 item 2
+        if (ceiling_micro_storage_exchange ||
+            ceiling_micro_storage_includes_strain)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_treatment = kkt is "
+                "exclusive with ceiling_micro_storage_exchange and with "
+                "ceiling_micro_storage_includes_strain (the latter requires "
+                "the former): variant B books its own rate; in the KKT form "
+                "the booking follows from the micro residual (DERIVATION.md "
+                "2.4).",
+                context);
+        }
+        // 2.2 item 4: the strained-film modes change mu_{lR,n} and mu_{lR,eps}
+        // through w_eff(eps_v) and are not derived (DERIVATION.md 1.8).
+        if (film_strain_coupling != FilmStrainCouplingMode::Off)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_treatment = kkt requires "
+                "film_strain_coupling = off (got '{}'): the strained-film "
+                "modes change mu_lR,n and mu_lR,eps through w_eff(eps_v) and "
+                "are not derived for the KKT local problem (DERIVATION.md "
+                "1.8).",
+                context, toString(film_strain_coupling));
+        }
+        if (micro_ceiling_scan_nodes_per_decade < 2)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_scan_nodes_per_decade "
+                "must be >= 2, got {}.",
+                context, micro_ceiling_scan_nodes_per_decade);
+        }
+        // 2.2 item 5: label line (style of the variant label above).
+        INFO(
+            "MASSFIX V3 label: micro_ceiling_treatment = kkt, F3 sign s = {} "
+            "(micro_mass_strain_term_eulerian = {}), "
+            "micro_ceiling_pu_tangent = {}, "
+            "micro_ceiling_scan_nodes_per_decade = {}, "
+            "macro_storage_uses_macro_porosity = {}, "
+            "micro_ceiling_fd_check = {}, trace elements = {}. "
+            "T_m (micro part of the Biot term) stays in the macro balance "
+            "(open, Vinay's ruling); multiplier hydraulic only (option A). "
+            "micro_exchange_source = rhohat_pot (NOT the booked sink of "
+            "V1/V2); micro_exchange_received = what the macro sink uses. "
+            "assemble() (Picard) reads the state of the last Newton-type "
+            "evaluation and is not claimed consistent. NOT adopted.",
+            micro_mass_strain_term_eulerian ? "-1" : "+1",
+            micro_mass_strain_term_eulerian, toString(micro_ceiling_pu_tangent),
+            micro_ceiling_scan_nodes_per_decade,
+            macro_storage_uses_macro_porosity, micro_ceiling_fd_check,
+            micro_ceiling_trace_elements.size());
+    }
+    else
+    {
+        // 2.2 item 3: the other tags require kkt.
+        if (micro_ceiling_pu_tangent != MicroCeilingPuTangent::Overwritten ||
+            micro_ceiling_fd_check ||
+            !micro_ceiling_trace_elements.empty() ||
+            (micro_ceiling_scan_nodes_per_decade != 8 &&
+             !(defaults &&
+               defaults->micro_ceiling_scan_nodes_per_decade ==
+                   micro_ceiling_scan_nodes_per_decade)))
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_pu_tangent (other than "
+                "overwritten), micro_ceiling_fd_check, "
+                "micro_ceiling_scan_nodes_per_decade and "
+                "micro_ceiling_trace_elements require "
+                "micro_ceiling_treatment = kkt.",
+                context);
+        }
+    }
+
     // Macro-porosity floor phi_M,min: keeps the macro pore from collapsing into
     // the interlayer (n_l capped at (phi-floor)/(1-floor)); 0 -> no floor.
     // MANDATORY (Vinay 2026-06-17): like micro_water_content_floor, the top-level
@@ -849,7 +1042,12 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         ceiling_micro_storage_exchange,
         macro_storage_uses_macro_porosity,
         micro_mass_strain_term_eulerian,
-        ceiling_micro_storage_includes_strain};
+        ceiling_micro_storage_includes_strain,
+        micro_ceiling_treatment,
+        micro_ceiling_pu_tangent,
+        micro_ceiling_fd_check,
+        micro_ceiling_scan_nodes_per_decade,
+        micro_ceiling_trace_elements};
 }
 
 template <int DisplacementDim>
