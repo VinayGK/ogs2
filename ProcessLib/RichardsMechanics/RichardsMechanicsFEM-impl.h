@@ -512,6 +512,13 @@ struct ReducedMicroLiquidDensityData
     double omega_l = 0.0;
     double drho_lR_dnl = 0.0;
     double drho_l_dn_l = 0.0;
+    // KKT micro-water ceiling (DESIGN.md 3.1(a), C2): d rho_lR_EOS/d rho_LR at
+    // fixed n_l = 1/dg_drho (implicit function of g = rho_lR - rho_LR -
+    // rho_l0*exp(-a*omega(rho_lR)), dg/drho_LR = -1). = 1 to round-off when
+    // micro_liquid_density_a = 1e-16. 0 where dg_drho is degenerate (same
+    // fallback convention as drho_lR_dnl). Appended at the end: no existing
+    // value changes.
+    double drho_lR_drho_LR = 0.0;
 };
 
 inline ReducedMicroLiquidDensityData computeReducedMicroLiquidDensity(
@@ -615,11 +622,17 @@ inline ReducedMicroLiquidDensityData computeReducedMicroLiquidDensity(
             ? -dg_dn / dg_drho
             : 0.0;
 
+    double const drho_lR_drho_LR =
+        (std::isfinite(dg_drho) && std::abs(dg_drho) > 1e-20)
+            ? 1.0 / dg_drho
+            : 0.0;  // [-], KKT active p-p tangent (DESIGN.md 3.2)
+
     return {
         .rho_lR = rho_lR,
         .omega_l = omega_l,
         .drho_lR_dnl = drho_lR_dnl,
         .drho_l_dn_l = rho_lR + n_l_safe * drho_lR_dnl,
+        .drho_lR_drho_LR = drho_lR_drho_LR,
     };
 }
 
@@ -1535,6 +1548,433 @@ solveReferenceMassStorageCoupledState(
     return out.converged ? out : predictor;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
+// 2026-09-30; NOT adopted; reached only through potential_exchange
+// micro_ceiling_treatment = kkt, default clamp = the code above, bitwise).
+//
+// Design, derivation and weak forms: DESIGN.md (3.2-3.5), DERIVATION.md (D-n),
+// WEAK_FORMS.md (W-n) in ~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/.
+// Symbols as in D-0: lambda (code: multiplier) is the multiplier of the ceiling
+// n_l <= n_max(eps_v) = phi, r = alpha_M*lambda/rho_lR the rejected exchange,
+// s the sign of the strain term (strain_sign), c_s = 1 - s*Deps.
+//
+// Nothing above is edited or shared: the solver below carries its own
+// evaluation, written in the same expression order as the residual of
+// solveReferenceMassStorageCoupledState (this file, `mass_residual`), because
+// the file-scope FP_CONTRACT OFF above records that a refactor boundary alone
+// once changed clang's fusions and broke dd1800 (DESIGN.md 3).
+// ════════════════════════════════════════════════════════════════════════════
+
+// Status of the local KKT solve at one evaluation (DESIGN.md 3.2). The value is
+// stored in the state field MicroCeilingStatus and read by the assembler as the
+// active flag (status == Active); no detector, no tolerance.
+enum class MicroCeilingKktStatus : int
+{
+    Interior = 0,        // f(n_max) >= 0 (ties and NaN included): base solve
+    Active = 1,          // f(n_max) < 0 and the scan found no interior root
+    NonMonotone = 2,     // f(n_max) < 0 but an interior root exists (scan)
+    PremiseViolated = 3  // f(n_floor) >= 0, or a non-finite value in the scan
+};
+
+struct MicroCeilingKktSolveData
+{
+    // n_l, rho_lR, micro_potential, exchange (= rhohat_pot at the RETURNED
+    // state), converged. Interior / NonMonotone / PremiseViolated: the base
+    // solve's result; Active: the wall state.
+    MicroMacroMassStorageCoupledSolveData local;
+    MicroCeilingKktStatus status = MicroCeilingKktStatus::Interior;
+    double n_max = 0.0;              // [-], boundedMicroWaterContentCeiling
+    double multiplier = 0.0;         // lambda [Pa], 0 unless Active
+    double rejected_exchange = 0.0;  // r = rhohat_pot - S_s [kg/(m3 s)], 0 unless Active
+    double exchange_received = 0.0;  // rhohat [kg/(m3 s)]: S_s Active, else rhohat_pot
+    double booked_storage_rate = 0.0;  // S_s(n_max) [kg/(m3 s)], at every active candidate
+    double f_at_n_max = 0.0;           // f(n_max) [kg/m3], diagnostic
+};
+
+// Bracketed unique-root test at an active candidate (DERIVATION.md 2.5, D-2.5).
+// f and f_n are injected callables (n -> f(n), n -> df/dn) so that unit tests
+// can supply synthetic functions. Precondition of the caller: f(n_max) < 0.
+// The wall is the unique solution of the NCP iff f < 0 on all of
+// [n_floor, n_max] (continuity, f(n_floor) < 0).
+//   (i)   f(n_floor), f_n(n_floor) finite and f(n_floor) < 0, else PremiseViolated
+//   (ii)  f(n_j) < 0 at every node of a log-uniform grid from n_floor to n_max
+//         with nodes_per_decade nodes per decade, else NonMonotone
+//   (iii) in every cell with f_n > 0 at the left node and f_n < 0 at the right
+//         node, bisection on f_n (fixed number of halvings, no tolerance)
+//         locates the local maximum; f < 0 is required there, else NonMonotone
+// A non-finite value anywhere gives PremiseViolated (nothing can be certified).
+// Limit (DERIVATION.md 2.5): two sign changes of f_n inside ONE cell escape.
+template <typename F, typename Fn>
+MicroCeilingKktStatus scanForInteriorCeilingRoot(F const& f, Fn const& f_n,
+                                                 double const n_floor,
+                                                 double const n_max,
+                                                 int const nodes_per_decade)
+{
+    using Status = MicroCeilingKktStatus;
+    double const f_floor = f(n_floor);
+    double n_left = n_floor;
+    double fn_left = f_n(n_floor);
+    if (!(std::isfinite(f_floor) && std::isfinite(fn_left)))
+    {
+        return Status::PremiseViolated;
+    }
+    if (!(f_floor < 0.0))
+    {
+        return Status::PremiseViolated;
+    }
+    if (!(n_max > n_floor))
+    {
+        return Status::Active;  // degenerate bracket: the wall is the floor
+    }
+
+    double const decades = std::log10(n_max / n_floor);
+    int const cells = std::max(
+        1, static_cast<int>(std::ceil(static_cast<double>(nodes_per_decade) *
+                                      decades)));
+    for (int j = 1; j <= cells; ++j)
+    {
+        double const n_right =
+            (j == cells) ? n_max
+                         : n_floor * std::pow(n_max / n_floor,
+                                              static_cast<double>(j) /
+                                                  static_cast<double>(cells));
+        double const f_right = f(n_right);
+        double const fn_right = f_n(n_right);
+        if (!(std::isfinite(f_right) && std::isfinite(fn_right)))
+        {
+            return Status::PremiseViolated;
+        }
+        if (!(f_right < 0.0))
+        {
+            return Status::NonMonotone;  // a node with f >= 0 proves a root
+        }
+        if (fn_left > 0.0 && fn_right < 0.0)
+        {
+            // Local maximum of f inside the cell: bisection on f_n in the
+            // geometric mean (log n); 64 halvings exhaust the double
+            // resolution of the bracket (count, not a tolerance).
+            double a = n_left;
+            double b = n_right;
+            for (int it = 0; it < 64; ++it)
+            {
+                double const m = std::sqrt(a * b);
+                double const fn_m = f_n(m);
+                if (!std::isfinite(fn_m))
+                {
+                    return Status::PremiseViolated;
+                }
+                if (fn_m > 0.0)
+                {
+                    a = m;
+                }
+                else
+                {
+                    b = m;
+                }
+            }
+            double const f_star = f(std::sqrt(a * b));
+            if (!std::isfinite(f_star))
+            {
+                return Status::PremiseViolated;
+            }
+            if (!(f_star < 0.0))
+            {
+                return Status::NonMonotone;
+            }
+        }
+        n_left = n_right;
+        fn_left = fn_right;
+    }
+    return Status::Active;
+}
+
+// Drop-in for solveReferenceMassStorageCoupledState (same argument list) with
+// the ceiling as a complementarity condition, DESIGN.md 3.2:
+//   R_rho explicit: rho_lR = rho_lR_EOS(n) slaves the second unknown, so the
+//   local problem is the scalar NCP  f(n) + dt*alpha_M*lambda/rho_lR = 0,
+//   lambda >= 0, n <= n_max, lambda*(n_max - n) = 0,
+//   f(n) = R_m(n, rho_lR_EOS(n), lambda = 0) (the residual of the base solve).
+// Active candidate f(n_max) < 0 (no tolerance, no stored state read): the scan
+// decides whether the wall is the unique solution. Active: n = n_max,
+// rhohat = S_s(n_max) (the booked storage rate, received by micro AND macro),
+// lambda = rho_lR*(rhohat_pot - S_s)/alpha_M >= 0, r = rhohat_pot - S_s.
+// Interior (f(n_max) >= 0): the base solve, unchanged arithmetic, bitwise.
+// NonMonotone / PremiseViolated: the KKT rule chooses nothing; the base result
+// is returned with the status, the assembler treats the point like a clamp
+// point. Memoryless: no argument and no field of the previous evaluation is read.
+inline MicroCeilingKktSolveData solveReferenceMassStorageKktState(
+    double const n_l_prev, double const rho_l_prev, double const rho_lR_prev,
+    double const dt, double const rho_LR, double const alpha_bar,
+    double const mu, YoungLaplaceMacroPotentialData const& macro_potential,
+    PotentialExchangeLocalSolveContext const& local_context,
+    PotentialExchangeParameters const& potential_exchange_params)
+{
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#endif
+    requirePositiveViscosity("solveReferenceMassStorageKktState", mu);
+    constexpr double n_l_floor = 1e-16;  // as F:939, F:1141 (existing literal)
+    double const strain_sign =
+        microMassStrainTermSign(potential_exchange_params);  // s [-]
+    double const dt_safe = std::isfinite(dt) && dt > 0.0 ? dt : 0.0;
+    double const alpha_M_effective = alpha_bar * rho_LR / mu;
+    double const volumetric_strain_rate =
+        dt_safe > 0.0
+            ? (local_context.volumetric_strain -
+               local_context.volumetric_strain_prev) /
+                  dt_safe
+            : 0.0;
+    double const n_max =
+        boundedMicroWaterContentCeiling(local_context, n_l_floor);
+
+    auto const base_result = [&](MicroCeilingKktStatus const status,
+                                 double const storage_rate,
+                                 double const f_at_n_max)
+    {
+        MicroCeilingKktSolveData out;
+        out.local = solveReferenceMassStorageCoupledState(
+            n_l_prev, rho_l_prev, rho_lR_prev, dt, rho_LR, alpha_bar, mu,
+            macro_potential, local_context, potential_exchange_params);
+        out.status = status;
+        out.n_max = n_max;
+        out.multiplier = 0.0;
+        out.rejected_exchange = 0.0;
+        out.exchange_received = out.local.exchange.rho_l_hat;
+        out.booked_storage_rate = storage_rate;
+        out.f_at_n_max = f_at_n_max;
+        return out;
+    };
+
+    if (dt_safe <= 0.0)
+    {
+        return base_result(MicroCeilingKktStatus::Interior, 0.0, 0.0);
+    }
+
+    // One evaluation of the EOS-slaved local problem at micro water content n:
+    // f, S_s, f_n and the intermediates. No side effect.
+    struct Evaluation
+    {
+        double f = 0.0;    // [kg/m3] R_m(n, rho_lR_EOS(n), lambda = 0)
+        double S_s = 0.0;  // [kg/(m3 s)] (c_s rho_l - rho_l_prev)/dt
+        double f_n = 0.0;  // [kg/m3] df/dn, total derivative along the EOS
+        double rho_lR = 0.0;
+        VanDerWaalsMicroPotentialData micro_potential;
+        PotentialDrivenMassExchangeData exchange;
+    };
+    auto const evaluate = [&](double const n_l)
+    {
+        double const active_nS = computeActiveMicroSolidVolumeFraction(
+            n_l, local_context, potential_exchange_params);
+        auto const density = computeReducedMicroLiquidDensity(
+            n_l, rho_LR, active_nS, potential_exchange_params);
+        double const rho_lR = density.rho_lR;
+        // Live-nS chain (F2) only enters the derivative dmu_lR_dnl, not values.
+        double const dnS_dnl =
+            potential_exchange_params.micro_solid_volume_fraction_mode ==
+                    MicroSolidVolumeFractionMode::CurrentPorositySplit
+                ? -1.0
+                : 0.0;
+        auto micro_potential = computeVanDerWaalsMicroPotential(
+            n_l, rho_lR, active_nS,
+            potential_exchange_params.micro_solid_density_reference,
+            potential_exchange_params.hamaker_constant,
+            potential_exchange_params.specific_surface,
+            microPotentialSignFactorFromParameters(potential_exchange_params),
+            effectiveAugmentationPrefactor(potential_exchange_params,
+                                           local_context.phi),  // K [J/kg]
+            potential_exchange_params.potential_augmentation_exponent,
+            dnS_dnl, potential_exchange_params.micro_water_content_floor);
+        // Film coupling is always on (D-1.8): this folds the Maxwell partner
+        // mu_m into mu_lR and into dmu_lR_dnl, dmu_lR_drho_lR, exactly as the
+        // base solve does.
+        applyFilmPressureMicroPotential(micro_potential, n_l, rho_lR,
+                                        active_nS, local_context,
+                                        potential_exchange_params);
+        double const mu_LR_active = macro_potential.mu_LR;
+        double const mu_lR_active = micro_potential.mu_lR;
+        auto const exchange = computePotentialDrivenMassExchange(
+            alpha_M_effective, mu_LR_active, mu_lR_active);
+        double const phi_cs =
+            std::isfinite(local_context.phi)
+                ? std::clamp(local_context.phi, 0.0, 1.0 - 1e-12)
+                : std::clamp(
+                      local_context.phi_M_prev + local_context.phi_m_prev, 0.0,
+                      1.0 - 1e-12);
+        double const one_minus_n_l_cs = std::max(1e-12, 1.0 - n_l);
+        double const rho_l = (1.0 - phi_cs) / one_minus_n_l_cs * n_l * rho_lR;
+        // Same expression order as `mass_residual` of the base solve.
+        double const f = rho_l - rho_l_prev - dt_safe * exchange.rho_l_hat -
+                         strain_sign * dt_safe * rho_l * volumetric_strain_rate;
+        double const storage_term =
+            rho_l - strain_sign * dt_safe * rho_l * volumetric_strain_rate -
+            rho_l_prev;
+        // df/dn = J11 + J12 * d rho_lR_EOS/dn (D-2.4), J11/J12 as the analytic
+        // micro Jacobian of the base solve.
+        double const time_factor =
+            1.0 - strain_sign * dt_safe * volumetric_strain_rate;  // c_s
+        double const drho_l_dnl = (1.0 - phi_cs) * rho_lR /
+                                  (one_minus_n_l_cs * one_minus_n_l_cs);
+        double const drho_l_drho_lR = (1.0 - phi_cs) / one_minus_n_l_cs * n_l;
+        double const J11 = drho_l_dnl * time_factor +
+                           dt_safe * alpha_M_effective *
+                               micro_potential.dmu_lR_dnl;
+        double const J12 = drho_l_drho_lR * time_factor +
+                           dt_safe * alpha_M_effective *
+                               micro_potential.dmu_lR_drho_lR;
+        Evaluation out;
+        out.f = f;
+        out.S_s = storage_term / dt_safe;
+        out.f_n = J11 + J12 * density.drho_lR_dnl;
+        out.rho_lR = rho_lR;
+        out.micro_potential = micro_potential;
+        out.exchange = exchange;
+        return out;
+    };
+
+    // Active candidate: f(n_max) < 0, no tolerance, no stored state. Ties and
+    // non-finite values are inactive (the base arithmetic, bitwise).
+    Evaluation const at_wall = evaluate(n_max);
+    if (!(at_wall.f < 0.0))
+    {
+        return base_result(MicroCeilingKktStatus::Interior, at_wall.S_s,
+                           at_wall.f);
+    }
+    if (!(std::isfinite(alpha_M_effective) && alpha_M_effective > 0.0 &&
+          std::isfinite(at_wall.S_s) && std::isfinite(at_wall.rho_lR)))
+    {
+        return base_result(MicroCeilingKktStatus::PremiseViolated,
+                           at_wall.S_s, at_wall.f);
+    }
+
+    // One-entry memo: the scan asks for f and f_n at the same n back to back.
+    double memo_n = std::numeric_limits<double>::quiet_NaN();
+    Evaluation memo;
+    auto const evaluate_memo = [&](double const n_l) -> Evaluation const&
+    {
+        if (!(n_l == memo_n))
+        {
+            memo = evaluate(n_l);
+            memo_n = n_l;
+        }
+        return memo;
+    };
+    auto const scan_status = scanForInteriorCeilingRoot(
+        [&](double const n_l) { return evaluate_memo(n_l).f; },
+        [&](double const n_l) { return evaluate_memo(n_l).f_n; }, n_l_floor,
+        n_max, potential_exchange_params.micro_ceiling_scan_nodes_per_decade);
+    if (scan_status != MicroCeilingKktStatus::Active)
+    {
+        return base_result(scan_status, at_wall.S_s, at_wall.f);
+    }
+
+    // Active, unique: the wall. rhohat = S_s (computed directly, so the micro
+    // residual holds exactly); r = rhohat_pot - S_s >= 0 by the branch
+    // condition (clamped at 0 against round-off only), D-2.4, D-3.1.
+    MicroCeilingKktSolveData out;
+    out.local.n_l = n_max;
+    out.local.rho_lR = at_wall.rho_lR;
+    out.local.micro_potential = at_wall.micro_potential;
+    out.local.exchange = at_wall.exchange;  // rhohat_pot at the wall (D-7, G6)
+    out.local.converged = true;
+    out.status = MicroCeilingKktStatus::Active;
+    out.n_max = n_max;
+    double const r =
+        std::max(0.0, at_wall.exchange.rho_l_hat - at_wall.S_s);  // [kg/(m3 s)]
+    out.rejected_exchange = r;
+    out.multiplier = at_wall.rho_lR * r / alpha_M_effective;  // [Pa]
+    out.exchange_received = at_wall.S_s;
+    out.booked_storage_rate = at_wall.S_s;
+    out.f_at_n_max = at_wall.f;
+    return out;
+}
+
+// Tangents of the booked exchange rhohat = S_s on the ACTIVE branch (n = n_max =
+// phi, rho_lR = rho_lR_EOS(phi; p_L)), D-5.2 / DESIGN.md 3.2. Free function so
+// that a unit test can compare it with central differences of the solver.
+//   c_s = 1 - s*d_eps, rho_l = phi*rho_lR
+//   d rhohat/d p_L   = c_s*phi*(d rho_lR/d rho_LR)*(d rho_LR/d p_L)/dt
+//   d rhohat/d eps_v = [ -s*rho_l + c_s*phi'*(rho_lR + phi*d rho_lR/dn) ]/dt
+// (s = -1, alpha = 1, constant rho_lR: rho_lR/dt). Both independent of the
+// Maxwell partner (the active exchange is S_s, not mu_lR-driven).
+struct CeilingKktActiveExchangeTangents
+{
+    double drhohat_dpL = 0.0;      // [kg/(m3 s)/Pa]
+    double drhohat_deps_v = 0.0;   // [kg/(m3 s)] per unit eps_v
+};
+
+inline CeilingKktActiveExchangeTangents computeCeilingKktActiveExchangeTangents(
+    double const strain_sign, double const d_eps, double const phi,
+    double const rho_lR, double const drho_lR_dnl,
+    double const drho_lR_drho_LR, double const drho_LR_dpL,
+    double const dphi_deps_v, double const dt)
+{
+    double const c_s = 1.0 - strain_sign * d_eps;  // [-]
+    double const rho_l = phi * rho_lR;             // [kg/m3]
+    return {
+        .drhohat_dpL = c_s * phi * drho_lR_drho_LR * drho_LR_dpL / dt,
+        .drhohat_deps_v =
+            (-strain_sign * rho_l +
+             c_s * dphi_deps_v * (rho_lR + phi * drho_lR_dnl)) /
+            dt};
+}
+
+// d phi/d eps_v of the porosity law of PorosityFromMassBalance,
+//   phi = (phi_prev + alpha*w)/(1 + w),  w = Deps + Dp_eff*beta_SR,
+// = (alpha - phi)/(1 + w); 0 where the porosity clamp acts (same test as
+// clamp_active_B of the variant-B block, existing literal 1e-12). The dValue of
+// the property is not implemented, which is why the derivative is hand-coded.
+inline double porosityDerivativeWrtVolumetricStrain(double const alpha,
+                                                    double const phi,
+                                                    double const phi_prev,
+                                                    double const w_eps)
+{
+    double const phi_unclamped = (phi_prev + alpha * w_eps) / (1.0 + w_eps);
+    bool const clamp_active = std::abs(phi_unclamped - phi) >
+                              1e-12 * std::max(1.0, std::abs(phi));
+    return clamp_active ? 0.0 : (alpha - phi) / (1.0 + w_eps);  // [-]
+}
+
+// Group-3 iteration diagnostics (DESIGN.md 3.3, M3). Memory fields and counters
+// are updated at every evaluation of an active-or-not IP:
+//   new attempt (t != attempt_t): attempt_t = t, inc_last = 0, eps_seen = e,
+//     no counting;
+//   same iterate (e == eps_seen, e.g. the output re-evaluation): nothing;
+//   else inc = e - eps_seen; if inc_last != 0 and status is Active now and was
+//     Active at the previous evaluation: inc_alt += sign(inc) != sign(inc_last),
+//     inc_same += sign(inc) == sign(inc_last); then inc_last = inc, eps_seen = e.
+inline void updateCeilingIterationDiagnostics(
+    double& eps_seen, double& inc_last, double& attempt_t, double& inc_alt,
+    double& inc_same, double const eps_v, double const t,
+    bool const active_now, bool const active_before)
+{
+    if (t != attempt_t)
+    {
+        attempt_t = t;
+        inc_last = 0.0;
+        eps_seen = eps_v;
+        return;
+    }
+    if (eps_v == eps_seen)
+    {
+        return;
+    }
+    double const inc = eps_v - eps_seen;
+    if (inc_last != 0.0 && active_now && active_before)
+    {
+        if ((inc > 0.0) != (inc_last > 0.0))
+        {
+            inc_alt += 1.0;
+        }
+        else
+        {
+            inc_same += 1.0;
+        }
+    }
+    inc_last = inc;
+    eps_seen = eps_v;
+}
+
 template <int DisplacementDim>
 inline void applyReferenceMassStorageLocalState(
     StatefulData<DisplacementDim>& state_current,
@@ -2206,7 +2646,7 @@ template <int DisplacementDim>
 inline void updateMicroscaleHydraulicState(
     StatefulData<DisplacementDim>& state_current,
     StatefulDataPrev<DisplacementDim> const& state_previous, double const p_cap_ip,
-    double const rho_LR, double const mu, double const dt,
+    double const rho_LR, double const mu, double const dt, double const t,
     MPL::VariableArray& variables, MPL::VariableArray& variables_prev,
     PotentialExchangeLocalSolveContext const& local_context,
     std::optional<MicroPorosityParameters> const& micro_porosity_parameters,
@@ -2236,6 +2676,86 @@ inline void updateMicroscaleHydraulicState(
         // REV-scale previous liquid apparent density: phi_m_prev * rho_lR_prev.
         // local_context.phi_m_prev = (1-phi_M_prev)*n_l_prev (hierarchical split).
         double const rho_l_prev = local_context.phi_m_prev * rho_lR_prev_value;
+        // KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
+        // 2026-09-30; NOT adopted): complementarity local solve instead of the
+        // projected Newton below. Default treatment = clamp -> this block is
+        // skipped and everything below is the shipped code, bitwise.
+        // DESIGN.md 3.4.
+        if (isKktCeiling(potential_exchange_params))
+        {
+            auto const kkt = solveReferenceMassStorageKktState(
+                n_l_prev_value, rho_l_prev, rho_lR_prev_value, dt, rho_LR,
+                micro_porosity_parameters->mass_exchange_coefficient, mu,
+                macro_potential, local_context, potential_exchange_params);
+            // Status of the previous evaluation at this IP (read before it is
+            // overwritten), for the flips counter and the parity counters.
+            bool const active_before =
+                *std::get<MicroCeilingStatus>(state_current) ==
+                static_cast<double>(MicroCeilingKktStatus::Active);
+            applyReferenceMassStorageLocalState<DisplacementDim>(
+                state_current, state_previous, variables, variables_prev,
+                rho_LR, local_context, potential_exchange_params, kkt.local);
+            bool const active_now =
+                kkt.status == MicroCeilingKktStatus::Active;
+            *std::get<MicroCeilingStatus>(state_current) =
+                static_cast<double>(kkt.status);
+            *std::get<MicroCeilingMultiplier>(state_current) = kkt.multiplier;
+            *std::get<MicroExchangeReceived>(state_current) =
+                kkt.exchange_received;
+            *std::get<MicroCeilingRejectedExchange>(state_current) =
+                kkt.rejected_exchange;
+            *std::get<MicroCeilingFlips>(state_current) +=
+                (active_before != active_now) ? 1.0 : 0.0;
+            *std::get<MicroCeilingNonMonotone>(state_current) +=
+                kkt.status == MicroCeilingKktStatus::NonMonotone ? 1.0 : 0.0;
+            *std::get<MicroCeilingPremise>(state_current) +=
+                kkt.status == MicroCeilingKktStatus::PremiseViolated ? 1.0
+                                                                     : 0.0;
+            // DESIGN.md 3.2 step 7: the KKT rule chooses nothing at status 2 and
+            // 3; the point is handled like a clamp point. Counted in the state
+            // fields above; printed once per process and status, never hidden.
+            if (kkt.status == MicroCeilingKktStatus::NonMonotone)
+            {
+                static std::once_flag once_non_monotone;
+                std::call_once(
+                    once_non_monotone,
+                    []
+                    {
+                        WARN(
+                            "micro_ceiling_treatment = kkt: at least one "
+                            "evaluation has f(n_max) < 0 AND an interior root "
+                            "of the micro residual (status NonMonotone): the "
+                            "KKT rule chooses nothing there, the base "
+                            "(clamp) solve and sink are used at that point. "
+                            "Counts: output field micro_ceiling_nonmonotone.");
+                    });
+            }
+            if (kkt.status == MicroCeilingKktStatus::PremiseViolated)
+            {
+                static std::once_flag once_premise;
+                std::call_once(
+                    once_premise,
+                    []
+                    {
+                        WARN(
+                            "micro_ceiling_treatment = kkt: at least one "
+                            "evaluation could not be certified by the scan "
+                            "(status PremiseViolated: f(n_floor) >= 0, a "
+                            "non-finite value, or alpha_M not positive): the "
+                            "base (clamp) solve and sink are used at that "
+                            "point. Counts: output field "
+                            "micro_ceiling_premise.");
+                    });
+            }
+            updateCeilingIterationDiagnostics(
+                *std::get<MicroCeilingEpsSeen>(state_current),
+                *std::get<MicroCeilingIncLast>(state_current),
+                *std::get<MicroCeilingAttemptT>(state_current),
+                *std::get<MicroCeilingIncAlt>(state_current),
+                *std::get<MicroCeilingIncSame>(state_current),
+                local_context.volumetric_strain, t, active_now, active_before);
+            return;
+        }
         auto const coupled_update = solveReferenceMassStorageCoupledState(
             n_l_prev_value, rho_l_prev, rho_lR_prev_value, dt,
             rho_LR, micro_porosity_parameters->mass_exchange_coefficient, mu,
@@ -4285,7 +4805,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             ? drainedBulkModulusFromStiffness<DisplacementDim>(C_el)
             : std::numeric_limits<double>::quiet_NaN();
     updateMicroscaleHydraulicState<DisplacementDim>(
-        state_current, state_previous, p_cap_ip, rho_LR, mu, dt, variables, variables_prev,
+        state_current, state_previous, p_cap_ip, rho_LR, mu, dt, t, variables, variables_prev,
         {.phi = phi,
          .phi_M_prev = transport_porosity_prev_value,
          .phi_m_prev = phi_m_prev_value,
@@ -6394,7 +6914,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 : std::numeric_limits<double>::quiet_NaN();
         updateMicroscaleHydraulicState<DisplacementDim>(
             this->current_states_[ip], this->prev_states_[ip], p_cap_ip,
-            rho_LR, mu, dt, variables, variables_prev,
+            rho_LR, mu, dt, t, variables, variables_prev,
             {.phi = phi,
              .phi_M_prev = transport_porosity_prev_value,
              .phi_m_prev = phi_m_prev_value,
