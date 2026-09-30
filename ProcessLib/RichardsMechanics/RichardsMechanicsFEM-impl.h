@@ -3188,6 +3188,31 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         potential_exchange_params_ptr->initial_micro_water_content
                             .value_or(n_l_initial),
                         1e-12, porosity_safe);
+
+                // Without a transport_porosity property the initial macro
+                // porosity phi_M0 is the total porosity (constructor:
+                // transport_porosity = porosity), so the previous micro
+                // porosity stored below would be 0 and the first solve would
+                // rebuild the micro water from empty pores. Take phi_M0 from
+                // the hierarchical split of the declared
+                // initial_micro_water_content instead (same formula as
+                // computeTransportPorosityUpdate): phi_M0 = (phi - n_l0) /
+                // (1 - n_l0), phi_m0 = (1 - phi_M0) * n_l0, phi_M0 + phi_m0 =
+                // phi. Decks with a transport_porosity property, or without
+                // initial_micro_water_content, are unchanged.
+                if (potential_exchange_params_ptr->initial_micro_water_content
+                        .has_value() &&
+                    !medium->hasProperty(MPL::PropertyType::transport_porosity))
+                {
+                    std::get<ProcessLib::ThermoRichardsMechanics::
+                                 TransportPorosityData>(
+                        this->current_states_[ip])
+                        .phi = std::clamp(
+                        (porosity_safe - n_l_initial) /
+                            std::max(1e-12, 1.0 - n_l_initial),
+                        0.0, porosity_safe);
+                }
+
                 rho_lR_initial = std::max(
                     1e-16,
                     potential_exchange_params_ptr
