@@ -430,6 +430,23 @@ struct PotentialExchangeParameters
     // false (default) -> parse-time freeze, bit-for-bit the existing
     // behavior.
     bool potential_augmentation_prefactor_live_dry_density = false;
+
+    // -- DIAGNOSTIC switches, mass-strip A/B test (2026-09-30) ---------------
+    // Implemented as specified by Vinay (R-03, 2026-09-30: "disclose and run
+    // the test in parallel"; test text: mass_audit README l.52-57). NOTHING is
+    // adopted: both default false -> the assembly is bit-identical to bed3e395
+    // (variant A). See DSM/AGENTS.md worklog entry 2026-09-30.
+    //
+    // B: at IPs where the micro water content sits on its ceiling n_l = phi
+    // (boundedMicroWaterContentCeiling), the macro pressure residual books the
+    // ACTUAL micro storage rate (rho_l - rho_l_prev)/dt, rho_l = phi_m*rho_lR,
+    // instead of the potential-driven rho_hat = alpha_M (mu_LR - mu_lR), in both
+    // directions (drain and return), with the matching Jacobian. The micro
+    // state update itself is untouched.
+    bool ceiling_micro_storage_exchange = false;
+    // B': the macro storage term uses phi_M (macro pore space) in place of the
+    // total porosity phi in the two pore-fluid storage coefficients (a_p, a_S).
+    bool macro_storage_uses_macro_porosity = false;
 };
 
 // Effective augmentation prefactor K [J/kg] at the current state.

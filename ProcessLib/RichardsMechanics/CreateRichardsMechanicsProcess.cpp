@@ -542,6 +542,24 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             defaults
                 ? defaults->potential_augmentation_prefactor_live_dry_density
                 : false);
+    // DIAGNOSTIC (mass-strip A/B, 2026-09-30, Vinay R-03): both default false,
+    // false -> bit-identical to variant A (bed3e395). See PotentialExchangeParameters.h.
+    auto const ceiling_micro_storage_exchange = config.getConfigParameter<bool>(
+        "ceiling_micro_storage_exchange",
+        defaults ? defaults->ceiling_micro_storage_exchange : false);
+    auto const macro_storage_uses_macro_porosity =
+        config.getConfigParameter<bool>(
+            "macro_storage_uses_macro_porosity",
+            defaults ? defaults->macro_storage_uses_macro_porosity : false);
+    if (ceiling_micro_storage_exchange &&
+        local_nonlinear_solve_mode !=
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} ceiling_micro_storage_exchange requires "
+            "local_nonlinear_solve_mode = scalar_micro_macro_mass_storage_mode.",
+            context);
+    }
     if (potential_augmentation_prefactor_live_dry_density &&
         !potential_augmentation_prefactor_vs_dry_density)
     {
@@ -777,7 +795,9 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         film_energy_route,
         potential_augmentation_prefactor_vs_dry_density,
         dry_density,
-        potential_augmentation_prefactor_live_dry_density};
+        potential_augmentation_prefactor_live_dry_density,
+        ceiling_micro_storage_exchange,
+        macro_storage_uses_macro_porosity};
 }
 
 template <int DisplacementDim>

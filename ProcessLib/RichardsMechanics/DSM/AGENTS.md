@@ -2245,3 +2245,25 @@ Supersedes the "diagnostic-only, never committed" status of the 2026-08-25
 exploration (worktree dsm_loglin_diagnostic_2026-08-25_wt). Downstream MS33
 stress/void-ratio consequences: NOT claimed here — predicted only until the
 Verify-phase reruns land (§5).
+
+## 2026-09-30 — DIAGNOSTIC branch diag/mass_ceiling_AB_2026-09-30: mass-strip A/B switches (NOT adopted)
+
+Requested by Vinay (R-03, 2026-09-30: "disclose and run the test in parallel"); test text: `mass_audit` README l.52-57
+(`~/ogs-models/scratch/2026-09-25_0926_mass_audit_successful/README.md`, findings F1/F2). Branch cut at bed3e395da (the
+binary of the submitted campaign); nothing merged, no deck of the campaign changed. Record and results:
+`~/ogs-models/scratch/2026-09-30_mass_strip_AB/` (README.md, RESULTS.md).
+
+Two PRJ switches in `<potential_exchange>`, both default false, in which case the assembly is meant to be bit-identical to
+bed3e395 (variant A; this is a CONTROL in the record, MEASURED there, not claimed here):
+- `ceiling_micro_storage_exchange` (variant B). At IPs with n_l on the micro ceiling (n_l = phi, tolerance 1e3 machine eps,
+  `microWaterContentIsAtCeiling`), the micro state update stores in `MicroExchangeSource` the ACTUAL micro storage rate
+  (phi_m*rho_lR - phi_m_prev*rho_lR_prev)/dt, and the macro pressure residual reads it (sign flipped) instead of
+  alpha_M(mu_LR - mu_lR), in both directions. Jacobian at clamped IPs: p-p through rho_LR(p_L) (zero for a constant-density
+  deck), p-u through dphi/deps_v of PorosityFromMassBalance (clamp -> 0); the mu_lR-driven p-u film tangent is skipped there.
+  Requires `scalar_micro_macro_mass_storage_mode`; beta_SR != 0 is refused (dphi/dp_eff chain not implemented).
+  Consequence for output: in B runs the VTU field `micro_exchange_source` is the BOOKED sink at clamped IPs.
+- `macro_storage_uses_macro_porosity` (with B: variant B'). phi_M replaces the total porosity phi in the pore-fluid
+  storage coefficients a_p and a_S of the macro water storage (assemble and assembleWithJacobian); a0 (alpha - phi) and the
+  Kpu coupling are unchanged; dphi_M/dt*S_L*rho_LR is not added.
+The micro state update itself is untouched (F3, the +dt*rho_l*eps_dot sign, is not addressed). Whether either switch is
+physically right is Vinay's call; what they change is MEASURED only in the record above.

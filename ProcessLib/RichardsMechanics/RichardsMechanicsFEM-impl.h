@@ -441,6 +441,27 @@ inline TransportPorosityUpdateData computeTransportPorosityUpdate(
     };
 }
 
+// DIAGNOSTIC (mass-strip A/B test, 2026-09-30; Vinay R-03; NOT adopted).
+// True when the stored micro water content n_l sits on its ceiling n_l = phi,
+// i.e. on the clamp of boundedMicroWaterContentCeiling. The micro solve stores
+// n_l = clamp(., floor, phi_clamped) exactly, and the assembly-side phi is
+// phi_M + phi_m recomputed from the same n_l, so the two agree to a few
+// round-off units: the detection tolerance is 1e3 machine epsilons
+// (2.2e-13, dimensionless), derived from double precision, not a physical value.
+inline bool microWaterContentIsAtCeiling(double const n_l, double const phi)
+{
+    constexpr double porosity_upper = 1.0 - 1e-12;
+    if (!std::isfinite(phi) || !std::isfinite(n_l))
+    {
+        return false;
+    }
+    double const ceiling =
+        std::clamp(std::max(0.0, phi), 0.0, porosity_upper);  // [-]
+    constexpr double tol =
+        1e3 * std::numeric_limits<double>::epsilon();  // [-]
+    return n_l >= ceiling - tol;
+}
+
 // [2026-05-26 PHYSICS FIX] The returned quantity is the aggregate SOLID
 // fraction (V_solid/V_aggregate = 1 - n_l) used as the denominator of
 // the gravimetric water content omega_l = n_l * rho_lR / (nS * rho_SR).
@@ -2201,6 +2222,29 @@ inline void updateMicroscaleHydraulicState(
         applyReferenceMassStorageLocalState<DisplacementDim>(
             state_current, state_previous, variables, variables_prev, rho_LR, local_context, potential_exchange_params,
             coupled_update);
+        // DIAGNOSTIC B (mass-strip A/B, 2026-09-30; Vinay R-03; off by default,
+        // then this block is skipped and the state is bit-identical to A).
+        // At an IP on the micro ceiling n_l = phi the stored MicroExchangeSource
+        // is set to the ACTUAL micro storage rate, i.e. the water the micro
+        // domain really gained over this step,
+        //   rho_l_hat_B = (phi_m*rho_lR - phi_m_prev*rho_lR_prev)/dt
+        //                 [kg/(m^3 s)], phi_m*rho_lR = rho_l as in the micro solve
+        // (both signs). The macro pressure residual reads this state at clamped
+        // IPs (assembleWithJacobian / assemble) instead of alpha_M(mu_LR - mu_lR).
+        // Output consequence: in B/B' runs the VTU field micro_exchange_source
+        // is the BOOKED sink at clamped IPs, not the potential-driven rho_hat.
+        if (potential_exchange_params.ceiling_micro_storage_exchange &&
+            dt > 0.0 && microWaterContentIsAtCeiling(coupled_update.n_l,
+                                                       local_context.phi))
+        {
+            double const rho_l_now_B =
+                *std::get<MicroPorosity>(state_current) *
+                coupled_update.rho_lR;  // kg/m^3
+            double const rho_l_prev_B =
+                local_context.phi_m_prev * rho_lR_prev_value;  // kg/m^3
+            std::get<MicroExchangeSource>(state_current) =
+                MicroExchangeSource{(rho_l_now_B - rho_l_prev_B) / dt};
+        }
         return;
     }
 
@@ -3762,10 +3806,21 @@ void RichardsMechanicsLocalAssembler<
                                          x_position, t, dt);
 
         double const a0 = S_L * (alpha - phi) * beta_SR;
+        // DIAGNOSTIC B' (2026-09-30, off by default -> phi_storage == phi,
+        // bit-identical): pore space of the macro water storage, phi_M instead
+        // of the total porosity phi.
+        double const phi_storage =
+            (this->getPotentialExchangeParameters() &&
+             this->getPotentialExchangeParameters()
+                 ->macro_storage_uses_macro_porosity)
+                ? std::get<ProcessLib::ThermoRichardsMechanics::
+                               TransportPorosityData>(this->current_states_[ip])
+                      .phi
+                : phi;  // [-]
         // Volumetric average specific storage of the solid and fluid phases.
         double const specific_storage =
-            DeltaS_L_Deltap_cap * (p_cap_ip * a0 - phi) +
-            S_L * (phi * beta_LR + a0);
+            DeltaS_L_Deltap_cap * (p_cap_ip * a0 - phi_storage) +
+            S_L * (phi_storage * beta_LR + a0);
         M.template block<pressure_size, pressure_size>(pressure_index,
                                                        pressure_index)
             .noalias() += N_p.transpose() * rho_LR * specific_storage * N_p * w;
@@ -3802,6 +3857,10 @@ void RichardsMechanicsLocalAssembler<
                 std::numeric_limits<double>::quiet_NaN();
             double drho_lR_exchange_input_dpL =
                 std::numeric_limits<double>::quiet_NaN();
+            // DIAGNOSTIC B (2026-09-30, off by default): residual-only twin of
+            // the assembleWithJacobian block (see there).
+            bool ceiling_B_active = false;
+            double ceiling_B_rho_L_hat = 0.0;  // kg/(m^3 s), macro source
 
             if (potential_exchange_enabled)
             {
@@ -3850,6 +3909,18 @@ void RichardsMechanicsLocalAssembler<
                     .confining_pressure_p_conf = p_conf_assembly,
                     .biot_coefficient = alpha,
                     .drained_bulk_modulus = K_drained_assembly};
+                // DIAGNOSTIC B: rho_L_hat_B = -(booked micro gain) [kg/(m^3 s)]
+                // at a clamped IP (see assembleWithJacobian / the micro state
+                // update for the definition and the tangent).
+                ceiling_B_active =
+                    potential_exchange_params_ptr
+                        ->ceiling_micro_storage_exchange &&
+                    microWaterContentIsAtCeiling(n_l, phi);
+                if (ceiling_B_active)
+                {
+                    ceiling_B_rho_L_hat = -*std::get<MicroExchangeSource>(
+                        this->current_states_[ip]);  // kg/(m^3 s)
+                }
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
                     *potential_exchange_params_ptr);
@@ -3931,7 +4002,11 @@ void RichardsMechanicsLocalAssembler<
                 /*use_fd_jacobian_for_direct_macro_derivative=*/false,
                 /*fd_jacobian_perturbation=*/1e-8);
             rhs.template segment<pressure_size>(pressure_index).noalias() +=
-                N_p.transpose() * potential_exchange_result.exchange.rho_L_hat * w;
+                N_p.transpose() *
+                (ceiling_B_active
+                     ? ceiling_B_rho_L_hat
+                     : potential_exchange_result.exchange.rho_L_hat) *
+                w;
         }
 
         //
@@ -4629,11 +4704,24 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 constitutive_data)
                 .beta_SR;
         double const a0 = (alpha - phi) * beta_SR;
-        double const specific_storage_a_p = S_L * (phi * beta_LR + S_L * a0);
-        double const specific_storage_a_S = phi - p_cap_ip * S_L * a0;
+        // DIAGNOSTIC B' (2026-09-30, off by default -> phi_storage == phi,
+        // bit-identical): pore space of the macro water storage, phi_M instead
+        // of the total porosity phi, in the pore-fluid coefficients a_p, a_S
+        // (and dS_L-derivative of a_p). a0 (skeleton/grain, alpha - phi) untouched.
+        double const phi_storage =
+            (this->getPotentialExchangeParameters() &&
+             this->getPotentialExchangeParameters()
+                 ->macro_storage_uses_macro_porosity)
+                ? std::get<ProcessLib::ThermoRichardsMechanics::
+                               TransportPorosityData>(this->current_states_[ip])
+                      .phi
+                : phi;  // [-]
+        double const specific_storage_a_p =
+            S_L * (phi_storage * beta_LR + S_L * a0);
+        double const specific_storage_a_S = phi_storage - p_cap_ip * S_L * a0;
 
         double const dspecific_storage_a_p_dp_cap =
-            dS_L_dp_cap * (phi * beta_LR + 2 * S_L * a0);
+            dS_L_dp_cap * (phi_storage * beta_LR + 2 * S_L * a0);
         double const dspecific_storage_a_S_dp_cap =
             -a0 * (S_L + p_cap_ip * dS_L_dp_cap);
 
@@ -4724,6 +4812,13 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             double dmu_lR_vdw_dpL = 0.0;
             bool use_fd_jacobian_for_direct_macro_derivative = false;
             double fd_jacobian_perturbation = 1e-8;
+            // DIAGNOSTIC B (mass-strip A/B, 2026-09-30; Vinay R-03; off by
+            // default). At IPs on the micro ceiling n_l = phi the macro residual
+            // books the ACTUAL micro storage rate instead of rho_hat.
+            bool ceiling_B_active = false;
+            double ceiling_B_rho_L_hat = 0.0;       // kg/(m^3 s), macro source
+            double ceiling_B_drho_L_hat_dpL = 0.0;  // kg/(m^3 s)/Pa
+            double ceiling_B_drho_L_hat_deps_v = 0.0;  // kg/(m^3 s) per unit eps_v
             if (potential_exchange_enabled)
             {
                 auto const n_l =
@@ -4775,6 +4870,79 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     .confining_pressure_p_conf = p_conf_assembly,
                     .biot_coefficient = alpha,
                     .drained_bulk_modulus = K_drained_assembly};
+                // ── DIAGNOSTIC B (2026-09-30) ────────────────────────────────
+                // Actual micro storage rate at a clamped IP, with its tangent.
+                //   rho_l = phi_m * rho_lR   [kg/m^3 REV], same definition as the
+                //   micro solve (rho_l_prev = phi_m_prev * rho_lR_prev).
+                //   rho_L_hat_B = -(rho_l - rho_l_prev)/dt   [kg/(m^3 s)], read
+                //   from the MicroExchangeSource state that the micro update
+                //   booked at this IP (macro source = minus the micro gain; both
+                //   directions).
+                // Tangent at the clamped state (n_l = phi, phi_m = phi):
+                //   rho_l(eps_v, p_L) = phi * rho_lR(n_l = phi, rho_LR(p_L)),
+                //   d rho_l/d eps_v = dphi/deps_v * (rho_lR + phi*drho_lR/dn_l),
+                //   d rho_l/d p_L   = phi * (d rho_lR/d rho_LR)*rho_LR*beta_LR,
+                //   dphi/deps_v as PorosityFromMassBalance (clamp -> 0), the same
+                //   law as the live-K p-u block below. The dphi/dp_eff*beta_SR
+                //   chain is omitted (beta_SR is checked to be 0 below).
+                ceiling_B_active =
+                    potential_exchange_params_ptr
+                        ->ceiling_micro_storage_exchange &&
+                    microWaterContentIsAtCeiling(n_l, phi);
+                if (ceiling_B_active)
+                {
+                    if (beta_SR != 0.0)
+                    {
+                        OGS_FATAL(
+                            "ceiling_micro_storage_exchange: beta_SR = {:g} != 0; "
+                            "the dphi/dp_eff chain of the clamped-IP tangent is "
+                            "not implemented.",
+                            beta_SR);
+                    }
+                    double const rho_lR_now =
+                        *std::get<MicroLiquidDensity>(this->current_states_[ip]);
+                    double const phi_m_now =
+                        *std::get<MicroPorosity>(this->current_states_[ip]);
+                    // Booked micro gain, set by the micro state update at this
+                    // clamped IP (see updateMicroscaleHydraulicState); the macro
+                    // source is its negative.
+                    ceiling_B_rho_L_hat = -*std::get<MicroExchangeSource>(
+                        this->current_states_[ip]);  // kg/(m^3 s)
+
+                    auto const rho_lR_eos = computeActiveMicroLiquidDensity(
+                        n_l, rho_LR, local_solve_context,
+                        *potential_exchange_params_ptr);
+                    double const drho_LR_dpL_B = rho_LR * beta_LR;  // kg/m^3/Pa
+                    // d rho_lR/d rho_LR = 1 (rho_lR = rho_LR + rho_l0*exp(-a*omega),
+                    // a*omega ~ 1e-16 -> the exp factor is constant to round-off).
+                    ceiling_B_drho_L_hat_dpL =
+                        -phi_m_now * drho_LR_dpL_B / dt;
+
+                    double dphi_deps_v_B = 0.0;  // [-]
+                    if (dynamic_cast<MPL::PorosityFromMassBalance const*>(
+                            &medium->property(MPL::PropertyType::porosity)))
+                    {
+                        double const w_B =
+                            (variables.volumetric_strain -
+                             variables_prev.volumetric_strain) +
+                            (variables.effective_pore_pressure -
+                             variables_prev.effective_pore_pressure) *
+                                beta_SR;  // [-]
+                        double const phi_unclamped_B =
+                            (variables_prev.porosity + alpha * w_B) /
+                            (1.0 + w_B);  // [-]
+                        bool const clamp_active_B =
+                            std::abs(phi_unclamped_B - phi) >
+                            1e-12 * std::max(1.0, std::abs(phi));
+                        dphi_deps_v_B =
+                            clamp_active_B ? 0.0
+                                           : (alpha - phi) / (1.0 + w_B);  // [-]
+                    }
+                    double const drho_l_deps_v_B =
+                        dphi_deps_v_B *
+                        (rho_lR_now + phi_m_now * rho_lR_eos.drho_lR_dnl);
+                    ceiling_B_drho_L_hat_deps_v = -drho_l_deps_v_B / dt;
+                }
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
                     *potential_exchange_params_ptr);
@@ -4887,7 +5055,10 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 // K_drained = dp_conf/deps_v (mechanical drained bulk modulus),
                 // the SAME K the residual fold used (threaded via the context),
                 // so the residual and tangent are consistent. PARAMETER-FREE.
-                if (film_pressure_coupling && mu > 0.0)
+                // DIAGNOSTIC B: at a clamped IP the exchange source is the
+                // micro storage rate (not mu_lR-driven), so this mu_lR p-u
+                // tangent is replaced by ceiling_B_drho_L_hat_deps_v below.
+                if (film_pressure_coupling && mu > 0.0 && !ceiling_B_active)
                 {
                     double const rho_film =
                         (std::isfinite(rho_lR_exchange_input) &&
@@ -5814,17 +5985,33 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 dmu_lR_vdw_dpL,
                 use_fd_jacobian_for_direct_macro_derivative,
                 fd_jacobian_perturbation);
+            // DIAGNOSTIC B: variant A values are passed through unchanged.
+            double const rho_L_hat_residual =
+                ceiling_B_active ? ceiling_B_rho_L_hat
+                                 : potential_exchange_result.exchange.rho_L_hat;
+            double const drho_L_hat_dpL_jacobian =
+                ceiling_B_active
+                    ? ceiling_B_drho_L_hat_dpL
+                    : potential_exchange_result.drho_L_hat_dpL_direct;
             local_rhs.template segment<pressure_size>(pressure_index)
-                .noalias() += N_p.transpose() * potential_exchange_result.exchange.rho_L_hat *
-                              w;
+                .noalias() += N_p.transpose() * rho_L_hat_residual * w;
 
             // Direct macro Jacobian term for the exchange source. In analytic
             // mode this includes the implicit n_l(p_L) chain contribution.
             local_Jac
                 .template block<pressure_size, pressure_size>(pressure_index,
                                                               pressure_index)
-                .noalias() -= N_p.transpose() *
-                              potential_exchange_result.drho_L_hat_dpL_direct * N_p * w;
+                .noalias() -= N_p.transpose() * drho_L_hat_dpL_jacobian * N_p * w;
+            if (ceiling_B_active && ceiling_B_drho_L_hat_deps_v != 0.0)
+            {
+                // Same sign/shape as the exchange p-u blocks above (-=).
+                local_Jac
+                    .template block<pressure_size, displacement_size>(
+                        pressure_index, displacement_index)
+                    .noalias() -= N_p.transpose() *
+                                  ceiling_B_drho_L_hat_deps_v *
+                                  identity2.transpose() * B * w;
+            }
 
             // Keep the microscale pressure-state sensitivity lagged via the
             // secant term only in the placeholder microscale path. In the
