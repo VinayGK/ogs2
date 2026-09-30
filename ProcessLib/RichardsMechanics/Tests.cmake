@@ -47,6 +47,17 @@ if (NOT OGS_USE_MPI)
     # Lowering Model I/III RUNTIME below large_runtime = 60 would rename the
     # ctests (-LARGE suffix, scripts/cmake/test/OgsTest.cmake). Only Model IV
     # below was stale.
+    # IC-FIX V0, 2026-09-30 (branch gen5_icfix_conformant_2026-09-30; Vinay 2026-09-30 "elevate the consistent IC to
+    # submission", K_fix accepted): the decks below carry the K table refitted with the binary that realises the declared
+    # initial_micro_water_content (commit 686fcd6ef8), and the references of Reference, III, IV and both VII are the fx outputs
+    # of the readiness suite (Shilpa's MBP, bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3); the replaced frames are in
+    # superseded_references_2026-09-30_icfix/ next to each. Final step counts: Reference 855 -> 895, III 1116 -> 970,
+    # IV 16527 -> 16494, VII 240 d 1023 -> 1006, VII ladder550 1304 -> 1287 (0 rejected in all five; III had 5 rejected before).
+    # Model I dd1400/1600/1800: references UNCHANGED (shipped-K frames); the K_fix re-run outputs pass all 11 checks of each
+    # deck against them (vtkdiff replay, MEASURED on the mini), step counts 308/311/308 unchanged. RUNTIME values are unchanged;
+    # measured wall times of the readiness runs (Shilpa's M1 Max, loaded, single-threaded assembly): Reference 20.3 s, III 349 s,
+    # VII 369 s / 466 s, IV 16112.7 s (above RUNTIME 10736; the MBP run took 8957.6 s). NOT run through ctest (the builds used
+    # for the fx runs have OGS_BUILD_TESTING=OFF): the ctest run on the MBP is the first open item of the V0 manifest.
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1400.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1600.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj RUNTIME 120)

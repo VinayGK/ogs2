@@ -88,11 +88,22 @@ Official benchmark spec (MSXX §Model IV):
                        properties of MX-80 bentonite", Applied Clay Science 241:106998;
                        median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
         dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27)
+IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC to submission"; K_fix accepted,
+  "your choices 1: ok"). Branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 (486235c679) + cherry-pick of
+  686fcd6ef8 (RichardsMechanics DSM: the declared initial_micro_water_content is realised in the previous micro porosity).
+  K re-fitted with that binary (ogs archive/dsm_native_Pi_fofnlev_branchtip_2026-08-11-50-g686fcd6e, bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3)
+  by the SHIPPED procedure (13-point sweep 0.70-1.30 x previous knot, log-linear secant, tolerance |Ps/target - 1| <= 1e-9).
+  Ps = target is CALIBRATION, not validation. Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json (md5 e6f29bd492a5011c8f8a6f7688d6980e), K_fix.md, K_fix_attribution.md (same folder).
+  LIVE K table of this deck: knots 900/1400/1600/1800 = 18469.1763367 46000.3269694 104698.192423 265909.813902 J/kg. The 900 knot stays the GEN-4 point (Vinay 2026-09-13 "ship model iv on the
+  gen 4 point, disclosed"), re-fitted in the floor-0.08 dd900 cell (K_fix, MEASURED Ps(200 d) = 0.350052200947 MPa, rel dev +1.35e-10); the
+  floor-0.0 K_fix 900 knot 24241.938995 was NOT tested on the concentric mesh with the fixed binary (the 2026-09-08 stall below was
+  MEASURED with the previous binary and the gen-5 knot). Texts below citing 18469.144929 / 24241.892204 / 104689.9129 document history.
         both zones   : SUPERSEDED 2026-08-18 (reaudit fix + Vinay's follow-up ruling): both the
                        bentonite block AND the pellet zone now report LIVE K(rho_d) from ONE
                        SHARED Dixon-propagated table (sigma0=0 Option-C form-(a) chain,
                        identical to ms33_modelIII_gapswitch.prj / ms33_modelVII_freeswelling.prj):
-                         900/1400/1600/1800 -> 18469.144929/46000.0/104689.9129/265905.06 J/kg IN THIS DECK
+                         900/1400/1600/1800 -> 18469.1763367/46000.3269694/104698.192423/265909.813902 J/kg IN THIS DECK
+                         (IC-FIX V0 RE-FIT 2026-09-30; PREVIOUS table 18469.144929/46000.0/104689.9129/265905.06)
                          (2026-09-08: gen-4 900 knot retained here, see the <prefactors> note; the gen-5 value below is
                          what III/VII/Reference carry)
                        (900-knot GEN 5 RE-FIT 2026-09-07 at macro_porosity_floor = 0.0, Vinay
@@ -100,10 +111,11 @@ Official benchmark spec (MSXX §Model IV):
                        0.08, audit 2026-09-04 B1), which superseded 4367.227700212952, contaminated
                        fit, see dd900.prj/DSM/AGENTS.md entry 27-28)
         fitted K     : NOT A SCALAR in this deck: the live table above, one table for BOTH zones.
-                       Knot in force at the block's emplacement rho_d=1600: 104689.9129 J/kg; at the
-                       pellet zone's emplacement rho_d=900: 18469.144929 J/kg (gen-4 knot RETAINED in this deck on
+                       Knot in force at the block's emplacement rho_d=1600: 104698.192423 J/kg (IC-FIX V0; previous 104689.9129); at the
+                       pellet zone's emplacement rho_d=900: 18469.1763367 J/kg (IC-FIX V0 refit of the gen-4 knot in the floor-0.08 cell; previous 18469.144929;
+                       gen-4 knot RETAINED in this deck on
                        2026-09-08: the gen-5 knot 24241.892204 stalls on the concentric mesh, see the note at the
-                       <prefactors> block; III/VII/Reference carry 24241.892204). Log-linear
+                       <prefactors> block; III/VII/Reference carry 24241.938995 after the IC-FIX V0 refit, 24241.892204 before). Log-linear
                        interpolation between knots (commit bed3e395da, Vinay 2026-08-26), FLAT CLAMP
                        outside [900, 1800].
                        PELLET ZONE BELOW THE TABLE FLOOR (STACKED layout, gen 4; re-censused under the
@@ -297,9 +309,11 @@ Official benchmark spec (MSXX §Model IV):
                      single floor matches the fit state of all four. Record
                      CANONICAL_RESULTS_2026-09-08_gen5_conformant.json model_IV (primary_gen5_knot = the stalled run, control_gen4_knot
                      = this deck). -->
+                <!-- IC-FIX V0 RE-FIT 2026-09-30 (Vinay-approved K_fix; binary md5 23640465bff1ef6ce5c83d6c5dcd48d3, commit 686fcd6ef8): knots 900/1400/1600/1800 = 18469.1763367 46000.3269694 104698.192423 265909.813902 J/kg;
+                     previous table 18469.144929 46000.0 104689.9129 265905.06 (gen 5). Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json.  -->
                 <potential_augmentation_prefactor_vs_dry_density>
                     <dry_densities>900 1400 1600 1800</dry_densities>
-                    <prefactors>18469.144929 46000.0 104689.9129 265905.06</prefactors>
+                    <prefactors>18469.1763367 46000.3269694 104698.192423 265909.813902</prefactors>
                 </potential_augmentation_prefactor_vs_dry_density>
                 <potential_augmentation_prefactor_live_dry_density>true</potential_augmentation_prefactor_live_dry_density>
                 <!-- lambda=7.5e-7 code units = physical 0.75 nm decay length

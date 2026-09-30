@@ -4,6 +4,15 @@ EURAD-2 MS33 Theoretical Benchmarking - REFERENCE CONFIGURATION (confined rho_d 
 NO gap, rigid frictionless walls, bottom hydration 100 -> 0 MPa in 20 d, 200 d).
 BGR / DSM native hierarchical vdW-augmented model.
 
+IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC to submission"; K_fix accepted,
+  "your choices 1: ok"). Branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 (486235c679) + cherry-pick of
+  686fcd6ef8 (RichardsMechanics DSM: the declared initial_micro_water_content is realised in the previous micro porosity).
+  K re-fitted with that binary (ogs archive/dsm_native_Pi_fofnlev_branchtip_2026-08-11-50-g686fcd6e, bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3)
+  by the SHIPPED procedure (13-point sweep 0.70-1.30 x previous knot, log-linear secant, tolerance |Ps/target - 1| <= 1e-9).
+  Ps = target is CALIBRATION, not validation. Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json (md5 e6f29bd492a5011c8f8a6f7688d6980e), K_fix.md, K_fix_attribution.md (same folder).
+  LIVE K table (byte-identical to ms33_modelIII_gapswitch.prj): knots 900/1400/1600/1800 = 24241.938995 46000.3269694 104698.192423 265909.813902 J/kg. The text below that cites the
+  previous table (24241.892204 / 46000.0 / 104689.9129 / 265905.06) is history.
+
 TRACKED COPY created 2026-09-08 (spec-conformance fix 4, Vinay 2026-09-08 "approve all five, run them as
 one campaign"; audits/2026-09-08_spec_conformance_full/AUDIT.md §1 + §7 item 3). Until then the Reference
 deck existed only as a run copy, ~/ogs-models/reference_sigma0zeroK_2026-08-12/ms33_reference_const40x.prj
@@ -71,9 +80,10 @@ GAP=0.002 m is spec geometry. EXPERIMENTAL VARIANT - not a registered ctest.
     source         : Dixon (2023) Fig. 1, MX-80 swelling pressure vs EMDD, EMDD = rho_d
     dataset row    : median at rho_d = 1600 kg/m3 (and the 900/1400/1800 knots of the live table)
     target sigma   : 14.161 MPa at 1600 (0.3500522009 / 4.9 / 40.6 MPa at 900 / 1400 / 1800)
-    fitted K       : live K(rho_d) table 900/1400/1600/1800 -> 24241.892204 / 46000.0 / 104689.9129 /
-                     265905.06 J/kg (byte-identical to ms33_modelIII_gapswitch.prj; 900 knot gen 5,
-                     2026-09-07). Knot in force at rho_d = 1600: 104689.9129 J/kg (sigma0 = 0 Option C).
+    fitted K       : live K(rho_d) table 900/1400/1600/1800 -> 24241.938995 / 46000.3269694 / 104698.192423 /
+                     265909.813902 J/kg (byte-identical to ms33_modelIII_gapswitch.prj; IC-FIX V0 RE-FIT 2026-09-30,
+                     Vinay-approved K_fix, binary md5 23640465bff1ef6ce5c83d6c5dcd48d3, record ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json). Knot in force at rho_d = 1600:
+                     104698.192423 J/kg. PREVIOUS table (gen 5, 2026-09-07): 24241.892204 / 46000.0 / 104689.9129 / 265905.06 J/kg.
   Material parameters (source per parameter group) - as ms33_modelIII_gapswitch.prj, whose block is
   authoritative for the shared values:
     elastic E = 52 MPa        : *** UNCITED WORKING VALUE *** (Vinay-approved 2026-06-15 WITH this warning)
@@ -137,9 +147,11 @@ GAP=0.002 m is spec geometry. EXPERIMENTAL VARIANT - not a registered ctest.
                      1600 knot (= the former scalar); effect PREDICTED small, measured in this campaign's record.
                      SUPERSEDED line, kept for lineage:
                        <potential_augmentation_prefactor>104689.9129</potential_augmentation_prefactor> -->
+                <!-- IC-FIX V0 RE-FIT 2026-09-30 (Vinay-approved K_fix; binary md5 23640465bff1ef6ce5c83d6c5dcd48d3, commit 686fcd6ef8): knots 900/1400/1600/1800 = 24241.938995 46000.3269694 104698.192423 265909.813902 J/kg;
+                     previous table 24241.892204 46000.0 104689.9129 265905.06 (gen 5). Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json.  -->
                 <potential_augmentation_prefactor_vs_dry_density>
                     <dry_densities>900 1400 1600 1800</dry_densities>
-                    <prefactors>24241.892204 46000.0 104689.9129 265905.06</prefactors>
+                    <prefactors>24241.938995 46000.3269694 104698.192423 265909.813902</prefactors>
                 </potential_augmentation_prefactor_vs_dry_density>
                 <potential_augmentation_prefactor_live_dry_density>true</potential_augmentation_prefactor_live_dry_density>
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>

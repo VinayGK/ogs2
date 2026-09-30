@@ -3851,3 +3851,28 @@ A-4 extend T-3 to the production branch/strain range, add a kappa~0.58 case, un-
 A-5 isolate C3 with a deck sweeping n_l across xi0 = 1 in the pellet material.
 A-6 doc/deck hygiene: correct the four stale sentences (C8), annotate the two unregistered piexact
     decks (C10), guard CurrentPorositySplit + exact (C11).
+
+## 2026-09-30 - IC-FIX V0: the consistent initial micro state enters the MS33 submission branch
+
+### 54. What landed (branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 @ 486235c679 + 686fcd6ef8)
+
+Implements Vinay's ruling of 2026-09-30 (~22:00 CEST, "elevate the consistent IC to submission"; K set: K_fix, "your choices 1: ok").
+- Code: the cherry-pick of 686fcd6ef8 (setInitialConditionsConcrete: with initial_micro_water_content declared and no transport_porosity
+  property, phi_M0 = (phi - n_l0)/(1 - n_l0), so the stored micro water is the declared value). Guarded; decks with a transport_porosity
+  property, without initial_micro_water_content, or without potential exchange do not enter the new branch (MEASURED bit-identical in
+  the MBP lane 2026-09-30, TEST_RESULTS.md md5 94d0255ebd87db305d4ad2b8dceacd75, section 3/4).
+- Decks: only the K prefactor literals changed (table decks: the `<prefactors>` line; Model I: `potential_augmentation_prefactor`), to K_fix:
+  900 (floor 0.0) 24241.938995, 900 (floor 0.08, Model IV's gen-4 point) 18469.1763367, 1400 46000.3269694, 1600 104698.192423,
+  1800 265909.813902 J/kg (previous: 24241.892204, 18469.144929, 46000.0, 104689.9129, 265905.06). Source: K_fix.json (md5
+  e6f29bd492a5011c8f8a6f7688d6980e; copy in ANCHORS_MS33_ModelI/icfix_2026-09-30/), the SHIPPED procedure re-run with the patched binary
+  (bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3). PRJ headers and the section 12.2 blocks carry the new values; the old ones stay as labelled history.
+  MEASURED by check_decks_vs_kfix.py: comment-stripped, every committed deck equals its decks_kfix copy (the decks of the fx runs) and differs
+  from the gen-5 deck only in the K prefactor lines.
+- References: Reference, III, IV and both VII replaced by the fx outputs (old ones in superseded_references_2026-09-30_icfix/ with README,
+  md5 old/new, vtkdiff numbers); Model I dd1400/1600/1800 unchanged (K_fix outputs pass 11/11 against them).
+- Caveat that travels (K_fix_attribution.md): at 1400 and 1600 about 85 % and 95 % of the K change closes the shipped fits' own misses (the shipped
+  fit accepted rel_tol 0.02), not the IC fix; the patched and the shipped binary also differ in toolchain (TFEL, MGIS, SDK; README of the readiness suite).
+  Ps = target after the refit is calibration, not validation.
+- NOT verified: the new references were not run through ctest (mini has none; the fx binaries were built with OGS_BUILD_TESTING=OFF). The vtkdiff
+  replay with the decks' own tolerances passes 11/11 for each new reference against its source output. ctest on the MBP is OPEN.
+- NOT tested: the floor-0.0 K_fix 900 knot on the Model IV concentric mesh with the fixed binary (IV keeps the gen-4 point per Vinay 2026-09-13).

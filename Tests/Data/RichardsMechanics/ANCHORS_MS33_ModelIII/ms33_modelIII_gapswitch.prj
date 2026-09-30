@@ -32,11 +32,21 @@
   deprecated deck is retained on disk and in history (CLAUDE.md 6.2/6.3); its
   ctest registration is commented out in Tests.cmake, not deleted.
 
+  IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC to submission"; K_fix accepted,
+  "your choices 1: ok"). Branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 (486235c679) + cherry-pick of
+  686fcd6ef8 (RichardsMechanics DSM: the declared initial_micro_water_content is realised in the previous micro porosity).
+  K re-fitted with that binary (ogs archive/dsm_native_Pi_fofnlev_branchtip_2026-08-11-50-g686fcd6e, bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3)
+  by the SHIPPED procedure (13-point sweep 0.70-1.30 x previous knot, log-linear secant, tolerance |Ps/target - 1| <= 1e-9).
+  Ps = target is CALIBRATION, not validation. Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json (md5 e6f29bd492a5011c8f8a6f7688d6980e), K_fix.md, K_fix_attribution.md (same folder).
+  LIVE K table: knots 900/1400/1600/1800 = 24241.938995 46000.3269694 104698.192423 265909.813902 J/kg (the same table in Reference and VII). Texts below that cite the
+  previous table (24241.892204 / 46000.0 / 104689.9129 / 265905.06) document history.
+
   Calibration anchor:
     source         : Dixon (2023) Fig. 1, MX-80 swelling pressure vs EMDD, EMDD = rho_d
     dataset row    : median at rho_d = 1600 kg/m3
     target sigma   : 14.161 MPa
-    fitted K       : 104689.9129 J/kg  (sigma0 = 0 "Option C" form-(a) recalibration,
+    fitted K       : live K(rho_d) table (knots below); knot in force at rho_d = 1600: 104698.192423 J/kg (IC-FIX V0 RE-FIT 2026-09-30, Vinay-approved K_fix,
+                     binary md5 23640465bff1ef6ce5c83d6c5dcd48d3, record ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json). PREVIOUS scalar/knot 104689.9129 J/kg  (sigma0 = 0 "Option C" form-(a) recalibration,
                      Vinay 2026-08-06; recorded in CANONICAL_RESULTS_2026-08-12.json,
                      model_I_sigma0zero_form_a.cells).  SUPERSEDES the 103879 J/kg that
                      the deprecated soft-gap deck still carries.  This deck's OWN
@@ -48,14 +58,14 @@
   the run, because a swelling material loses swelling potential and holding K at the
   emplacement density is physically wrong.  Knots are the Dixon-propagated Model I
   calibration chain, each cell fitted to the Dixon Fig.1 median at its own rho_d:
-      rho_d =  900 -> K =  24241.892204 (target 0.3500522009 MPa)   GEN 5 RE-FIT 2026-09-07 at
+      rho_d =  900 -> K =  24241.938995 (target 0.3500522009 MPa)   IC-FIX V0 RE-FIT 2026-09-30 (previous 24241.892204, GEN 5 RE-FIT 2026-09-07 at
           macro_porosity_floor = 0.0 (Vinay "i approve gen 5"; the state this deck evaluates the
           knot in), supersedes 18469.144929 (gen 4, RE-FIT 2026-08-28 but fit at floor 0.08 in the
           dd900 cell, audit 2026-09-04 blocker B1), which superseded 4367.2277 (contaminated fit,
           see dd900.prj/DSM/AGENTS.md entry 27-28) [see note]
-      rho_d = 1400 -> K =  46000.0      (target  4.9    MPa)
-      rho_d = 1600 -> K = 104689.9129   (target 14.161  MPa)
-      rho_d = 1800 -> K = 265905.06     (target 40.6    MPa)
+      rho_d = 1400 -> K =  46000.3269694 (target  4.9    MPa)   IC-FIX V0 (previous 46000.0)
+      rho_d = 1600 -> K = 104698.192423  (target 14.161  MPa)   IC-FIX V0 (previous 104689.9129)
+      rho_d = 1800 -> K = 265909.813902  (target 40.6    MPa)   IC-FIX V0 (previous 265905.06)
     note: the 900 knot is the EXACT Dixon median-fit extrapolation
           Ps = 0.003*exp(5.2883*rho_d[g/cm3]) -> 0.003*exp(5.2883*0.9) = 0.3500522009 MPa
           (Vinay 2026-08-17, "exact interpolation"), replacing a 0.051 MPa placeholder
@@ -249,9 +259,11 @@
                      of 0.08; 1400/1600/1800 knots untouched. Same table byte-identical in III/IV/VII.
                      Re-run and reference rebaselined the same day; record
                      CANONICAL_RESULTS_2026-09-07_gen5.json and DSM/AGENTS.md gen-5 entry. -->
+                <!-- IC-FIX V0 RE-FIT 2026-09-30 (Vinay-approved K_fix; binary md5 23640465bff1ef6ce5c83d6c5dcd48d3, commit 686fcd6ef8): knots 900/1400/1600/1800 = 24241.938995 46000.3269694 104698.192423 265909.813902 J/kg;
+                     previous table 24241.892204 46000.0 104689.9129 265905.06 (gen 5). Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json.  -->
                 <potential_augmentation_prefactor_vs_dry_density>
                     <dry_densities>900 1400 1600 1800</dry_densities>
-                    <prefactors>24241.892204 46000.0 104689.9129 265905.06</prefactors>
+                    <prefactors>24241.938995 46000.3269694 104698.192423 265909.813902</prefactors>
                 </potential_augmentation_prefactor_vs_dry_density>
                 <potential_augmentation_prefactor_live_dry_density>true</potential_augmentation_prefactor_live_dry_density>
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
