@@ -447,7 +447,36 @@ struct PotentialExchangeParameters
     // B': the macro storage term uses phi_M (macro pore space) in place of the
     // total porosity phi in the two pore-fluid storage coefficients (a_p, a_S).
     bool macro_storage_uses_macro_porosity = false;
+
+    // -- V2 switches, mass-fix trees (2026-09-30; Vinay: "do both ... in two
+    // different trees"; Q1 = book the volume-change term or not). Both default
+    // false -> bit-identical to the tree without them (V1 / diag B').
+    // Derivation: DERIVATION.md in the record folder of the V2 tree
+    // (~/ogs-models/scratch/2026-09-30_massfix_V2/DERIVATION.md). FORMULATION
+    // CHANGE, flagged for Vinay's ruling; nothing adopted.
+    //
+    // F3 sign: the micro mass residual of the scalar_micro_macro_mass_storage_mode
+    // carries  - dt*rho_l*eps_dot  (as shipped at bed3e395); the Eulerian micro
+    // balance per current bulk volume, d(rho_l)/dt + rho_l*eps_dot = rho_hat,
+    // gives  + dt*rho_l*eps_dot. true -> use the Eulerian sign in the residual
+    // and the matching tangents of that mode (n_l-normalised scalar modes are
+    // left unchanged).
+    bool micro_mass_strain_term_eulerian = false;
+    // Q1: at the IPs booked by ceiling_micro_storage_exchange the booked rate
+    // includes the volume-change term: rho_hat_booked = (rho_l - rho_l_prev)/dt
+    // + rho_l*eps_dot (the same Eulerian balance as above) instead of the bare
+    // storage rate. Requires ceiling_micro_storage_exchange.
+    bool ceiling_micro_storage_includes_strain = false;
 };
+
+// Sign s of the micro mass residual's volume-change term in the mass-storage
+// mode, written as  residual -= s*dt*rho_l*eps_dot  and in the tangents as
+// (1 - s*dt*eps_dot):  s = +1 is the shipped form (F3),  s = -1 the Eulerian
+// balance (micro_mass_strain_term_eulerian). Dimensionless.
+inline double microMassStrainTermSign(PotentialExchangeParameters const& p)
+{
+    return p.micro_mass_strain_term_eulerian ? -1.0 : 1.0;  // [-]
+}
 
 // Effective augmentation prefactor K [J/kg] at the current state.
 //

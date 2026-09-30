@@ -938,6 +938,10 @@ solveReferenceMassStoragePredictorState(
     requirePositiveViscosity("solveReferenceMassStoragePredictorState", mu);
     constexpr double n_l_floor = 1e-16;
     constexpr double rho_floor = 1e-16;
+    // V2 (F3): +1 shipped sign of the volume-change term, -1 Eulerian
+    // (micro_mass_strain_term_eulerian); +1 -> bit-identical.
+    double const strain_sign =
+        microMassStrainTermSign(potential_exchange_params);  // [-]
     double const dt_safe = std::isfinite(dt) && dt > 0.0 ? dt : 0.0;
     double const alpha_M_effective = alpha_bar * rho_LR / mu;
     double const volumetric_strain_rate =
@@ -990,7 +994,8 @@ solveReferenceMassStoragePredictorState(
             (1.0 - phi_h) / one_minus_n_l_h * n_l * micro_liquid_density.rho_lR;
         double const residual = rho_l - rho_l_prev -
                                 dt_safe * exchange.rho_l_hat -
-                                dt_safe * rho_l * volumetric_strain_rate;
+                                strain_sign * dt_safe * rho_l *
+                                    volumetric_strain_rate;  // kg/m^3
         return std::tuple{residual, micro_potential, exchange,
                           micro_liquid_density};
     };
@@ -1044,8 +1049,8 @@ solveReferenceMassStoragePredictorState(
             one_minus_phi_M_jac * micro_density.drho_lR_dnl;
         double const jacobian = drho_l_REV_dn_l -
                                 dt_safe * drho_l_hat_dn_l -
-                                dt_safe * drho_l_REV_dn_l *
-                                    volumetric_strain_rate;
+                                strain_sign * dt_safe * drho_l_REV_dn_l *
+                                    volumetric_strain_rate;  // kg/m^3
         if (!(std::isfinite(jacobian) && std::abs(jacobian) > 1e-20))
         {
             break;
@@ -1135,6 +1140,9 @@ solveReferenceMassStorageCoupledState(
     requirePositiveViscosity("solveReferenceMassStorageCoupledState", mu);
     constexpr double n_l_floor = 1e-16;
     constexpr double rho_floor = 1e-16;
+    // V2 (F3): see solveReferenceMassStoragePredictorState.
+    double const strain_sign =
+        microMassStrainTermSign(potential_exchange_params);  // [-]
     double const dt_safe = std::isfinite(dt) && dt > 0.0 ? dt : 0.0;
     double const alpha_M_effective = alpha_bar * rho_LR / mu;
     double const volumetric_strain_rate =
@@ -1182,7 +1190,8 @@ solveReferenceMassStorageCoupledState(
         double const rho_l = (1.0 - phi_cs) / one_minus_n_l_cs * n_l * rho_lR;
         double const mass_residual = rho_l - rho_l_prev -
                                      dt_safe * exchange.rho_l_hat -
-                                     dt_safe * rho_l * volumetric_strain_rate;
+                                     strain_sign * dt_safe * rho_l *
+                                         volumetric_strain_rate;  // kg/m^3
         auto const density = computeReducedMicroLiquidDensity(
             n_l, rho_LR, active_nS, potential_exchange_params);
         double const density_residual = rho_lR - density.rho_lR;
@@ -1275,12 +1284,13 @@ solveReferenceMassStorageCoupledState(
             (1.0 - phi_cs) / one_minus_n_l_cs * n_l;  // [-]
 
         // d rho_l_hat/d n_l = -alpha_M*d mu_lR/d n_l;  d/d rho_lR likewise.
-        // mass_residual = rho_l - rho_l_prev - dt*rho_l_hat - dt*rho_l*eps_dot.
+        // mass_residual = rho_l - rho_l_prev - dt*rho_l_hat - s*dt*rho_l*eps_dot,
+        // s = +1 shipped, s = -1 Eulerian (V2 F3 switch).
         double const J11 =
-            drho_l_dnl * (1.0 - dt_safe * volumetric_strain_rate) +
+            drho_l_dnl * (1.0 - strain_sign * dt_safe * volumetric_strain_rate) +
             dt_safe * alpha_M_effective * dmu_lR_dnl;  // kg/m^3 per n_l
         double const J12 =
-            drho_l_drho_lR * (1.0 - dt_safe * volumetric_strain_rate) +
+            drho_l_drho_lR * (1.0 - strain_sign * dt_safe * volumetric_strain_rate) +
             dt_safe * alpha_M_effective * dmu_lR_drho_lR;  // [-] (kg/m^3 per kg/m^3)
 
         // density_residual = rho_lR - rho_lR_EOS(n_l): d/d n_l = -drho_lR_dnl,
@@ -1765,13 +1775,18 @@ inline ImplicitMicroWaterContentUpdateData solveImplicitMicroWaterContent(
                 n_l * micro_liquid_density->rho_lR;
             residual =
                 rho_l - rho_l_prev - dt_safe * exchange.rho_l_hat;
-            residual -= dt_safe * rho_l * volumetric_strain_rate;
+            // (Unreachable: use_mass_storage returns above; V2 keeps the sign
+            // consistent with the live mass-storage solves.)
+            double const strain_sign_dead =
+                microMassStrainTermSign(potential_exchange_params);  // [-]
+            residual -= strain_sign_dead * dt_safe * rho_l *
+                        volumetric_strain_rate;
 
             jacobian = micro_liquid_density->drho_l_dn_l -
                        dt_safe * drho_l_hat_dn_l;
             jacobian -=
-                dt_safe * micro_liquid_density->drho_l_dn_l *
-                volumetric_strain_rate;
+                strain_sign_dead * dt_safe *
+                micro_liquid_density->drho_l_dn_l * volumetric_strain_rate;
         }
         else
         {
@@ -1839,7 +1854,8 @@ inline ImplicitMicroWaterContentUpdateData solveImplicitMicroWaterContent(
                 dt_safe * exchange_prev.rho_l_hat /
                 std::max(1e-16, micro_density_prev->rho_lR);
             explicit_increment +=
-                dt_safe * rho_l_prev_fallback * volumetric_strain_rate /
+                microMassStrainTermSign(potential_exchange_params) * dt_safe *
+                rho_l_prev_fallback * volumetric_strain_rate /
                 std::max(1e-16, micro_density_prev->rho_lR);
         }
         else
@@ -1918,7 +1934,10 @@ inline double computeImplicitNlDpL(
             (local_context.volumetric_strain -
              local_context.volumetric_strain_prev) /
             dt_safe;
-        double const time_factor = 1.0 - dt_safe * eps_v_rate;
+        // V2 (F3): s = +1 shipped, -1 Eulerian (micro_mass_strain_term_eulerian).
+        double const time_factor =
+            1.0 - microMassStrainTermSign(potential_exchange_params) *
+                      dt_safe * eps_v_rate;  // [-]
 
         // Converged n_l (fall back to n_l_prev only if the caller omitted it).
         double const n_l =
@@ -2128,7 +2147,9 @@ inline double computeImplicitNlDK(
         (local_context.volumetric_strain -
          local_context.volumetric_strain_prev) /
         dt_safe;  // 1/s
-    double const time_factor = 1.0 - dt_safe * eps_v_rate;  // [-]
+    double const time_factor =
+        1.0 - microMassStrainTermSign(potential_exchange_params) * dt_safe *
+                  eps_v_rate;  // [-]  (V2 F3 sign, +1 = shipped)
 
     // Converged n_l (fall back to n_l_prev only if the caller omitted it) --
     // identical guard to computeImplicitNlDpL so dr_dn_l linearizes about the
@@ -2242,8 +2263,23 @@ inline void updateMicroscaleHydraulicState(
                 coupled_update.rho_lR;  // kg/m^3
             double const rho_l_prev_B =
                 local_context.phi_m_prev * rho_lR_prev_value;  // kg/m^3
+            double rho_hat_booked_B =
+                (rho_l_now_B - rho_l_prev_B) / dt;  // kg/(m^3 s)
+            // V2 (Q1, 2026-09-30): Eulerian micro balance per current bulk
+            // volume, d(rho_l)/dt + rho_l*eps_dot = rho_hat (DERIVATION.md):
+            // the water the micro actually gained includes the dilution by the
+            // volume change. eps_dot = (eps_v - eps_v_prev)/dt [1/s]; off ->
+            // bare storage rate (V1, bit-identical).
+            if (potential_exchange_params.ceiling_micro_storage_includes_strain)
+            {
+                rho_hat_booked_B +=
+                    rho_l_now_B *
+                    (local_context.volumetric_strain -
+                     local_context.volumetric_strain_prev) /
+                    dt;  // kg/(m^3 s)
+            }
             std::get<MicroExchangeSource>(state_current) =
-                MicroExchangeSource{(rho_l_now_B - rho_l_prev_B) / dt};
+                MicroExchangeSource{rho_hat_booked_B};
         }
         return;
     }
@@ -4915,8 +4951,18 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     double const drho_LR_dpL_B = rho_LR * beta_LR;  // kg/m^3/Pa
                     // d rho_lR/d rho_LR = 1 (rho_lR = rho_LR + rho_l0*exp(-a*omega),
                     // a*omega ~ 1e-16 -> the exp factor is constant to round-off).
+                    // V2 (Q1): with the strain term S_B = [(rho_l - rho_l_prev)
+                    // + rho_l*d_eps]/dt, dS_B/d(.) = [d rho_l/d(.)*(1 + d_eps)
+                    // (+ rho_l for eps_v)]/dt; d_eps = eps_v - eps_v_prev [-].
+                    double const d_eps_B =
+                        potential_exchange_params_ptr
+                            ->ceiling_micro_storage_includes_strain
+                            ? (variables.volumetric_strain -
+                               variables_prev.volumetric_strain)
+                            : 0.0;  // [-]
                     ceiling_B_drho_L_hat_dpL =
-                        -phi_m_now * drho_LR_dpL_B / dt;
+                        -phi_m_now * drho_LR_dpL_B * (1.0 + d_eps_B) /
+                        dt;  // kg/(m^3 s)/Pa
 
                     double dphi_deps_v_B = 0.0;  // [-]
                     if (dynamic_cast<MPL::PorosityFromMassBalance const*>(
@@ -4941,7 +4987,13 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     double const drho_l_deps_v_B =
                         dphi_deps_v_B *
                         (rho_lR_now + phi_m_now * rho_lR_eos.drho_lR_dnl);
-                    ceiling_B_drho_L_hat_deps_v = -drho_l_deps_v_B / dt;
+                    ceiling_B_drho_L_hat_deps_v =
+                        -(drho_l_deps_v_B * (1.0 + d_eps_B) +
+                          (potential_exchange_params_ptr
+                               ->ceiling_micro_storage_includes_strain
+                               ? phi_m_now * rho_lR_now
+                               : 0.0)) /
+                        dt;  // kg/(m^3 s) per unit eps_v
                 }
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,

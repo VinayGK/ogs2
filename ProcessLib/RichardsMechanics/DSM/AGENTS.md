@@ -2267,3 +2267,23 @@ bed3e395 (variant A; this is a CONTROL in the record, MEASURED there, not claime
   Kpu coupling are unchanged; dphi_M/dt*S_L*rho_LR is not added.
 The micro state update itself is untouched (F3, the +dt*rho_l*eps_dot sign, is not addressed). Whether either switch is
 physically right is Vinay's call; what they change is MEASURED only in the record above.
+
+## 2026-09-30 — branch massfix/V2-bprime-strain-2026-09-30: strain term in the booked rate + F3 sign (NOT adopted, flagged for Vinay's ruling)
+
+Requested by Vinay (2026-09-30 ~11:00: "macro storage is only macropores, yes" (Q2); "do both on mini and shilpa's mbp. in two
+different trees. and see what is quicker" (Q1)). Tree V2 = IC fix 686fcd6ef8 (branch fix/dsm_initial_micro_state_2026-09-30) + the B'
+diagnostic e103a8906e (cherry-picked, no conflict) + two further PRJ switches in `<potential_exchange>`, both default false
+(then the assembly is meant to be bit-identical to the tree without them; the V1 tree, massfix/V1-bprime-2026-09-30, is exactly IC fix + B'):
+- `micro_mass_strain_term_eulerian` (F3). The micro mass residual of `scalar_micro_macro_mass_storage_mode` carries `- dt*rho_l*eps_dot`;
+  the Eulerian micro balance per current bulk volume, d(rho_l)/dt + rho_l*eps_dot = rho_hat, gives `+ dt*rho_l*eps_dot`. The switch
+  selects the sign `s` (`microMassStrainTermSign`, residual `- s*dt*rho_l*eps_dot`, tangents `1 - s*dt*eps_dot`) in the predictor
+  and the coupled 2x2 solve (residual, `J11`, `J12`), in `computeImplicitNlDpL` / `computeImplicitNlDK` (tangent-only) and in the
+  unreachable mass-storage branch of `solveImplicitMicroWaterContent`. It acts wherever eps_dot != 0, also before the maximum.
+  The n_l-normalised scalar modes are untouched.
+- `ceiling_micro_storage_includes_strain` (Q1). At the points booked by `ceiling_micro_storage_exchange` the booked rate is
+  `(rho_l - rho_l_prev)/dt + rho_l*(eps_v - eps_v_prev)/dt` instead of the bare storage rate; p-p and p-u tangents of the booked
+  rate extended accordingly (p-u is overwritten after the IP loop, `= Kpu / dt`, as before). Requires `ceiling_micro_storage_exchange`;
+  both switches require the mass-storage mode (OGS_FATAL otherwise).
+Derivation, premises and what else changes: `~/ogs-models/scratch/2026-09-30_massfix_V2/DERIVATION.md`. FORMULATION CHANGE: whether it is
+physically right, and whether K_fix survives it, is Vinay's call; what it changes is to be MEASURED only in the record folders
+(`2026-09-30_massfix_V1/`, `2026-09-30_massfix_V2/`), none claimed here.

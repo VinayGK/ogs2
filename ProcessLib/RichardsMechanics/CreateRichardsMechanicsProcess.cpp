@@ -551,6 +551,35 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         config.getConfigParameter<bool>(
             "macro_storage_uses_macro_porosity",
             defaults ? defaults->macro_storage_uses_macro_porosity : false);
+    // V2 (2026-09-30): F3 sign of the micro mass residual; Q1 strain term in
+    // the booked rate. Both default false (bit-identical to V1).
+    auto const micro_mass_strain_term_eulerian =
+        config.getConfigParameter<bool>(
+            "micro_mass_strain_term_eulerian",
+            defaults ? defaults->micro_mass_strain_term_eulerian : false);
+    auto const ceiling_micro_storage_includes_strain =
+        config.getConfigParameter<bool>(
+            "ceiling_micro_storage_includes_strain",
+            defaults ? defaults->ceiling_micro_storage_includes_strain : false);
+    if ((micro_mass_strain_term_eulerian ||
+         ceiling_micro_storage_includes_strain) &&
+        local_nonlinear_solve_mode !=
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} micro_mass_strain_term_eulerian / "
+            "ceiling_micro_storage_includes_strain require "
+            "local_nonlinear_solve_mode = scalar_micro_macro_mass_storage_mode.",
+            context);
+    }
+    if (ceiling_micro_storage_includes_strain &&
+        !ceiling_micro_storage_exchange)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} ceiling_micro_storage_includes_strain "
+            "requires ceiling_micro_storage_exchange = true.",
+            context);
+    }
     if (ceiling_micro_storage_exchange &&
         local_nonlinear_solve_mode !=
             LocalNonlinearSolveMode::ScalarReferenceMassStorage)
@@ -797,7 +826,9 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         dry_density,
         potential_augmentation_prefactor_live_dry_density,
         ceiling_micro_storage_exchange,
-        macro_storage_uses_macro_porosity};
+        macro_storage_uses_macro_porosity,
+        micro_mass_strain_term_eulerian,
+        ceiling_micro_storage_includes_strain};
 }
 
 template <int DisplacementDim>
