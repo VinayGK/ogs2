@@ -7,7 +7,11 @@
 #include <cmath>
 #include <Eigen/LU>
 #include <cassert>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <limits>
+#include <map>
 #include <mutex>
 
 #include "BaseLib/Logging.h"
@@ -18,6 +22,7 @@
 #include "MaterialLib/MPL/Medium.h"
 #include "MaterialLib/MPL/Properties/PorosityFromMassBalance.h"
 #include "MaterialLib/MPL/Utils/FormEigenTensor.h"
+#include "MaterialLib/SolidModels/LinearElasticIsotropic.h"
 #include "MaterialLib/SolidModels/SelectSolidConstitutiveRelation.h"
 #include "MathLib/EigenBlockMatrixView.h"
 #include "MathLib/KelvinVector.h"
@@ -1975,6 +1980,69 @@ inline void updateCeilingIterationDiagnostics(
     eps_seen = eps_v;
 }
 
+// Iteration trace of the KKT micro-water ceiling (DESIGN.md 3.8, M3; the
+// discriminator of H-A branch chatter against H-B missing p-u entry, 4.7).
+// With micro_ceiling_trace_elements = id1 id2 ... (default empty = off, no
+// cost) every evaluation at the integration points of the listed elements
+// (every assembleWithJacobian evaluation and the output re-evaluation, flagged)
+// appends one line to kkt_trace.csv in the working directory of the process
+// (append mode, one mutex, flushed per line so that a run killed by a wall-clock
+// budget keeps its trace). DEVIATION from DESIGN.md 3.8 ("<output_prefix>_kkt_
+// trace.csv"): the output prefix is not reachable from the local assembler; the
+// suite runs each deck in its own directory.
+// Columns: t, dt, eval_index_in_attempt, element, ip, eps_v, eps_v_prev_step,
+// status, S_s, rhohat_received, rhohat_pot, f_at_n_max, lambda, n_l, phi,
+// is_output_reeval. eval_index_in_attempt counts the evaluations at this IP with
+// the same t (an attempt key as in 3.3); a violation shows as a non-monotone
+// index.
+inline void writeMicroCeilingTraceLine(
+    MicroCeilingTraceTag const& tag, MicroCeilingKktSolveData const& kkt,
+    PotentialExchangeLocalSolveContext const& local_context)
+{
+    static std::mutex mutex;
+    static std::ofstream file;
+    static std::map<std::pair<std::size_t, std::size_t>,
+                    std::pair<double, long>>
+        attempts;
+    std::lock_guard<std::mutex> const lock(mutex);
+    if (!file.is_open())
+    {
+        char const* const name = "kkt_trace.csv";
+        std::error_code ec;
+        bool const has_content =
+            std::filesystem::exists(name, ec) &&
+            std::filesystem::file_size(name, ec) > 0;
+        file.open(name, std::ios::app);
+        if (!file)
+        {
+            OGS_FATAL("micro_ceiling_trace_elements: cannot open {}.", name);
+        }
+        if (!has_content)
+        {
+            file << "t,dt,eval_index_in_attempt,element,ip,eps_v,"
+                    "eps_v_prev_step,status,S_s,rhohat_received,rhohat_pot,"
+                    "f_at_n_max,lambda,n_l,phi,is_output_reeval\n";
+        }
+    }
+    auto& attempt =
+        attempts[{tag.element_id, tag.integration_point}];
+    if (attempt.second == 0 || attempt.first != tag.t)
+    {
+        attempt.first = tag.t;
+        attempt.second = 0;
+    }
+    long const index = attempt.second++;
+    file << std::setprecision(17) << tag.t << ',' << tag.dt << ',' << index
+         << ',' << tag.element_id << ',' << tag.integration_point << ','
+         << local_context.volumetric_strain << ','
+         << local_context.volumetric_strain_prev << ','
+         << static_cast<int>(kkt.status) << ',' << kkt.booked_storage_rate
+         << ',' << kkt.exchange_received << ','
+         << kkt.local.exchange.rho_l_hat << ',' << kkt.f_at_n_max << ','
+         << kkt.multiplier << ',' << kkt.local.n_l << ',' << local_context.phi
+         << ',' << (tag.output_reevaluation ? 1 : 0) << std::endl;
+}
+
 template <int DisplacementDim>
 inline void applyReferenceMassStorageLocalState(
     StatefulData<DisplacementDim>& state_current,
@@ -2650,7 +2718,8 @@ inline void updateMicroscaleHydraulicState(
     MPL::VariableArray& variables, MPL::VariableArray& variables_prev,
     PotentialExchangeLocalSolveContext const& local_context,
     std::optional<MicroPorosityParameters> const& micro_porosity_parameters,
-    PotentialExchangeParameters const* const potential_exchange_parameters)
+    PotentialExchangeParameters const* const potential_exchange_parameters,
+    MicroCeilingTraceTag const* const trace_tag = nullptr)
 {
     auto& n_l = std::get<MicroWaterContent>(state_current);
     auto const n_l_prev = std::get<PrevState<MicroWaterContent>>(state_previous);
@@ -2754,6 +2823,10 @@ inline void updateMicroscaleHydraulicState(
                 *std::get<MicroCeilingIncAlt>(state_current),
                 *std::get<MicroCeilingIncSame>(state_current),
                 local_context.volumetric_strain, t, active_now, active_before);
+            if (trace_tag != nullptr)
+            {
+                writeMicroCeilingTraceLine(*trace_tag, kkt, local_context);
+            }
             return;
         }
         auto const coupled_update = solveReferenceMassStorageCoupledState(
@@ -4632,7 +4705,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         MaterialLib::Solids::MechanicsBase<DisplacementDim> const&
             solid_material,
         ProcessLib::ThermoRichardsMechanics::MaterialStateData<DisplacementDim>&
-            material_state_data)
+            material_state_data,
+        MicroCeilingTraceTag const* const trace_tag)
 {
     auto const& liquid_phase = medium->phase(MaterialPropertyLib::PhaseName::AqueousLiquid);
     auto const& solid_phase = medium->phase(MaterialPropertyLib::PhaseName::Solid);
@@ -4834,7 +4908,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
          .confining_pressure_p_conf = p_conf_micro_solve,
          .biot_coefficient = alpha,
          .drained_bulk_modulus = K_drained_micro_solve},
-        micro_porosity_parameters, potential_exchange_parameters);
+        micro_porosity_parameters, potential_exchange_parameters, trace_tag);
     updatePorositySplitState<DisplacementDim>(
         state_current, state_previous, phi, variables, variables_prev,
         potential_exchange_parameters);
@@ -5136,6 +5210,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
 
         std::get<StrainData<DisplacementDim>>(state_current).eps.noalias() = B * u;
 
+        MicroCeilingTraceTag trace_tag_newton;
         assembleWithJacobianEvalConstitutiveSetting(
             t, dt, x_position, ip_data_[ip], variables, variables_prev, medium,
             TemperatureData{temperature},
@@ -5146,7 +5221,32 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             this->output_data_[ip],
             this->process_data_.micro_porosity_parameters,
             this->getPotentialExchangeParameters(),
-            this->solid_material_, this->material_states_[ip]);
+            this->solid_material_, this->material_states_[ip],
+            // KKT iteration trace (DESIGN.md 3.8): tag only for the listed
+            // elements.
+            [&]() -> MicroCeilingTraceTag const*
+            {
+                auto const* const pep_trace =
+                    this->getPotentialExchangeParameters();
+                if (pep_trace == nullptr ||
+                    pep_trace->micro_ceiling_trace_elements.empty() ||
+                    std::find(pep_trace->micro_ceiling_trace_elements.begin(),
+                              pep_trace->micro_ceiling_trace_elements.end(),
+                              static_cast<std::size_t>(
+                                  this->element_.getID())) ==
+                        pep_trace->micro_ceiling_trace_elements.end())
+                {
+                    return nullptr;
+                }
+                trace_tag_newton = {
+                    .element_id =
+                        static_cast<std::size_t>(this->element_.getID()),
+                    .integration_point = static_cast<std::size_t>(ip),
+                    .t = t,
+                    .dt = dt,
+                    .output_reevaluation = false};
+                return &trace_tag_newton;
+            }());
 
         {
             auto const& C = *std::get<StiffnessTensor<DisplacementDim>>(constitutive_data);
@@ -6749,10 +6849,43 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         .noalias() += laplace_p + storage_p_a_p / dt + storage_p_a_S_Jpp;
 
     // pressure equation, displacement part.
-    local_Jac
-        .template block<pressure_size, displacement_size>(pressure_index,
-                                                          displacement_index)
-        .noalias() = Kpu / dt;
+    // Q9 (DESIGN.md D1): micro_ceiling_pu_tangent. overwritten (default, the
+    // shipped line, bitwise): every exchange p-u entry accumulated above is
+    // erased. all_exchange: Kpu/dt is ADDED to the accumulated exchange entries
+    // (repo rule 4.1, accumulators use +=), which also revives the Maxwell,
+    // film and live-K p-u entries at inactive points. kkt_active /
+    // all_exchange: the KKT-active entries are added after the assignment.
+    {
+        auto const* const pep_q9 = this->getPotentialExchangeParameters();
+        bool const q9_all_exchange =
+            pep_q9 != nullptr &&
+            pep_q9->micro_ceiling_pu_tangent ==
+                MicroCeilingPuTangent::AllExchange;
+        bool const q9_add_kkt =
+            pep_q9 != nullptr &&
+            pep_q9->micro_ceiling_pu_tangent != MicroCeilingPuTangent::Overwritten;
+        if (q9_all_exchange)
+        {
+            local_Jac
+                .template block<pressure_size, displacement_size>(
+                    pressure_index, displacement_index)
+                .noalias() += Kpu / dt;
+        }
+        else
+        {
+            local_Jac
+                .template block<pressure_size, displacement_size>(
+                    pressure_index, displacement_index)
+                .noalias() = Kpu / dt;
+        }
+        if (q9_add_kkt)
+        {
+            local_Jac
+                .template block<pressure_size, displacement_size>(
+                    pressure_index, displacement_index)
+                .noalias() += kkt_Kpu_exchange;
+        }
+    }
 
     // pressure equation
     local_rhs.template segment<pressure_size>(pressure_index).noalias() -=
@@ -6763,6 +6896,154 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
     // displacement equation
     local_rhs.template segment<displacement_size>(displacement_index)
         .noalias() += Kup * p_L;
+
+    // ── Route-B debug flag micro_ceiling_fd_check (DESIGN.md 3.7; NOT adopted) ──
+    // Central-difference check of the ASSEMBLED element Jacobian against the
+    // analytic one: the only measurement that can say whether the assembled p-u
+    // block is consistent (W-1) and, at micro_ceiling_pu_tangent = overwritten
+    // against kkt_active, that Q9 changes exactly the block the derivation says.
+    // Not for production runs: 2*(n_p + n_u) extra element assemblies per call.
+    // Step (DESIGN.md 4.2): h_j = eps_mach^(1/3) * max(|x_j|, x_scale), x_scale =
+    // the largest |value| of the element's own dofs of that block (1 SI unit only
+    // when all of them are exactly zero; flagged in the log line). Residual
+    // convention: local_rhs = -R, so J_fd = -d(local_rhs)/dx. The perturbed
+    // assemblies run the same code with the flag suppressed (thread-local); the
+    // element's integration-point states and output data are restored after every
+    // perturbation. History-dependent solids carry material state that is not
+    // snapshotted: only LinearElasticIsotropic is accepted (FATAL otherwise).
+    // The comparison blames nothing on the KKT entries for the known inexact
+    // terms (W-4, W-5: phi_s tangents in J_pp, J_pu; compiled-out swelling u-side
+    // entries; Bishop and gravity terms): the log states per block, it makes no
+    // pass/fail claim.
+    {
+        auto const* const pep_fd = this->getPotentialExchangeParameters();
+        static thread_local bool fd_check_running = false;
+        if (pep_fd != nullptr && pep_fd->micro_ceiling_fd_check &&
+            !fd_check_running)
+        {
+            if (dynamic_cast<MaterialLib::Solids::LinearElasticIsotropic<
+                    DisplacementDim> const*>(&this->solid_material_) == nullptr)
+            {
+                OGS_FATAL(
+                    "micro_ceiling_fd_check supports LinearElasticIsotropic "
+                    "solids only: MFront and history-dependent materials carry "
+                    "material state that the in-assembler FD check does not "
+                    "snapshot.");
+            }
+            struct FlagReset
+            {
+                bool& flag;
+                ~FlagReset() { flag = false; }
+            };
+            fd_check_running = true;
+            FlagReset const flag_reset{fd_check_running};
+
+            constexpr int n_dof =
+                static_cast<int>(pressure_size + displacement_size);
+            Eigen::MatrixXd const J_analytic = local_Jac;
+            auto const states_backup = this->current_states_;
+            auto const output_backup = this->output_data_;
+
+            // Element class by the status written by the base evaluation above.
+            unsigned n_active_ip = 0;
+            for (unsigned ip = 0; ip < n_integration_points; ++ip)
+            {
+                n_active_ip +=
+                    *std::get<MicroCeilingStatus>(this->current_states_[ip]) ==
+                            static_cast<double>(MicroCeilingKktStatus::Active)
+                        ? 1
+                        : 0;
+            }
+            char const* const element_class =
+                n_active_ip == 0 ? "none_active"
+                                 : (n_active_ip == n_integration_points
+                                        ? "all_active"
+                                        : "mixed");
+
+            auto const block_scale = [&](bool const pressure_block,
+                                         bool& used_fallback)
+            {
+                double m = 0.0;
+                unsigned const begin = pressure_block ? 0 : pressure_size;
+                unsigned const end =
+                    pressure_block ? pressure_size : pressure_size + displacement_size;
+                for (unsigned i = begin; i < end; ++i)
+                {
+                    m = std::max(m, std::abs(local_x[i]));
+                }
+                used_fallback = !(m > 0.0);
+                return used_fallback ? 1.0 : m;
+            };
+            bool fallback_p = false;
+            bool fallback_u = false;
+            double const scale_p = block_scale(true, fallback_p);  // [Pa]
+            double const scale_u = block_scale(false, fallback_u);  // [m]
+            double const h_rel =
+                std::cbrt(std::numeric_limits<double>::epsilon());
+
+            Eigen::MatrixXd J_fd = Eigen::MatrixXd::Zero(n_dof, n_dof);
+            for (int j = 0; j < n_dof; ++j)
+            {
+                double const x_scale =
+                    static_cast<unsigned>(j) < pressure_size ? scale_p : scale_u;
+                double const h = h_rel * std::max(std::abs(local_x[j]), x_scale);
+                auto x_plus = local_x;
+                auto x_minus = local_x;
+                x_plus[j] += h;
+                x_minus[j] -= h;
+                // the representable steps actually taken
+                double const h_total = (x_plus[j] - local_x[j]) +
+                                       (local_x[j] - x_minus[j]);
+                std::vector<double> rhs_plus;
+                std::vector<double> rhs_minus;
+                std::vector<double> jac_scratch;
+                this->assembleWithJacobian(t, dt, x_plus, local_x_prev,
+                                           rhs_plus, jac_scratch);
+                this->current_states_ = states_backup;
+                this->output_data_ = output_backup;
+                this->assembleWithJacobian(t, dt, x_minus, local_x_prev,
+                                           rhs_minus, jac_scratch);
+                this->current_states_ = states_backup;
+                this->output_data_ = output_backup;
+                for (int i = 0; i < n_dof; ++i)
+                {
+                    J_fd(i, j) = -(rhs_plus[i] - rhs_minus[i]) / h_total;
+                }
+            }
+
+            auto const report = [&](char const* const name, int const r0,
+                                    int const c0, int const nr, int const nc)
+            {
+                auto const a = J_analytic.block(r0, c0, nr, nc);
+                auto const f = J_fd.block(r0, c0, nr, nc);
+                double const max_abs_dev = (a - f).cwiseAbs().maxCoeff();
+                double const max_abs_an = a.cwiseAbs().maxCoeff();
+                double const max_abs_fd = f.cwiseAbs().maxCoeff();
+                double const denominator = std::max(max_abs_an, max_abs_fd);
+                double const max_rel_dev =
+                    denominator > 0.0 ? max_abs_dev / denominator : 0.0;
+                INFO(
+                    "KKT-FD t={:.10g} dt={:.6g} elem={} class={} "
+                    "active_ip={}/{} block={} max_abs_dev={:.6e} "
+                    "max_rel_dev={:.6e} (relative to the larger of the two block "
+                    "maxima) max_abs_analytic={:.6e} max_abs_fd={:.6e} "
+                    "h_rel={:.3e} x_scale_p={:.3e}{} x_scale_u={:.3e}{} "
+                    "pu_tangent={}",
+                    t, dt, this->element_.getID(), element_class, n_active_ip,
+                    n_integration_points, name, max_abs_dev, max_rel_dev,
+                    max_abs_an, max_abs_fd, h_rel, scale_p,
+                    fallback_p ? "(fallback 1)" : "", scale_u,
+                    fallback_u ? "(fallback 1)" : "",
+                    toString(pep_fd->micro_ceiling_pu_tangent));
+            };
+            constexpr int np = static_cast<int>(pressure_size);
+            constexpr int nu = static_cast<int>(displacement_size);
+            report("pp", 0, 0, np, np);
+            report("pu", 0, np, np, nu);
+            report("up", np, 0, nu, np);
+            report("uu", np, np, nu, nu);
+        }
+    }
 }
 
 template <typename ShapeFunctionDisplacement, typename ShapeFunctionPressure,
@@ -7029,6 +7310,25 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 this->getPotentialExchangeParameters())
                 ? drainedBulkModulusFromStiffness<DisplacementDim>(C_el)
                 : std::numeric_limits<double>::quiet_NaN();
+        // KKT iteration trace (DESIGN.md 3.8), output re-evaluation flagged.
+        MicroCeilingTraceTag trace_tag_storage;
+        MicroCeilingTraceTag const* trace_tag = nullptr;
+        if (auto const* const pep_trace = this->getPotentialExchangeParameters();
+            pep_trace != nullptr &&
+            !pep_trace->micro_ceiling_trace_elements.empty() &&
+            std::find(pep_trace->micro_ceiling_trace_elements.begin(),
+                      pep_trace->micro_ceiling_trace_elements.end(),
+                      static_cast<std::size_t>(this->element_.getID())) !=
+                pep_trace->micro_ceiling_trace_elements.end())
+        {
+            trace_tag_storage = {
+                .element_id = static_cast<std::size_t>(this->element_.getID()),
+                .integration_point = static_cast<std::size_t>(ip),
+                .t = t,
+                .dt = dt,
+                .output_reevaluation = true};
+            trace_tag = &trace_tag_storage;
+        }
         updateMicroscaleHydraulicState<DisplacementDim>(
             this->current_states_[ip], this->prev_states_[ip], p_cap_ip,
             rho_LR, mu, dt, t, variables, variables_prev,
@@ -7041,7 +7341,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
              .biot_coefficient = alpha,
              .drained_bulk_modulus = K_drained_micro_solve},
             this->process_data_.micro_porosity_parameters,
-            this->getPotentialExchangeParameters());
+            this->getPotentialExchangeParameters(), trace_tag);
         updatePorositySplitState<DisplacementDim>(
             this->current_states_[ip], this->prev_states_[ip], phi, variables,
             variables_prev, this->getPotentialExchangeParameters());

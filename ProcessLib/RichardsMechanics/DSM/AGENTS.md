@@ -2299,3 +2299,16 @@ part. Nothing was changed in the physics: removing the micro part from Kpu (opti
 S_L*rho_LR*[(phi_m - phi_m_prev) + phi_m*dEps_v]/dt from the macro residual, with its p-p tangent) is a formulation decision and waits for
 Vinay's ruling. This commit adds only (i) a comment at the Kpu site, (ii) a one-line variant label printed to the log at parse time
 when any switch is on, (iii) this note. Switches off: no log line, numerics untouched.
+
+## 2026-09-30 (night) - branch dsm_mass_conservation_v3_kkt_ceiling_2026-09-30: KKT treatment of the micro-water ceiling (NOT adopted, switchable)
+
+Implement the KKT / active-set treatment of the micro-water ceiling as specified by Vinay (2026-09-30 ~21:40 and 21:45, "derivation, report,
+beamer, design docs, implementation, weak forms, unit tests and then the ms33 suite"). Parent: `dsm_mass_conservation_v2_strain_term_2026-09-30`
+(9cd3d00a4d). New PRJ tags inside `<potential_exchange>`, all default to the shipped behaviour (bitwise): `micro_ceiling_treatment` (`clamp` | `kkt`),
+`micro_ceiling_pu_tangent` (`overwritten` | `kkt_active` | `all_exchange`, Q9), `micro_ceiling_fd_check`, `micro_ceiling_scan_nodes_per_decade`,
+`micro_ceiling_trace_elements`. What the code does, the file map and the deviations from the design: `MICRO_CEILING_KKT_IMPLEMENTATION.md` in this directory.
+Derivation, weak forms, design and test plan: `~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/` (DERIVATION.md, WEAK_FORMS.md, DESIGN.md, THEORY_FIXES.md).
+Open rulings NOT decided by this change (Vinay's calls): T_m (the micro part of the Biot term stays as in the base code), the F3 sign (both configurations are
+selectable through `micro_mass_strain_term_eulerian`), which water balance (E or L), Q9 (which `micro_ceiling_pu_tangent` level), `N_dec`, whether lambda should also act
+on the skeleton (option B). Consequences of the change on any deck are PREDICTED until a run measures them; `micro_exchange_source` means `rhohat_pot` in KKT runs
+(the booked sink of V1/V2 is a different quantity), the books must read `micro_exchange_received`.

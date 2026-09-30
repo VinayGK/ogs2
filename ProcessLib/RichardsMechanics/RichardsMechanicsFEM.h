@@ -236,7 +236,9 @@ private:
         MaterialLib::Solids::MechanicsBase<DisplacementDim> const&
             solid_material,
         ProcessLib::ThermoRichardsMechanics::MaterialStateData<DisplacementDim>&
-            material_state_data);
+            material_state_data,
+        // KKT iteration trace (DESIGN.md 3.8); nullptr = no trace.
+        MicroCeilingTraceTag const* const trace_tag = nullptr);
 
     static constexpr auto localDOF(auto const& x)
     {
