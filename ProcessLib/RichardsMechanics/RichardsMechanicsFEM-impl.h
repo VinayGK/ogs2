@@ -4417,6 +4417,12 @@ void RichardsMechanicsLocalAssembler<
             // the assembleWithJacobian block (see there).
             bool ceiling_B_active = false;
             double ceiling_B_rho_L_hat = 0.0;  // kg/(m^3 s), macro source
+            // KKT micro-water ceiling (DESIGN.md 3.5, residual-only twin): reads
+            // the state left by the last Newton-type evaluation (this path does
+            // not run the micro update chain, exactly as variant B; nothing is
+            // claimed for Picard, risk R4).
+            bool kkt_active = false;
+            double kkt_rho_L_hat = 0.0;  // kg/(m^3 s), macro source
 
             if (potential_exchange_enabled)
             {
@@ -4476,6 +4482,18 @@ void RichardsMechanicsLocalAssembler<
                 {
                     ceiling_B_rho_L_hat = -*std::get<MicroExchangeSource>(
                         this->current_states_[ip]);  // kg/(m^3 s)
+                }
+                if (isKktCeiling(*potential_exchange_params_ptr))
+                {
+                    kkt_active =
+                        *std::get<MicroCeilingStatus>(
+                            this->current_states_[ip]) ==
+                        static_cast<double>(MicroCeilingKktStatus::Active);
+                    if (kkt_active)
+                    {
+                        kkt_rho_L_hat = -*std::get<MicroExchangeReceived>(
+                            this->current_states_[ip]);  // kg/(m^3 s)
+                    }
                 }
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
@@ -4561,7 +4579,9 @@ void RichardsMechanicsLocalAssembler<
                 N_p.transpose() *
                 (ceiling_B_active
                      ? ceiling_B_rho_L_hat
-                     : potential_exchange_result.exchange.rho_L_hat) *
+                     : kkt_active
+                           ? kkt_rho_L_hat
+                           : potential_exchange_result.exchange.rho_L_hat) *
                 w;
         }
 
@@ -5046,6 +5066,18 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             pressure_size, displacement_size>::Zero(pressure_size,
                                                     displacement_size);
 
+    // KKT micro-water ceiling (DESIGN.md 3.5): consistent exchange p-u entries of
+    // the KKT-active IPs (and, with micro_ceiling_pu_tangent = all_exchange, the
+    // accumulation target for the added Kpu/dt). Kept apart from local_Jac
+    // because the assembly line `local_Jac.pu = Kpu/dt` at the end of this
+    // function erases anything accumulated there (Q9). Zero unless a KKT-active
+    // IP exists; used only when micro_ceiling_pu_tangent != overwritten.
+    typename ShapeMatricesTypeDisplacement::template MatrixType<
+        pressure_size, displacement_size>
+        kkt_Kpu_exchange = ShapeMatricesTypeDisplacement::template MatrixType<
+            pressure_size, displacement_size>::Zero(pressure_size,
+                                                    displacement_size);
+
     auto const& medium =
         this->process_data_.media_map.getMedium(this->element_.getID());
     auto const& liquid_phase = medium->phase(MaterialPropertyLib::PhaseName::AqueousLiquid);
@@ -5385,6 +5417,13 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             double ceiling_B_rho_L_hat = 0.0;       // kg/(m^3 s), macro source
             double ceiling_B_drho_L_hat_dpL = 0.0;  // kg/(m^3 s)/Pa
             double ceiling_B_drho_L_hat_deps_v = 0.0;  // kg/(m^3 s) per unit eps_v
+            // KKT micro-water ceiling (DESIGN.md 3.5): active flag read from the
+            // state MicroCeilingStatus (no detector, no tolerance), macro
+            // source convention rho_L_hat = -rhohat.
+            bool kkt_active = false;
+            double kkt_rho_L_hat = 0.0;            // kg/(m^3 s), macro source
+            double kkt_drho_L_hat_dpL = 0.0;       // kg/(m^3 s)/Pa
+            double kkt_drho_L_hat_deps_v = 0.0;    // kg/(m^3 s) per unit eps_v
             if (potential_exchange_enabled)
             {
                 auto const n_l =
@@ -5525,6 +5564,60 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                : 0.0)) /
                         dt;  // kg/(m^3 s) per unit eps_v
                 }
+                // ── KKT micro-water ceiling (DESIGN.md 3.5; NOT adopted) ─────
+                // At a KKT-active IP (status written by the micro update of this
+                // iterate) the macro sink is the booked exchange rhohat = S_s
+                // (MicroExchangeReceived), its tangents are those of S_s (D-5.2):
+                //   d rhohat/d p_L, d rhohat/d eps_v  (computeCeilingKktActive-
+                // ExchangeTangents). status 2, 3 (NonMonotone, PremiseViolated)
+                // are handled as clamp points: base sink, base tangent.
+                if (isKktCeiling(*potential_exchange_params_ptr))
+                {
+                    if (beta_SR != 0.0)
+                    {
+                        // The branch decision uses n_max(eps_v) only; with
+                        // beta_SR != 0 it would depend on p_L (W-6).
+                        OGS_FATAL(
+                            "micro_ceiling_treatment = kkt: beta_SR = {:g} != "
+                            "0; the dphi/dp_eff chain of the active tangent is "
+                            "not implemented.",
+                            beta_SR);
+                    }
+                    kkt_active =
+                        *std::get<MicroCeilingStatus>(
+                            this->current_states_[ip]) ==
+                        static_cast<double>(MicroCeilingKktStatus::Active);
+                    if (kkt_active)
+                    {
+                        double const s_kkt = microMassStrainTermSign(
+                            *potential_exchange_params_ptr);  // [-]
+                        kkt_rho_L_hat = -*std::get<MicroExchangeReceived>(
+                            this->current_states_[ip]);  // kg/(m^3 s)
+                        double const rho_lR_kkt = *std::get<MicroLiquidDensity>(
+                            this->current_states_[ip]);  // kg/m^3
+                        auto const eos_kkt = computeActiveMicroLiquidDensity(
+                            n_l, rho_LR, local_solve_context,
+                            *potential_exchange_params_ptr);
+                        double const d_eps_kkt =
+                            variables.volumetric_strain -
+                            variables_prev.volumetric_strain;  // [-]
+                        double const dphi_deps_v_kkt =
+                            dynamic_cast<MPL::PorosityFromMassBalance const*>(
+                                &medium->property(
+                                    MPL::PropertyType::porosity))
+                                ? porosityDerivativeWrtVolumetricStrain(
+                                      alpha, phi, variables_prev.porosity,
+                                      d_eps_kkt)
+                                : 0.0;  // [-]
+                        auto const tangents_kkt =
+                            computeCeilingKktActiveExchangeTangents(
+                                s_kkt, d_eps_kkt, phi, rho_lR_kkt,
+                                eos_kkt.drho_lR_dnl, eos_kkt.drho_lR_drho_LR,
+                                rho_LR * beta_LR, dphi_deps_v_kkt, dt);
+                        kkt_drho_L_hat_dpL = -tangents_kkt.drhohat_dpL;
+                        kkt_drho_L_hat_deps_v = -tangents_kkt.drhohat_deps_v;
+                    }
+                }
                 auto const micro_potential = computeActiveMicroPotential(
                     n_l, rho_LR, local_solve_context,
                     *potential_exchange_params_ptr);
@@ -5640,7 +5733,12 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 // DIAGNOSTIC B: at a clamped IP the exchange source is the
                 // micro storage rate (not mu_lR-driven), so this mu_lR p-u
                 // tangent is replaced by ceiling_B_drho_L_hat_deps_v below.
-                if (film_pressure_coupling && mu > 0.0 && !ceiling_B_active)
+                // KKT active IP: the exchange is S_s, not mu_lR-driven, so the
+                // Maxwell / live-K p-u entries of mu_lR do not apply (D-5.2);
+                // effective only at micro_ceiling_pu_tangent = all_exchange
+                // (otherwise erased by the Kpu/dt assignment below).
+                if (film_pressure_coupling && mu > 0.0 && !ceiling_B_active &&
+                    !kkt_active)
                 {
                     double const rho_film =
                         (std::isfinite(rho_lR_exchange_input) &&
@@ -5916,7 +6014,9 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     // the converged micro liquid density (set above when
                     // use_micro_liquid_density_for_micro_pressure, i.e. always in
                     // mass-storage mode); NaN -> the helper recomputes via EOS.
-                    double const dn_l_dpL = computeImplicitNlDpL(
+                    // KKT active IP: n_l = n_max(eps_v), dn_l/dp_L = 0 (D-5.3.1);
+                    // the unconstrained root's derivative would be wrong here.
+                    double const dn_l_dpL = kkt_active ? 0.0 : computeImplicitNlDpL(
                         n_l_prev, p_L_ip, dt, rho_LR, drho_LR_dpL, alpha_bar, mu,
                         macro_potential, micro_potential, exchange,
                         local_solve_context,
@@ -6230,8 +6330,9 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                 pep_sw.film_energy_route ==
                                     FilmEnergyRoute::Exact &&
                                 std::isfinite(eps_v_sw);
+                            // KKT active IP: dn_l/dK = 0 (D-5.3.1, n_l = n_max).
                             double const dn_l_dK_sw =
-                                exact_route_l3
+                                (exact_route_l3 || kkt_active)
                                     ? 0.0
                                     : computeImplicitNlDK(
                                           n_l_prev_sw, dt, rho_LR, mu,
@@ -6569,12 +6670,17 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 fd_jacobian_perturbation);
             // DIAGNOSTIC B: variant A values are passed through unchanged.
             double const rho_L_hat_residual =
-                ceiling_B_active ? ceiling_B_rho_L_hat
-                                 : potential_exchange_result.exchange.rho_L_hat;
+                ceiling_B_active
+                    ? ceiling_B_rho_L_hat
+                    : kkt_active
+                          ? kkt_rho_L_hat
+                          : potential_exchange_result.exchange.rho_L_hat;
             double const drho_L_hat_dpL_jacobian =
                 ceiling_B_active
                     ? ceiling_B_drho_L_hat_dpL
-                    : potential_exchange_result.drho_L_hat_dpL_direct;
+                    : kkt_active
+                          ? kkt_drho_L_hat_dpL
+                          : potential_exchange_result.drho_L_hat_dpL_direct;
             local_rhs.template segment<pressure_size>(pressure_index)
                 .noalias() += N_p.transpose() * rho_L_hat_residual * w;
 
@@ -6584,6 +6690,17 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 .template block<pressure_size, pressure_size>(pressure_index,
                                                               pressure_index)
                 .noalias() -= N_p.transpose() * drho_L_hat_dpL_jacobian * N_p * w;
+            if (kkt_active && kkt_drho_L_hat_deps_v != 0.0)
+            {
+                // KKT active p-u entry, same sign/shape as the B entry below
+                // (-=), but into the separate matrix: the assembly line
+                // `local_Jac.pu = Kpu/dt` erases local_Jac.pu (Q9). Added after
+                // that line at micro_ceiling_pu_tangent = kkt_active /
+                // all_exchange; unused (overwritten) otherwise.
+                kkt_Kpu_exchange.noalias() -= N_p.transpose() *
+                                              kkt_drho_L_hat_deps_v *
+                                              identity2.transpose() * B * w;
+            }
             if (ceiling_B_active && ceiling_B_drho_L_hat_deps_v != 0.0)
             {
                 // Same sign/shape as the exchange p-u blocks above (-=).
