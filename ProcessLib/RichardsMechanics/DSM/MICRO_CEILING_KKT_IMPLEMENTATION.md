@@ -26,6 +26,7 @@ Active: `n = n_max`, `rhohat = S_s = (c_s*rho_l - rho_l_prev)/dt` (booked storag
 |---|---|---|---|
 | `micro_ceiling_treatment` | `clamp`, `kkt` | `clamp` | `kkt` requires `scalar_micro_macro_mass_storage_mode`; exclusive with `ceiling_micro_storage_exchange` / `ceiling_micro_storage_includes_strain`; requires `film_strain_coupling = off`; `beta_SR != 0` is `OGS_FATAL` at assembly |
 | `micro_ceiling_pu_tangent` | `overwritten`, `kkt_active`, `all_exchange` | `overwritten` | Q9. `overwritten`: the line `local_Jac.pu = Kpu/dt` erases every exchange p-u entry (shipped). `kkt_active`: the KKT-active entries are added after it. `all_exchange`: `Kpu/dt` is added to the accumulated exchange entries (Maxwell, film, live-K entries at inactive points revive) and the KKT-active entries are added too. Only with `kkt` |
+| `micro_ceiling_sw_tangent` | `overwritten`, `kkt_active` | `overwritten` | Model IV tangent term (section A below, commits A1 to A3). `kkt_active`: at the KKT-active IPs K_uu gets the strain derivative of the swelling eigenstress on the active branch (tangent only, residual untouched). Only with `kkt`, and then only with `micro_solid_volume_fraction_mode = reference` |
 | `micro_ceiling_fd_check` | `true`, `false` | `false` | route-B debug flag: central-difference check of the assembled element Jacobian, log lines `KKT-FD`; LinearElasticIsotropic solids only. Only with `kkt` |
 | `micro_ceiling_scan_nodes_per_decade` | integer >= 2 | 8 | `N_dec`, a PROPOSAL (repo rule 1.2) that needs Vinay's approval. Only with `kkt` |
 | `micro_ceiling_trace_elements` | whitespace separated element ids | empty (off) | iteration trace `kkt_trace.csv` in the working directory. Only with `kkt` |
@@ -72,3 +73,18 @@ potential with the live chain feeds only J11 and J12 (as the base analytic Jacob
 `Tests/ProcessLib/RichardsMechanics/MicroCeilingKkt.cpp`, five tests (DESIGN.md 4.1 batch 1): `DSMMicroCeilingKktBelowCeilingIsBitwiseClamp` (UT-1),
 `...ActiveBranchComplementarityAndBookkeeping` (UT-2), `...LeavingTheCeilingAndContinuityAtTheKink` (UT-3), `...ScanDetectsNonMonotoneAndFallsBack` (UT-4N), `...ActiveTangentsVersusCentralDifference` (UT-5).
 New tests only; no existing test is edited. Test-only literals that need Vinay's approval are listed in the header comment of the file.
+
+## A1 to A3 (2026-10-01): the swelling-eigenstress strain derivative on the active branch (Model IV tangent term)
+
+Design: `~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/DESIGN_FIXES.md` part A (A.2 derivation, A.4 the three defects, A.6 plan). Record: `.../IMPLEMENT_A.md`. Tangent only; the residual is not touched. NOT adopted.
+
+At a KKT-active IP n_l = n_max(eps_v) = phi(eps_v), phi_M = 0 (n_S = 1), rho_lR = rho_EOS(n_l), K = K(phi), beta_SR = 0, so
+`d(delta_sigma_sw)/d eps_v = [ (ds/dK) K'(phi) + ds/dn|rho,K + (ds/drho)(drho/dn) ] dphi/d eps_v`
+for `s = n_S (n_prev p_film,prev - n p_film)`, `p_film = Pi - b p_conf`. Before this change the K_uu swelling block had only the first term, and that one with a wrong previous porosity at compacting points.
+
+- A1: tag `micro_ceiling_sw_tangent` (`PotentialExchangeParameters.h`, `CreateRichardsMechanicsProcess.cpp`; label line, validation).
+- A2 (`RichardsMechanicsFEM-impl.h`): (i) the live-K chain reads `PrevState<PorosityData>->phi` instead of `variables_prev.porosity` (overwritten by the KKT micro update with the capped sum, = phi at a compacting IP; same defect as F-1) under `sw_tangent_active = kkt_active && level == kkt_active`; (ii) the new block after the live-K block adds `(ds/dn + (ds/drho) drho/dn) dphi/d eps_v` to K_uu with the map `C C_el^{-1}` of the existing block, ds/dn with the film-ON partial `p_film = Pi - b p_conf` (p_conf of the current iterate, `p_conf_assembly`), and to K_up the rho_lR(p_L) channel (zero for beta_LR = 0); the numbers come from the free function `computeKktActiveSwellingNlTangent()`; (iii) the KKT-FD log line gets `sw_tangent`, `sw_active_ip`, `sw_explicit_mean`, `sw_implicit_mean` (log only).
+- A3: unit test UT-A `DSMMicroCeilingKktSwellingTangentOnActiveBranchVersusCentralDifference` (`Tests/ProcessLib/RichardsMechanics/MicroCeilingKkt.cpp`).
+
+Switch absent or `overwritten`: none of the new arithmetic executes. With the switch on the converged states agree with the switch-off states only to the discretisation of a different dt history (the iteration counts change), not bitwise.
+Not covered (stated, not fixed): the residual's p_conf is the previous iterate's (the Jacobian uses the current one), so a lag channel of the lagged formulation is in no tangent of this kind; the in-assembler FD check does not see it either.
