@@ -759,7 +759,7 @@ IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC 
       RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0): the LIVE reference is now ms33_modelIV_pellets_ts_16494_t_17280000.000000.vtu
       (md5 5da4f4e6a982bd192e78864180ce337b), = the last frame of run fx_IV of the IC-fix readiness suite (Shilpa's MBP,
       ~/ogs-models/scratch/2026-09-30_readiness_icfix/runs/fx_IV/out/, full copy on the WD_elements drive under
-      run_outputs_2026-09-30/shilpas-macbook-pro/, same md5). Run: 16494 accepted steps, 0 rejected, rc 0, 16112.7 on a loaded 10-core host, the 2026-09-08 record run took 7957.4 on the MBP s (OMP 6),
+      run_outputs_2026-09-30/shilpas-macbook-pro/, same md5). Run: 16494 accepted steps, 0 rejected, rc 0, 16112.7 s wall on a loaded 10-core host (measured, run fx_IV; thread count of this run not recorded), the 2026-09-08 record run took 7957.4 s on the MBP (OMP 6, see its block above),
       patched binary bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3, OGS commit 686fcd6ef8 = the declared initial_micro_water_content realised in the previous micro porosity, with the K_fix table of this deck (K only; comment-stripped, this deck differs from
       486235c679 in the K prefactor lines and nowhere else; physics, BCs, mesh, numerics, output times, tolerances unchanged).
       The former reference ms33_modelIV_pellets_ts_16527_t_17280000.000000.vtu (md5 1bc0d9e9689920fc198cef2651746af0) is SUPERSEDED and was moved (git mv, never deleted) to
