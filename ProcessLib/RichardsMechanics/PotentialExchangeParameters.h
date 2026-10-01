@@ -237,6 +237,38 @@ enum class MicroCeilingSwTangent
     KktActive
 };
 
+// Latched saturation gate for the Bishop factor chi and the relative
+// permeability k_rel at KKT-active, previously saturated integration points
+// (branch dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01; design part B.4 of
+// ~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/DESIGN_FIXES.md; ruled by
+// Vinay 2026-10-01 ~15:15 CEST, "yes to both, keep full weight and k_rel = 1").
+//   Off (default): the shipped rules, bitwise.
+//   BishopRelperm: at a latched Active point chi = chi_deck(S = 1), dchi/dS = 0,
+//     chi_prev = chi_deck(S = 1), k_rel = k_rel(S = 1), dk_rel/dS = 0.
+//   Bishop: the same for chi only (a labelled PROBE, never a fix).
+// S_L itself, the retention law, storage, exchange, the Biot term and the
+// output saturation are not changed. Requires micro_ceiling_treatment = kkt.
+enum class MicroCeilingSaturationGate
+{
+    Off,
+    BishopRelperm,
+    Bishop
+};
+
+inline constexpr char const* toString(MicroCeilingSaturationGate const gate)
+{
+    switch (gate)
+    {
+        case MicroCeilingSaturationGate::Off:
+            return "off";
+        case MicroCeilingSaturationGate::BishopRelperm:
+            return "bishop_relperm";
+        case MicroCeilingSaturationGate::Bishop:
+            return "bishop";
+    }
+    return "unknown";
+}
+
 inline constexpr char const* toString(
     MicroPotentialConvention const convention)
 {
@@ -576,7 +608,81 @@ struct PotentialExchangeParameters
     // micro_ceiling_treatment = kkt. Default = shipped behaviour, bitwise.
     MicroCeilingSwTangent micro_ceiling_sw_tangent =
         MicroCeilingSwTangent::Overwritten;
+    // Latched saturation gate of chi and k_rel at KKT-active points (design
+    // part B.4 of DESIGN_FIXES.md; Vinay 2026-10-01 ~15:15 CEST). Appended LAST
+    // so that the aggregate initialisation order of the earlier members is
+    // unchanged. Default off = the shipped rules, bitwise.
+    MicroCeilingSaturationGate micro_ceiling_saturation_gate =
+        MicroCeilingSaturationGate::Off;
 };
+
+// ── Latched saturation gate: pure logic (design part B.4) ──────────────────
+//
+// Persistent per-integration-point latch L. At every evaluation of an
+// integration point of the step that starts from the converged state with the
+// latch L_old (the previous-step value, a constant of the step):
+//
+//   L_new = (status == Active) AND (L_old OR chi_deck(S_L) == 1)
+//
+// L_new is stored in the current state and becomes L_old when the step is
+// accepted (the previous-state copy of the other history). chi_deck is the
+// deck's own bishops_effective_stress property at the macro saturation of the
+// evaluation; the trigger is the exact comparison chi_deck == 1.0 (the deck law
+// BishopsSaturationCutoff returns exactly 0 or 1; no tolerance literal).
+// L has no derivative: it is a constant of the step.
+inline bool nextSaturatedLatch(bool const status_active, bool const latch_old,
+                               double const chi_deck_at_S_L)
+{
+    return status_active && (latch_old || chi_deck_at_S_L == 1.0);
+}
+
+// The gate acts in an iterate when the point was latched at the end of the
+// previous step AND the status of THIS iterate is Active. Otherwise (L_old
+// false, or a released point) the shipped rules apply, bitwise.
+inline bool saturationGateActs(MicroCeilingSaturationGate const level,
+                               bool const latch_old, bool const status_active)
+{
+    return level != MicroCeilingSaturationGate::Off && latch_old &&
+           status_active;
+}
+
+// Values of the Bishop factor at one integration point of one iterate.
+struct BishopFactorValues
+{
+    double chi;         // [-] chi(S_L) of this iterate
+    double chi_prev;    // [-] chi(S_L_prev), the previous converged step
+    double dchi_dS_L;   // [-] dchi/dS_L of this iterate
+};
+
+// The gated Bishop factors of design part B.4: where the gate acts (previous
+// latch true AND status Active in this iterate) chi = chi_deck(S = 1), the
+// previous-step factor is the same (L_old true: the point was Active with the
+// factor chi_deck(S = 1) at the end of the previous step), and dchi/dS = 0
+// because S is a constant there. Everywhere else the deck's values pass
+// through unchanged (bitwise). chi_deck is the deck's own
+// bishops_effective_stress property as a function of S_L.
+template <typename ChiDeck>
+inline BishopFactorValues saturationGatedBishopFactors(
+    MicroCeilingSaturationGate const level, bool const latch_old,
+    bool const status_active, BishopFactorValues const& deck_values,
+    ChiDeck&& chi_deck)
+{
+    if (!saturationGateActs(level, latch_old, status_active))
+    {
+        return deck_values;
+    }
+    double const chi_unit_saturation = chi_deck(1.0);  // [-]
+    return {chi_unit_saturation, chi_unit_saturation, 0.0};
+}
+
+// k_rel is gated at level BishopRelperm only.
+inline bool saturationGateActsOnRelativePermeability(
+    MicroCeilingSaturationGate const level, bool const latch_old,
+    bool const status_active)
+{
+    return level == MicroCeilingSaturationGate::BishopRelperm && latch_old &&
+           status_active;
+}
 
 // True when the KKT treatment of the micro-water ceiling is selected.
 inline bool isKktCeiling(PotentialExchangeParameters const& p)

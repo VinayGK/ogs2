@@ -49,7 +49,9 @@ using StatefulData = std::tuple<
     MicroCeilingStatus, MicroCeilingMultiplier, MicroExchangeReceived,
     MicroCeilingRejectedExchange, MicroCeilingFlips, MicroCeilingNonMonotone,
     MicroCeilingPremise, MicroCeilingEpsSeen, MicroCeilingIncLast,
-    MicroCeilingAttemptT, MicroCeilingIncAlt, MicroCeilingIncSame>;
+    MicroCeilingAttemptT, MicroCeilingIncAlt, MicroCeilingIncSame,
+    // latched saturation gate (kkt_vii_gate branch, design part B.4)
+    MicroSaturatedLatch>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<

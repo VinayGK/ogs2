@@ -138,4 +138,18 @@ constexpr std::string_view ioName(struct MicroCeilingIncSameTag*)
 {
     return "micro_ceiling_inc_same";
 }
+
+// Saturated latch L of the gate micro_ceiling_saturation_gate (branch
+// dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01; design part B.4 of
+// ~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/DESIGN_FIXES.md): 1 when the
+// point is KKT-active and was, at this or an earlier accepted step, active with
+// the deck's Bishop factor equal to 1; else 0. Written only with
+// micro_ceiling_saturation_gate != off (otherwise it stays 0 and nothing reads
+// it). A stateful field: its previous-step copy is the L_old of the next step.
+using MicroSaturatedLatch =
+    BaseLib::StrongType<double, struct MicroSaturatedLatchTag>;
+constexpr std::string_view ioName(struct MicroSaturatedLatchTag*)
+{
+    return "micro_saturated_latch";
+}
 }  // namespace ProcessLib::RichardsMechanics

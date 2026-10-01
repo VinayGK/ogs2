@@ -131,6 +131,29 @@ MicroCeilingSwTangent parseMicroCeilingSwTangent(std::string const& value)
         value);
 }
 
+MicroCeilingSaturationGate parseMicroCeilingSaturationGate(
+    std::string const& value)
+{
+    if (value == "off")
+    {
+        return MicroCeilingSaturationGate::Off;
+    }
+    if (value == "bishop_relperm")
+    {
+        return MicroCeilingSaturationGate::BishopRelperm;
+    }
+    if (value == "bishop")
+    {
+        return MicroCeilingSaturationGate::Bishop;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_saturation_gate '{}'. Currently supported: 'off', "
+        "'bishop_relperm', 'bishop'.",
+        value);
+}
+
 // Element ids of micro_ceiling_trace_elements: whitespace separated unsigned
 // integers; empty string = no element.
 std::vector<std::size_t> parseMicroCeilingTraceElements(
@@ -883,6 +906,14 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         config.getConfigParameter<int>(
             "micro_ceiling_scan_nodes_per_decade",
             defaults ? defaults->micro_ceiling_scan_nodes_per_decade : 8);
+    // Latched saturation gate of chi and k_rel (branch
+    // dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01, design part B.4;
+    // Vinay 2026-10-01 ~15:15 CEST). Default off = the shipped rules, bitwise.
+    auto const micro_ceiling_saturation_gate = parseMicroCeilingSaturationGate(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_saturation_gate",
+            defaults ? toString(defaults->micro_ceiling_saturation_gate)
+                     : "off"));
     std::string micro_ceiling_trace_elements_default;
     if (defaults)
     {
@@ -956,6 +987,22 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "must be >= 2, got {}.",
                 context, micro_ceiling_scan_nodes_per_decade);
         }
+        if (micro_ceiling_saturation_gate != MicroCeilingSaturationGate::Off)
+        {
+            INFO(
+                "KKT VII gate label: micro_ceiling_saturation_gate = {} "
+                "(weight-1 reading, ruled by Vinay 2026-10-01: at a latched "
+                "KKT-active point p_L keeps the full Bishop weight chi = "
+                "chi_deck(S = 1){}). Latch L = Active AND (L_old OR "
+                "chi_deck(S_L) == 1), saved with the other history. S_L, the "
+                "retention, storage, exchange, the Biot term and the output "
+                "saturation are unchanged. NOT adopted.",
+                toString(micro_ceiling_saturation_gate),
+                micro_ceiling_saturation_gate ==
+                        MicroCeilingSaturationGate::BishopRelperm
+                    ? ", and k_rel = k_rel(S = 1)"
+                    : " (PROBE: k_rel not gated)");
+        }
         // 2.2 item 5: label line (style of the variant label above).
         INFO(
             "MASSFIX V3 label: micro_ceiling_treatment = kkt, F3 sign s = {} "
@@ -984,6 +1031,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             micro_ceiling_sw_tangent != MicroCeilingSwTangent::Overwritten ||
             micro_ceiling_fd_check ||
             !micro_ceiling_trace_elements.empty() ||
+            micro_ceiling_saturation_gate != MicroCeilingSaturationGate::Off ||
             (micro_ceiling_scan_nodes_per_decade != 8 &&
              !(defaults &&
                defaults->micro_ceiling_scan_nodes_per_decade ==
@@ -993,6 +1041,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "RichardsMechanics: {} micro_ceiling_pu_tangent and "
                 "micro_ceiling_sw_tangent (other than "
                 "overwritten), micro_ceiling_fd_check, "
+                "micro_ceiling_saturation_gate (other than off), "
                 "micro_ceiling_scan_nodes_per_decade and "
                 "micro_ceiling_trace_elements require "
                 "micro_ceiling_treatment = kkt.",
@@ -1090,7 +1139,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         micro_ceiling_fd_check,
         micro_ceiling_scan_nodes_per_decade,
         micro_ceiling_trace_elements,
-        micro_ceiling_sw_tangent};
+        micro_ceiling_sw_tangent,
+        micro_ceiling_saturation_gate};
 }
 
 template <int DisplacementDim>
