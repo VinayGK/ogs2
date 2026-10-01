@@ -5174,6 +5174,12 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         kkt_Kpu_exchange = ShapeMatricesTypeDisplacement::template MatrixType<
             pressure_size, displacement_size>::Zero(pressure_size,
                                                     displacement_size);
+    // Counters of the assembler-level check of CODE_FIXES.md F-1 (diagnostic
+    // only, no influence on the assembled values): KKT-active IPs of this
+    // element with a non-zero strain increment and a mass-balance porosity law,
+    // and among them the ones with dphi/deps_v == 0.
+    unsigned kkt_active_ip_straining = 0;
+    unsigned kkt_dphi_zero_with_strain = 0;
 
     auto const& medium =
         this->process_data_.media_map.getMedium(this->element_.getID());
@@ -5666,6 +5672,12 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             (variables.effective_pore_pressure -
                              variables_prev.effective_pore_pressure) *
                                 beta_SR;  // [-]
+                        // Comment only (CODE_FIXES.md F-1): variables_prev.
+                        // porosity here is the value left by the micro update
+                        // (capped sum at a compacting IP), not the phi_prev of
+                        // the porosity law. Left unchanged on purpose: this
+                        // entry is erased by `local_Jac.pu = Kpu/dt` (Q9) and
+                        // the shipped behaviour must stay bitwise reachable.
                         double const phi_unclamped_B =
                             (variables_prev.porosity + alpha * w_B) /
                             (1.0 + w_B);  // [-]
@@ -5724,14 +5736,42 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         double const d_eps_kkt =
                             variables.volumetric_strain -
                             variables_prev.volumetric_strain;  // [-]
-                        double const dphi_deps_v_kkt =
+                        // CODE FIX (CODE_FIXES.md F-1): the porosity law was
+                        // evaluated with phi_prev = PrevState<PorosityData>->phi
+                        // (assembleWithJacobianEvalConstitutiveSetting, porosity
+                        // update). By now the KKT dispatch has overwritten
+                        // variables_prev.porosity with the CAPPED sum
+                        // min(phi_M_prev + phi_m_prev, phi) (applyReference-
+                        // MassStorageLocalState -> computeTransportPorosityUpdate),
+                        // which equals phi at a compacting IP (d_eps < 0) and
+                        // made the clamp test of the helper fire spuriously
+                        // (dphi/deps_v = 0). The derivative must use the same
+                        // phi_prev as the law: read the stored previous state.
+                        double const phi_prev_law =
+                            std::get<PrevState<ProcessLib::
+                                                   ThermoRichardsMechanics::
+                                                       PorosityData>>(
+                                this->prev_states_[ip])
+                                ->phi;  // [-]
+                        bool const kkt_porosity_law_is_mass_balance =
                             dynamic_cast<MPL::PorosityFromMassBalance const*>(
                                 &medium->property(
-                                    MPL::PropertyType::porosity))
+                                    MPL::PropertyType::porosity)) != nullptr;
+                        double const dphi_deps_v_kkt =
+                            kkt_porosity_law_is_mass_balance
                                 ? porosityDerivativeWrtVolumetricStrain(
-                                      alpha, phi, variables_prev.porosity,
-                                      d_eps_kkt)
+                                      alpha, phi, phi_prev_law, d_eps_kkt)
                                 : 0.0;  // [-]
+                        // Assembler-level check (CODE_FIXES.md F-1): active IPs
+                        // whose strain increment is non-zero, and among them
+                        // those whose dphi/deps_v came out exactly 0 (clamp
+                        // flag of the helper). Logged by the KKT-FD line only.
+                        if (kkt_porosity_law_is_mass_balance && d_eps_kkt != 0.0)
+                        {
+                            ++kkt_active_ip_straining;
+                            kkt_dphi_zero_with_strain +=
+                                (dphi_deps_v_kkt == 0.0) ? 1u : 0u;
+                        }
                         auto const tangents_kkt =
                             computeCeilingKktActiveExchangeTangents(
                                 s_kkt, d_eps_kkt, phi, rho_lR_kkt,
@@ -7051,13 +7091,15 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     "max_rel_dev={:.6e} (relative to the larger of the two block "
                     "maxima) max_abs_analytic={:.6e} max_abs_fd={:.6e} "
                     "h_rel={:.3e} x_scale_p={:.3e}{} x_scale_u={:.3e}{} "
-                    "pu_tangent={}",
+                    "pu_tangent={} kkt_active_ip_straining={} "
+                    "kkt_dphi_zero_with_strain={}",
                     t, dt, this->element_.getID(), element_class, n_active_ip,
                     n_integration_points, name, max_abs_dev, max_rel_dev,
                     max_abs_an, max_abs_fd, h_rel, scale_p,
                     fallback_p ? "(fallback 1)" : "", scale_u,
                     fallback_u ? "(fallback 1)" : "",
-                    toString(pep_fd->micro_ceiling_pu_tangent));
+                    toString(pep_fd->micro_ceiling_pu_tangent),
+                    kkt_active_ip_straining, kkt_dphi_zero_with_strain);
             };
             constexpr int np = static_cast<int>(pressure_size);
             constexpr int nu = static_cast<int>(displacement_size);
