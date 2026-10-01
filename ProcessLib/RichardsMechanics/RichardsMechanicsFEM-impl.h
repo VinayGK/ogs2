@@ -1774,12 +1774,16 @@ inline MicroCeilingKktSolveData solveReferenceMassStorageKktState(
         auto const density = computeReducedMicroLiquidDensity(
             n_l, rho_LR, active_nS, potential_exchange_params);
         double const rho_lR = density.rho_lR;
-        // Live-nS chain (F2) only enters the derivative dmu_lR_dnl, not values.
-        double const dnS_dnl =
-            potential_exchange_params.micro_solid_volume_fraction_mode ==
-                    MicroSolidVolumeFractionMode::CurrentPorositySplit
-                ? -1.0
-                : 0.0;
+        // C5 (unit-test finding, 2026-10-01): the VALUE of mu_lR must be
+        // evaluated exactly as the base residual `evaluate` of
+        // solveReferenceMassStorageCoupledState does, with the nS chain FROZEN
+        // (dnS_dnl = 0). The live-nS chain (F2, dnS_dnl = -1 under
+        // CurrentPorositySplit) changes dmu_lR_dnl and, through
+        // Pi' = -rho_lR*dmu_lR_dnl, ALSO the value of the integrable Maxwell
+        // partner (Pi + n_l*Pi')*eps_v: the comment of C2 ("only the derivative,
+        // not values") was wrong whenever the film term is on and eps_v != 0.
+        // The tangent potential below carries the live chain, as the base
+        // analytic Jacobian `evaluate_analytic_jacobian` does.
         auto micro_potential = computeVanDerWaalsMicroPotential(
             n_l, rho_lR, active_nS,
             potential_exchange_params.micro_solid_density_reference,
@@ -1789,11 +1793,30 @@ inline MicroCeilingKktSolveData solveReferenceMassStorageKktState(
             effectiveAugmentationPrefactor(potential_exchange_params,
                                            local_context.phi),  // K [J/kg]
             potential_exchange_params.potential_augmentation_exponent,
-            dnS_dnl, potential_exchange_params.micro_water_content_floor);
+            0.0 /*dnS_dnl: frozen nS, as the base residual*/,
+            potential_exchange_params.micro_water_content_floor);
         // Film coupling is always on (D-1.8): this folds the Maxwell partner
-        // mu_m into mu_lR and into dmu_lR_dnl, dmu_lR_drho_lR, exactly as the
-        // base solve does.
+        // mu_m into mu_lR, exactly as the base residual does.
         applyFilmPressureMicroPotential(micro_potential, n_l, rho_lR,
+                                        active_nS, local_context,
+                                        potential_exchange_params);
+        // Tangent potential (live-nS chain), for J11 and J12 only.
+        double const dnS_dnl =
+            potential_exchange_params.micro_solid_volume_fraction_mode ==
+                    MicroSolidVolumeFractionMode::CurrentPorositySplit
+                ? -1.0
+                : 0.0;
+        auto micro_potential_tan = computeVanDerWaalsMicroPotential(
+            n_l, rho_lR, active_nS,
+            potential_exchange_params.micro_solid_density_reference,
+            potential_exchange_params.hamaker_constant,
+            potential_exchange_params.specific_surface,
+            microPotentialSignFactorFromParameters(potential_exchange_params),
+            effectiveAugmentationPrefactor(potential_exchange_params,
+                                           local_context.phi),  // K [J/kg]
+            potential_exchange_params.potential_augmentation_exponent,
+            dnS_dnl, potential_exchange_params.micro_water_content_floor);
+        applyFilmPressureMicroPotential(micro_potential_tan, n_l, rho_lR,
                                         active_nS, local_context,
                                         potential_exchange_params);
         double const mu_LR_active = macro_potential.mu_LR;
@@ -1823,10 +1846,10 @@ inline MicroCeilingKktSolveData solveReferenceMassStorageKktState(
         double const drho_l_drho_lR = (1.0 - phi_cs) / one_minus_n_l_cs * n_l;
         double const J11 = drho_l_dnl * time_factor +
                            dt_safe * alpha_M_effective *
-                               micro_potential.dmu_lR_dnl;
+                               micro_potential_tan.dmu_lR_dnl;
         double const J12 = drho_l_drho_lR * time_factor +
                            dt_safe * alpha_M_effective *
-                               micro_potential.dmu_lR_drho_lR;
+                               micro_potential_tan.dmu_lR_drho_lR;
         Evaluation out;
         out.f = f;
         out.S_s = storage_term / dt_safe;
