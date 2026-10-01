@@ -2327,3 +2327,21 @@ What changed (tangent only, the residual is untouched): at a KKT-active IP the K
 Switch absent or `overwritten`: bitwise identical to C8 (Model I dd1600, Reference, Model IV up to 27.8 d: every array of every frame, max abs diff 0). Switch on: the converged states agree only up to the discretisation of a changed dt history, not bitwise.
 MEASURED (record folder, details there): unit test UT-A (32 cases, central differences of the real residual function) passes; in-assembler FD check on Model IV, steps 472 to 474: true/assembled K_uu at the Active pellet cell 1.68 to 1.70 -> 1.0000 (relative deviation 0.41 -> 6e-11), over all Active elements 1.2e-2 -> 1.7e-11 (median); Newton at step 473: 24 iterations with a constant factor 0.71 -> 6 iterations (first ratios 0.027, 0.027, 0.082, 0.013); the former stall at 29.4 d is passed (dt grows to 8.6e4 s, 4 to 6 iterations per step), the deck then fails at 50.2 d with a different signature (constant |dx|_p = 198.1 Pa, displacements converged): not diagnosed here.
 Not covered: the residual's p_conf is the previous iterate's, the Jacobian's is the current one (a lag channel no tangent of this kind removes; the FD check does not see it).
+
+### 2026-10-01 (afternoon) - latched saturation gate (written on branch dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01 from C8 37aea6543d, cherry-picked here, see the INTEGRATE entry): latched saturation gate for Model VII (NOT adopted, switchable)
+
+Implement part B.4 of `~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/DESIGN_FIXES.md` as specified by Vinay. His ruling (chat 2026-10-01 ~15:15 CEST, "yes to both, keep full weight and k_rel = 1",
+decision ledger `~/ogs-models/scratch/2026-09-30_decision_ledger/DECISION_LEDGER.md`, last entry): at a latched KKT-active point (phi_M = 0, gas-free) the macro pore pressure p_L keeps the full
+Bishop weight (chi = 1, B.4a) and k_rel = 1 (B.4b), i.e. the latched gate at level `bishop_relperm`; `bishop` stays only a labelled probe. Results obtained with the gate are labelled
+"weight-1 reading (ruled)". New PRJ tag in `<potential_exchange>` (legal only with `micro_ceiling_treatment = kkt`): `micro_ceiling_saturation_gate` = `off` (default, bitwise the C8 code) |
+`bishop_relperm` | `bishop`. New stateful per-integration-point field `micro_saturated_latch` (`MicroSaturatedLatch`; output name `micro_saturated_latch_ip`), saved and restored with the
+other history through the previous-state copy of every accepted step.
+Rule: L_new = (status == Active) AND (L_old OR chi_deck(S_L) == 1), the trigger being the exact comparison with the deck's own Bishop factor (BishopsSaturationCutoff returns exactly 0 or 1;
+no tolerance literal). In an iterate with L_old = true and status Active: chi = chi_deck(S = 1), chi_prev = chi_deck(S = 1), dchi/dS = 0, p_FR follows, and (bishop_relperm) k_rel = k_rel(S = 1) with
+dk_rel/dS = 0 in the p-p entries. The same block runs in the output re-evaluation. NOT changed: S_L, the Tuller retention, storage, exchange, the Biot term T_m, the output saturation, the mass books.
+`assemble()` (Picard) is not gated. Release: a latched point that leaves Active in an iterate falls back to the deck rules (jump of the same kind as the existing active-set switch); the latch is
+cleared at the end of a converged step in which the point is not Active. Open (design B.6 (b), (e)): the release and a possible next carrier, the Biot weight S_L at large suction; not tested by this change.
+Tests: `Tests/ProcessLib/RichardsMechanics/SaturationGate.cpp` (supplement). Record: `~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/IMPLEMENT_B.md`.
+Merge note: the aggregate initialiser of `PotentialExchangeParameters` takes the new member LAST (after `micro_ceiling_trace_elements`); the Model IV tangent branch (part A, commits A1 to A3 on
+`dsm_mass_conservation_v3_kkt_ceiling_2026-09-30`) also adds a member, a parser line and an initialiser entry, and edits `RichardsMechanicsFEM-impl.h` (K_uu block), so the two branches conflict
+textually in `PotentialExchangeParameters.h` and `CreateRichardsMechanicsProcess.cpp` (hand merge: both members, initialiser order) and are expected to merge cleanly elsewhere (not tried).
