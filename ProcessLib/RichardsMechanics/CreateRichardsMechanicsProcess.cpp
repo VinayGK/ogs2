@@ -113,6 +113,24 @@ MicroCeilingPuTangent parseMicroCeilingPuTangent(std::string const& value)
         value);
 }
 
+MicroCeilingSwTangent parseMicroCeilingSwTangent(std::string const& value)
+{
+    if (value == "overwritten")
+    {
+        return MicroCeilingSwTangent::Overwritten;
+    }
+    if (value == "kkt_active")
+    {
+        return MicroCeilingSwTangent::KktActive;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_sw_tangent '{}'. Currently supported: 'overwritten', "
+        "'kkt_active'.",
+        value);
+}
+
 // Element ids of micro_ceiling_trace_elements: whitespace separated unsigned
 // integers; empty string = no element.
 std::vector<std::size_t> parseMicroCeilingTraceElements(
@@ -853,6 +871,11 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "micro_ceiling_pu_tangent",
             defaults ? toString(defaults->micro_ceiling_pu_tangent)
                      : "overwritten"));
+    auto const micro_ceiling_sw_tangent = parseMicroCeilingSwTangent(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_sw_tangent",
+            defaults ? toString(defaults->micro_ceiling_sw_tangent)
+                     : "overwritten"));
     auto const micro_ceiling_fd_check = config.getConfigParameter<bool>(
         "micro_ceiling_fd_check",
         defaults ? defaults->micro_ceiling_fd_check : false);
@@ -910,6 +933,22 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "1.8).",
                 context, toString(film_strain_coupling));
         }
+        // Model IV tangent term (DESIGN_FIXES.md A.6): the derivative of the
+        // swelling eigenstress on the active branch is derived for the reference
+        // micro solid fraction (dn_S/dn_l = 0 in the vdW law and in n_S), with
+        // the strained-film modes off (already required above).
+        if (micro_ceiling_sw_tangent != MicroCeilingSwTangent::Overwritten &&
+            micro_solid_volume_fraction_mode !=
+                MicroSolidVolumeFractionMode::Reference)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_sw_tangent = {} requires "
+                "micro_solid_volume_fraction_mode = reference (got '{}'): "
+                "with a live n_S the vdW law and n_S add chains that are not "
+                "derived for the active-branch swelling tangent.",
+                context, toString(micro_ceiling_sw_tangent),
+                toString(micro_solid_volume_fraction_mode));
+        }
         if (micro_ceiling_scan_nodes_per_decade < 2)
         {
             OGS_FATAL(
@@ -921,7 +960,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         INFO(
             "MASSFIX V3 label: micro_ceiling_treatment = kkt, F3 sign s = {} "
             "(micro_mass_strain_term_eulerian = {}), "
-            "micro_ceiling_pu_tangent = {}, "
+            "micro_ceiling_pu_tangent = {}, micro_ceiling_sw_tangent = {}, "
             "micro_ceiling_scan_nodes_per_decade = {}, "
             "macro_storage_uses_macro_porosity = {}, "
             "micro_ceiling_fd_check = {}, trace elements = {}. "
@@ -933,6 +972,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "evaluation and is not claimed consistent. NOT adopted.",
             micro_mass_strain_term_eulerian ? "-1" : "+1",
             micro_mass_strain_term_eulerian, toString(micro_ceiling_pu_tangent),
+            toString(micro_ceiling_sw_tangent),
             micro_ceiling_scan_nodes_per_decade,
             macro_storage_uses_macro_porosity, micro_ceiling_fd_check,
             micro_ceiling_trace_elements.size());
@@ -941,6 +981,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
     {
         // 2.2 item 3: the other tags require kkt.
         if (micro_ceiling_pu_tangent != MicroCeilingPuTangent::Overwritten ||
+            micro_ceiling_sw_tangent != MicroCeilingSwTangent::Overwritten ||
             micro_ceiling_fd_check ||
             !micro_ceiling_trace_elements.empty() ||
             (micro_ceiling_scan_nodes_per_decade != 8 &&
@@ -949,7 +990,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                    micro_ceiling_scan_nodes_per_decade)))
         {
             OGS_FATAL(
-                "RichardsMechanics: {} micro_ceiling_pu_tangent (other than "
+                "RichardsMechanics: {} micro_ceiling_pu_tangent and "
+                "micro_ceiling_sw_tangent (other than "
                 "overwritten), micro_ceiling_fd_check, "
                 "micro_ceiling_scan_nodes_per_decade and "
                 "micro_ceiling_trace_elements require "
@@ -1047,7 +1089,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         micro_ceiling_pu_tangent,
         micro_ceiling_fd_check,
         micro_ceiling_scan_nodes_per_decade,
-        micro_ceiling_trace_elements};
+        micro_ceiling_trace_elements,
+        micro_ceiling_sw_tangent};
 }
 
 template <int DisplacementDim>

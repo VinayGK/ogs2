@@ -220,6 +220,23 @@ enum class MicroCeilingPuTangent
     AllExchange
 };
 
+// Model IV tangent term (DESIGN_FIXES.md part A, 2026-10-01): does the swelling
+// eigenstress delta_sigma_sw reach Newton through the strain derivative that it
+// has on the KKT-active branch (n_l = n_max(eps_v) = phi(eps_v))?
+//   Overwritten (default): the K_uu swelling block stays as shipped (explicit
+//     live-K chain only, read with variables_prev.porosity) and is bitwise the
+//     tree without the switch.
+//   KktActive: at the KKT-active integration points K_uu gets the total
+//     derivative d(delta_sigma_sw)/d eps_v = [dK-chain + (partial in n_l) +
+//     (partial in rho_lR) d rho_lR/d n_l] dphi/d eps_v, with the previous
+//     porosity of the porosity law in the dphi/d eps_v of the live-K chain.
+//     The residual is NOT changed (tangent only).
+enum class MicroCeilingSwTangent
+{
+    Overwritten,
+    KktActive
+};
+
 inline constexpr char const* toString(
     MicroPotentialConvention const convention)
 {
@@ -325,6 +342,18 @@ inline constexpr char const* toString(MicroCeilingTreatment const t)
             return "clamp";
         case MicroCeilingTreatment::Kkt:
             return "kkt";
+    }
+    return "unknown";
+}
+
+inline constexpr char const* toString(MicroCeilingSwTangent const t)
+{
+    switch (t)
+    {
+        case MicroCeilingSwTangent::Overwritten:
+            return "overwritten";
+        case MicroCeilingSwTangent::KktActive:
+            return "kkt_active";
     }
     return "unknown";
 }
@@ -543,6 +572,10 @@ struct PotentialExchangeParameters
     // Element ids whose integration points write the iteration trace
     // (DESIGN.md 3.8). Empty = off (no cost).
     std::vector<std::size_t> micro_ceiling_trace_elements;
+    // Model IV tangent term (DESIGN_FIXES.md part A); only legal with
+    // micro_ceiling_treatment = kkt. Default = shipped behaviour, bitwise.
+    MicroCeilingSwTangent micro_ceiling_sw_tangent =
+        MicroCeilingSwTangent::Overwritten;
 };
 
 // True when the KKT treatment of the micro-water ceiling is selected.
