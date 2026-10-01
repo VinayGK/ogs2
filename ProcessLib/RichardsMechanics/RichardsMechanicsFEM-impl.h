@@ -651,6 +651,89 @@ inline ReducedMicroLiquidDensityData computeActiveMicroLiquidDensity(
     return computeReducedMicroLiquidDensity(n_l, rho_LR, active_nS, potential_exchange_params);
 }
 
+// Model IV tangent term (DESIGN_FIXES.md A.2, 2026-10-01). Partials of the
+// scalar s_sw of the film-ON swelling eigenstress increment
+//   delta_sigma_sw = s_sw * I,
+//   s_sw = n_S ( n_l_prev p_film_prev - n_l p_film ),
+//   p_film = Pi(n_l, rho_lR, K) - b p_conf,   Pi = -rho_pi mu_vdW(n_l, rho_lR, K),
+// (computeReferenceMicroPorositySwellingStressIncrement, film branch) with respect
+// to the micro water content n_l and the micro liquid density rho_lR, at FIXED
+// K, p_conf, n_S and previous state. rho_pi = rho_lR when
+// use_micro_liquid_density_for_micro_pressure, else the bulk density rho_LR.
+// w_eval = n_l (film_strain_coupling = off, required by the kkt treatment) and
+// the reference micro solid fraction (dnS/dn_l = 0), as in the residual.
+//   d s/d n_l   = -n_S ( p_film + n_l dPi/dn_l ),   dPi/dn_l = -rho_pi dmu/dn_l
+//   d s/d rho_lR = -n_S n_l dPi/d rho_lR,
+//   dPi/d rho_lR = -( (d rho_pi/d rho_lR) mu + rho_pi dmu/d rho_lR ).
+// A non-finite p_conf drops the p_conf term, as the residual does (NaN sentinel).
+// Free function so that a unit test can call it without the assembler.
+struct KktActiveSwellingNlTangent
+{
+    double Pi = 0.0;       // [Pa] bare disjoining pressure at (n_l, rho_lR, K)
+    double p_film = 0.0;   // [Pa] Pi - b p_conf
+    double ds_dn = 0.0;    // [Pa per unit n_l]
+    double ds_drho = 0.0;  // [Pa per kg/m3] w.r.t. the micro density rho_lR
+    // Pa per kg/m3 w.r.t. the BULK density rho_LR through rho_pi (current and
+    // previous Pi), at fixed rho_lR: non-zero only when
+    // use_micro_liquid_density_for_micro_pressure is false.
+    double ds_drhoLR_direct = 0.0;
+};
+
+inline KktActiveSwellingNlTangent computeKktActiveSwellingNlTangent(
+    double const n_S, double const n_l, double const rho_lR,
+    double const rho_LR, double const K_aug, double const biot_coefficient,
+    double const p_conf, double const n_l_prev, double const rho_lR_prev,
+    PotentialExchangeParameters const& potential_exchange_params)
+{
+    auto const& params = potential_exchange_params;
+    double const active_nS = computeActiveMicroSolidVolumeFraction(
+        n_l, PotentialExchangeLocalSolveContext{}, params);  // [-]
+    auto const vdw = computeVanDerWaalsMicroPotential(
+        n_l, rho_lR, active_nS, params.micro_solid_density_reference,
+        params.hamaker_constant, params.specific_surface,
+        microPotentialSignFactorFromParameters(params), K_aug,
+        params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
+        params.micro_water_content_floor);
+    bool const micro_density =
+        params.use_micro_liquid_density_for_micro_pressure;
+    double const rho_pi = micro_density ? rho_lR : rho_LR;     // [kg/m3]
+    double const drho_pi_drho = micro_density ? 1.0 : 0.0;     // [-]
+    double const Pi = -rho_pi * vdw.mu_lR;                     // [Pa]
+    double const dPi_dn = -rho_pi * vdw.dmu_lR_dnl;            // [Pa]
+    double const dPi_drho =
+        -(drho_pi_drho * vdw.mu_lR + rho_pi * vdw.dmu_lR_drho_lR);  // Pa m3/kg
+    // rho_pi = rho_LR (bulk) when the micro density is not used: Pi depends on
+    // rho_LR directly through rho_pi, d rho_pi/d rho_LR = 1 - drho_pi_drho.
+    double const dPi_drhoLR_direct =
+        -(1.0 - drho_pi_drho) * vdw.mu_lR;  // Pa m3/kg
+    // The residual evaluates the PREVIOUS Pi with the same rho_pi: with the bulk
+    // density it depends on the current rho_LR too (its n_l_prev-weighted term).
+    double ds_drhoLR_direct_prev = 0.0;  // Pa m3/kg
+    if (!micro_density)
+    {
+        double const active_nS_prev = computeActiveMicroSolidVolumeFraction(
+            n_l_prev, PotentialExchangeLocalSolveContext{}, params);  // [-]
+        double const mu_prev =
+            computeVanDerWaalsMicroPotential(
+                n_l_prev, rho_lR_prev, active_nS_prev,
+                params.micro_solid_density_reference, params.hamaker_constant,
+                params.specific_surface,
+                microPotentialSignFactorFromParameters(params), K_aug,
+                params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
+                params.micro_water_content_floor)
+                .mu_lR;  // J/kg
+        ds_drhoLR_direct_prev = n_S * n_l_prev * (-mu_prev);
+    }
+    double const p_conf_used = std::isfinite(p_conf) ? p_conf : 0.0;  // [Pa]
+    double const p_film = Pi - biot_coefficient * p_conf_used;        // [Pa]
+    return {.Pi = Pi,
+            .p_film = p_film,
+            .ds_dn = -n_S * (p_film + n_l * dPi_dn),
+            .ds_drho = -n_S * n_l * dPi_drho,
+            .ds_drhoLR_direct =
+                -n_S * n_l * dPi_drhoLR_direct + ds_drhoLR_direct_prev};
+}
+
 // ── Film-pressure folding (maxwell sec.5), shared by every local micro solve ──
 // Given a BARE van-der-Waals micro potential `out` (already evaluated at this
 // n_l with the SAME rho_lR_used the vdW formula consumed), ADD the smoothly-
@@ -5180,6 +5263,13 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
     // and among them the ones with dphi/deps_v == 0.
     unsigned kkt_active_ip_straining = 0;
     unsigned kkt_dphi_zero_with_strain = 0;
+    // Model IV tangent term (micro_ceiling_sw_tangent = kkt_active; log only):
+    // sums over the KKT-active IPs of this element of the two shares of
+    // d(delta_sigma_sw)/d eps_v [Pa]: the explicit live-K chain and the implicit
+    // n_l/rho_lR channel (the new term). Logged as means by the KKT-FD line.
+    unsigned kkt_sw_ip_count = 0;
+    double kkt_sw_explicit_sum = 0.0;  // [Pa]
+    double kkt_sw_implicit_sum = 0.0;  // [Pa]
 
     auto const& medium =
         this->process_data_.media_map.getMedium(this->element_.getID());
@@ -6254,6 +6344,15 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     // K, film coupling OFF) keeps the residual dependence without
                     // the matching tangent (the 1b_A step-1 divergence).
                     // JACOBIAN-ONLY: residual untouched.
+                    // Model IV tangent term (DESIGN_FIXES.md A.6): at the
+                    // KKT-active IPs, with micro_ceiling_sw_tangent = kkt_active,
+                    // (i) the live-K chain below reads the previous porosity of
+                    // the porosity law (A.4 defect 2) and (ii) the implicit
+                    // n_l / rho_lR channel is added after this block.
+                    bool const sw_tangent_active =
+                        kkt_active &&
+                        potential_exchange_params_ptr->micro_ceiling_sw_tangent ==
+                            MicroCeilingSwTangent::KktActive;
                     if (potential_exchange_params_ptr
                             ->potential_augmentation_prefactor_live_dry_density)
                     {
@@ -6416,8 +6515,22 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             // (flat in eps_v/p there); detect via unclamped vs
                             // stored phi (bounds are private). Same logic as the
                             // live-K p-u block below.
+                            // A.4 defect 2 (same defect as CODE_FIXES.md F-1):
+                            // by now variables_prev.porosity is the capped sum
+                            // left by the KKT micro update, equal to phi at a
+                            // compacting active IP; the clamp test then fired and
+                            // dphi/deps_v was 0. Under sw_tangent_active the
+                            // derivative uses the phi_prev of the porosity law.
+                            double const phi_prev_read_sw =
+                                sw_tangent_active
+                                    ? std::get<PrevState<
+                                          ProcessLib::ThermoRichardsMechanics::
+                                              PorosityData>>(
+                                          this->prev_states_[ip])
+                                          ->phi
+                                    : variables_prev.porosity;  // [-]
                             double const phi_unclamped_sw =
-                                (variables_prev.porosity + alpha * w_phi_sw) /
+                                (phi_prev_read_sw + alpha * w_phi_sw) /
                                 (1.0 + w_phi_sw);  // [-]
                             bool const clamp_active_sw =
                                 std::abs(phi_unclamped_sw - phi) >
@@ -6434,6 +6547,11 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             double dsig_sw_deps_v_scalar =
                                 d_delta_sigma_sw_dK_scalar * dK_dphi_sw *
                                 dphi_deps_v_sw;  // Pa per unit strain
+                            if (sw_tangent_active)
+                            {
+                                kkt_sw_explicit_sum +=
+                                    dsig_sw_deps_v_scalar;  // log only
+                            }
                             double dsig_sw_dp_scalar =
                                 d_delta_sigma_sw_dK_scalar * dK_dphi_sw *
                                 dphi_dp_sw;  // Pa/Pa
@@ -6562,6 +6680,110 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     displacement_index, pressure_index)
                                 .noalias() += B.transpose() * C_consistent_sw *
                                               C_el_inv_sw * dsig_sw_dp * N_p * w;
+                        }
+                    }
+
+                    // ── Model IV tangent term (DESIGN_FIXES.md A.2, A.6; NOT
+                    // adopted) ─────────────────────────────────────────────────
+                    // On the KKT-active branch n_l = n_max(eps_v) = phi(eps_v),
+                    // phi_M = 0 identically (n_S = 1, dn_S/deps_v = 0), rho_lR =
+                    // rho_EOS(n_l; rho_LR), K = K(phi), beta_SR = 0. The strain
+                    // derivative of s_sw = n_S (n_prev p_film_prev - n p_film) is
+                    //   ds/deps_v = [ (ds/dK)K'(phi) + ds/dn|rho,K
+                    //                 + (ds/drho)(drho/dn) ] dphi/deps_v.
+                    // The first bracket term is the live-K chain above (Pi_n and
+                    // the rest are NOT in it); the other two are added here, with
+                    // the film-ON partial p_film = Pi - b p_conf consistent with
+                    // the residual (A.4 defect 3). p_conf is the current-iterate
+                    // value p_conf_assembly; the residual used the previous
+                    // iterate's (A.5), a lag that no tangent of this kind removes.
+                    // Mapped like the block above (C C_el^{-1} ds I). K_up: the
+                    // rho_lR(p_L) channel only (zero for beta_LR = 0). Gate:
+                    // sw_tangent_active; otherwise nothing here executes.
+                    if (sw_tangent_active)
+                    {
+                        auto const& pep_swk = *potential_exchange_params_ptr;
+                        double const phi_M_swk =
+                            std::get<ProcessLib::ThermoRichardsMechanics::
+                                         TransportPorosityData>(
+                                this->current_states_[ip])
+                                .phi;
+                        double const n_S_swk =
+                            std::max(1e-16, 1.0 - phi_M_swk);  // [-]
+                        double const rho_lR_swk = *std::get<MicroLiquidDensity>(
+                            this->current_states_[ip]);  // kg/m3
+                        auto const swk = computeKktActiveSwellingNlTangent(
+                            n_S_swk, n_l, rho_lR_swk, rho_LR,
+                            effectiveAugmentationPrefactor(pep_swk, phi), alpha,
+                            p_conf_assembly,
+                            **std::get<PrevState<MicroWaterContent>>(
+                                this->prev_states_[ip]),
+                            **std::get<PrevState<MicroLiquidDensity>>(
+                                this->prev_states_[ip]),
+                            pep_swk);
+                        auto const eos_swk = computeActiveMicroLiquidDensity(
+                            n_l, rho_LR, local_solve_context, pep_swk);
+                        double const phi_prev_law_swk =
+                            std::get<PrevState<ProcessLib::
+                                                   ThermoRichardsMechanics::
+                                                       PorosityData>>(
+                                this->prev_states_[ip])
+                                ->phi;  // [-]
+                        bool const porosity_law_is_mass_balance_swk =
+                            dynamic_cast<MPL::PorosityFromMassBalance const*>(
+                                &medium->property(
+                                    MPL::PropertyType::porosity)) != nullptr;
+                        double const dphi_deps_v_swk =
+                            porosity_law_is_mass_balance_swk
+                                ? porosityDerivativeWrtVolumetricStrain(
+                                      alpha, phi, phi_prev_law_swk,
+                                      variables.volumetric_strain -
+                                          variables_prev.volumetric_strain)
+                                : 0.0;  // [-]
+                        // Pa per unit n_l: partial in n_l plus the EOS chain.
+                        double const ds_dn_total_swk =
+                            swk.ds_dn +
+                            swk.ds_drho * eos_swk.drho_lR_dnl;  // Pa
+                        double const dsig_sw_deps_v_swk =
+                            ds_dn_total_swk * dphi_deps_v_swk;  // Pa
+                        double const dsig_sw_dp_swk =
+                            (swk.ds_drho * eos_swk.drho_lR_drho_LR +
+                             swk.ds_drhoLR_direct) *
+                            rho_LR * beta_LR;  // Pa/Pa
+                        ++kkt_sw_ip_count;
+                        kkt_sw_implicit_sum += dsig_sw_deps_v_swk;  // log only
+                        if (dsig_sw_deps_v_swk != 0.0 || dsig_sw_dp_swk != 0.0)
+                        {
+                            auto const& C_consistent_swk =
+                                *std::get<StiffnessTensor<DisplacementDim>>(
+                                    constitutive_data);
+                            auto const C_el_swk =
+                                ip_data_[ip].computeElasticTangentStiffness(
+                                    variables, t, x_position, dt,
+                                    this->solid_material_,
+                                    *this->material_states_[ip]
+                                         .material_state_variables);
+                            auto const C_el_inv_swk = C_el_swk.inverse().eval();
+                            MathLib::KelvinVector::KelvinVectorType<
+                                DisplacementDim> const dsig_deps_v_vec =
+                                dsig_sw_deps_v_swk * identity2;  // Pa
+                            MathLib::KelvinVector::KelvinVectorType<
+                                DisplacementDim> const dsig_dp_vec =
+                                dsig_sw_dp_swk * identity2;  // Pa
+                            local_Jac
+                                .template block<displacement_size,
+                                                displacement_size>(
+                                    displacement_index, displacement_index)
+                                .noalias() += B.transpose() * C_consistent_swk *
+                                              C_el_inv_swk * dsig_deps_v_vec *
+                                              identity2.transpose() * B * w;
+                            local_Jac
+                                .template block<displacement_size,
+                                                pressure_size>(
+                                    displacement_index, pressure_index)
+                                .noalias() += B.transpose() * C_consistent_swk *
+                                              C_el_inv_swk * dsig_dp_vec * N_p *
+                                              w;
                         }
                     }
 
@@ -7092,14 +7314,21 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     "maxima) max_abs_analytic={:.6e} max_abs_fd={:.6e} "
                     "h_rel={:.3e} x_scale_p={:.3e}{} x_scale_u={:.3e}{} "
                     "pu_tangent={} kkt_active_ip_straining={} "
-                    "kkt_dphi_zero_with_strain={}",
+                    "kkt_dphi_zero_with_strain={} sw_tangent={} "
+                    "sw_active_ip={} sw_explicit_mean={:.6e} "
+                    "sw_implicit_mean={:.6e}",
                     t, dt, this->element_.getID(), element_class, n_active_ip,
                     n_integration_points, name, max_abs_dev, max_rel_dev,
                     max_abs_an, max_abs_fd, h_rel, scale_p,
                     fallback_p ? "(fallback 1)" : "", scale_u,
                     fallback_u ? "(fallback 1)" : "",
                     toString(pep_fd->micro_ceiling_pu_tangent),
-                    kkt_active_ip_straining, kkt_dphi_zero_with_strain);
+                    kkt_active_ip_straining, kkt_dphi_zero_with_strain,
+                    toString(pep_fd->micro_ceiling_sw_tangent), kkt_sw_ip_count,
+                    kkt_sw_ip_count > 0 ? kkt_sw_explicit_sum / kkt_sw_ip_count
+                                        : 0.0,
+                    kkt_sw_ip_count > 0 ? kkt_sw_implicit_sum / kkt_sw_ip_count
+                                        : 0.0);
             };
             constexpr int np = static_cast<int>(pressure_size);
             constexpr int nu = static_cast<int>(displacement_size);
