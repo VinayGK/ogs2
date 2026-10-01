@@ -749,13 +749,26 @@ IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC 
       deleted) to superseded_references_2026-09-08/ in this directory.
       RE-BASELINED AGAIN 2026-09-08, campaign v2 (the ONLY change to this deck is <fixed_output_times> set to the
       organizers' data-collection 5-day grid, audit 2026-09-08_spec_audit_3x LANE2 finding 3; physics, BCs, mesh, knot
-      and numerics unchanged): the LIVE reference is now ms33_modelIV_pellets_ts_16527_t_17280000.000000.vtu
+      and numerics unchanged): the reference at that date was (HISTORY, SUPERSEDED 2026-09-30, see RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0) below) ms33_modelIV_pellets_ts_16527_t_17280000.000000.vtu
       (md5 1bc0d9e9689920fc198cef2651746af0, recomputed 2026-09-08 from the committed file), = the campaign-v2 run frame
       (~/ogs-models/scratch/2026-09-08_0936_gen5_conformant_v2_inflight/runs/IV/out, same md5, laptop and mac mini
       copies identical). Run: 16527 accepted steps, 0 rejected, 7957.37 s at OMP 6, binary maxwell-conjugate-20260602
       (md5 cea9d7d81972f732385b41a71e50f20e). The former reference ts_16008_t_17280000.000000.vtu is SUPERSEDED and was
       moved (git mv, never deleted) to superseded_references_2026-09-08_v2/. Same physical time (200 d); spec-frame
       probes move by <= 1.6e-5 MPa; vtkdiff old-vs-new (MEASURED, mac mini) in superseded_references_2026-09-08_v2/README.md.
+      RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0): the LIVE reference is now ms33_modelIV_pellets_ts_16494_t_17280000.000000.vtu
+      (md5 5da4f4e6a982bd192e78864180ce337b), = the last frame of run fx_IV of the IC-fix readiness suite (Shilpa's MBP,
+      ~/ogs-models/scratch/2026-09-30_readiness_icfix/runs/fx_IV/out/, full copy on the WD_elements drive under
+      run_outputs_2026-09-30/shilpas-macbook-pro/, same md5). Run: 16494 accepted steps, 0 rejected, rc 0, 16112.7 on a loaded 10-core host, the 2026-09-08 record run took 7957.4 on the MBP s (OMP 6),
+      patched binary bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3, OGS commit 686fcd6ef8 = the declared initial_micro_water_content realised in the previous micro porosity, with the K_fix table of this deck (K only; comment-stripped, this deck differs from
+      486235c679 in the K prefactor lines and nowhere else; physics, BCs, mesh, numerics, output times, tolerances unchanged).
+      The former reference ms33_modelIV_pellets_ts_16527_t_17280000.000000.vtu (md5 1bc0d9e9689920fc198cef2651746af0) is SUPERSEDED and was moved (git mv, never deleted) to
+      superseded_references_2026-09-30_icfix/ in this directory (README.md); it cannot pass by construction (the ctest wrapper pairs
+      output and reference by IDENTICAL file name and the step index changed) and, with this deck's own tolerances, passes 3 of 11 checks against the new frame
+      (MEASURED with vtkdiff on the mac mini, tables in that README). The sentence above that names the older frame as LIVE is HISTORY.
+      NOT run through ctest (the mini has no ctest, the patched binary was built with OGS_BUILD_TESTING=OFF): passing on the MBP is PREDICTED, not verified.
+      Ps = Dixon target after the K refit is CALIBRATION, not validation. Record: ~/ogs-models/scratch/2026-09-30_icfix_v0_recut/OGS_GATE.md and REPAIR_2.md.
+      The 900 knot of this deck stays the gen-4 point (floor 0.08, K 18469.1763367); the floor-0.0 K_fix 900 knot is NOT tested on the IV concentric mesh with the fixed binary.
       Physics anchor: (f) regression baseline previously approved by user.
       Reference = the SINGLE final-time output VTU committed beside this PRJ
       (timestep at t_end). vtkdiff (Applications/ApplicationsLib/

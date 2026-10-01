@@ -581,7 +581,7 @@ initial micro water content is set to the 99 MPa-equilibrium value.
     <!--
       ============================================================
       REGRESSION BASELINE (CLAUDE.md s3) - approved by Vinay 2026-06-23.
-      THIS DECK (ladder550, added 2026-09-08 campaign v2): the LIVE reference is
+      THIS DECK (ladder550, added 2026-09-08 campaign v2): the reference of the campaign v2 was (HISTORY, SUPERSEDED 2026-09-30, see RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0) below)
       ms33_modelVII_freeswelling_ladder550_ts_1304_t_47520000.000000.vtu
       (md5 255f08988a8b9fbbaf3d08be8c85c65d), byte-identical to the campaign frame
       <campaign v2>/runs/VII_550/out/ms33_modelVII_freeswelling_ts_1304_t_47520000.000000.vtu
@@ -591,7 +591,21 @@ initial micro water content is set to the 99 MPa-equilibrium value.
       headline-ladder question, which is RULED 2026-09-12 (Vinay: keep both variants of model vii): both
       ladders registered and reported, neither is the headline; that ruling does not
       by itself approve this reference. Tolerances are the parent deck's
-      two-tier set, unchanged. Every paragraph below this one is the PARENT deck's
+      two-tier set, unchanged.
+      RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0): the LIVE reference is now ms33_modelVII_freeswelling_ladder550_ts_1287_t_47520000.000000.vtu
+      (md5 d57025c5811e0df56b61f11977216f50), = the last frame of run fx_VII_550 of the IC-fix readiness suite (Shilpa's MBP,
+      ~/ogs-models/scratch/2026-09-30_readiness_icfix/runs/fx_VII_550/out/, full copy on the WD_elements drive under
+      run_outputs_2026-09-30/shilpas-macbook-pro/, same md5). Run: 1287 accepted steps, 0 rejected, rc 0, 466.5 s (OMP 2),
+      patched binary bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3, OGS commit 686fcd6ef8 = the declared initial_micro_water_content realised in the previous micro porosity, with the K_fix table of this deck (K only; comment-stripped, this deck differs from
+      486235c679 in the K prefactor lines and nowhere else; physics, BCs, mesh, numerics, output times, tolerances unchanged).
+      The former reference ms33_modelVII_freeswelling_ladder550_ts_1304_t_47520000.000000.vtu (md5 255f08988a8b9fbbaf3d08be8c85c65d) is SUPERSEDED and was moved (git mv, never deleted) to
+      superseded_references_2026-09-30_icfix/ in this directory (README_fx_VII_550.md); it cannot pass by construction (the ctest wrapper pairs
+      output and reference by IDENTICAL file name and the step index changed) and, with this deck's own tolerances, passes 4 of 11 checks against the new frame
+      (MEASURED with vtkdiff on the mac mini, tables in that README). The sentence above that names the older frame as LIVE is HISTORY.
+      NOT run through ctest (the mini has no ctest, the patched binary was built with OGS_BUILD_TESTING=OFF): passing on the MBP is PREDICTED, not verified.
+      Ps = Dixon target after the K refit is CALIBRATION, not validation. Record: ~/ogs-models/scratch/2026-09-30_icfix_v0_recut/OGS_GATE.md and REPAIR_2.md.
+      The approval status stated above (pending Vinay's explicit approval of this deck's reference) is unchanged and applies to the new frame; nothing here approves it.
+      Every paragraph below this one is the PARENT deck's
       reference lineage (ms33_modelVII_freeswelling_ts_*_t_20736000), inherited as
       history and not describing this deck's reference.
       RE-BASELINED 2026-08-12 (ratified by Vinay): the analytic micro 2x2
