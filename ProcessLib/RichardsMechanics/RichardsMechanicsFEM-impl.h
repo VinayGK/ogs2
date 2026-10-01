@@ -4891,21 +4891,25 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         return medium->property(MPL::PropertyType::bishops_effective_stress)
             .template value<double>(vs, x_position, t, dt);
     };
-    double const chi_S_L = chi(S_L);
+    // chi, chi_prev, dchi/dS and p_FR are not const: the latched saturation gate
+    // (micro_ceiling_saturation_gate, block after the micro update below)
+    // overwrites them at latched KKT-active points. With the gate off nothing
+    // below changes them and the arithmetic is the shipped one, bitwise.
+    double chi_S_L = chi(S_L);
     std::get<ProcessLib::ThermoRichardsMechanics::BishopsData>(constitutive_data).chi_S_L =
         chi_S_L;
-    double const chi_S_L_prev = chi(S_L_prev);
+    double chi_S_L_prev = chi(S_L_prev);
     std::get<PrevState<ProcessLib::ThermoRichardsMechanics::BishopsData>>(constitutive_data)
         ->chi_S_L = chi_S_L_prev;
 
-    auto const dchi_dS_L =
+    double dchi_dS_L =
         medium->property(MPL::PropertyType::bishops_effective_stress)
             .template dValue<double>(
                 variables, MPL::Variable::liquid_saturation, x_position, t, dt);
     std::get<ProcessLib::ThermoRichardsMechanics::BishopsData>(constitutive_data).dchi_dS_L =
         dchi_dS_L;
 
-    double const p_FR = -chi_S_L * p_cap_ip;
+    double p_FR = -chi_S_L * p_cap_ip;
     variables.effective_pore_pressure = p_FR;
     variables_prev.effective_pore_pressure = -chi_S_L_prev * p_cap_prev_ip;
 
@@ -5015,6 +5019,64 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
          .biot_coefficient = alpha,
          .drained_bulk_modulus = K_drained_micro_solve},
         micro_porosity_parameters, potential_exchange_parameters, trace_tag);
+
+    // Latched saturation gate (micro_ceiling_saturation_gate; branch
+    // dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01, design part B.4 of
+    // DESIGN_FIXES.md, ruled by Vinay 2026-10-01 ~15:15 CEST: weight-1 reading,
+    // k_rel = 1). The status of THIS iterate is known now (written by the micro
+    // update above); chi, chi_prev, dchi/dS, p_FR and k_rel are corrected
+    // before anything reads them (the assembly entries, the total stress for the
+    // permeability model, p_SR, k_rel below). S_L, the retention law, storage,
+    // exchange, the Biot term and the output saturation are not touched.
+    // Switch off (default): the block is skipped, bitwise the shipped code.
+    bool gate_relperm_acts = false;
+    if (potential_exchange_parameters != nullptr &&
+        potential_exchange_parameters->micro_ceiling_saturation_gate !=
+            MicroCeilingSaturationGate::Off)
+    {
+        auto const level =
+            potential_exchange_parameters->micro_ceiling_saturation_gate;
+        bool const status_active =
+            *std::get<MicroCeilingStatus>(state_current) ==
+            static_cast<double>(MicroCeilingKktStatus::Active);
+        // L_old: the latch of the converged previous step (a constant of the
+        // step, no derivative).
+        bool const latch_old =
+            **std::get<PrevState<MicroSaturatedLatch>>(state_previous) == 1.0;
+        // L_new of this iterate, stored in the current state; it becomes L_old
+        // when the step is accepted. chi_S_L is still the deck's chi(S_L) here.
+        *std::get<MicroSaturatedLatch>(state_current) =
+            nextSaturatedLatch(status_active, latch_old, chi_S_L) ? 1.0 : 0.0;
+        // Latched and Active: the point is gas-free (phi_M = 0), p_L keeps the
+        // full Bishop weight chi_deck(S = 1); S is a constant there, so
+        // dchi/dS = 0 and the chi entry of the Jacobian is -chi. Elsewhere the
+        // deck values pass through unchanged.
+        auto const gated = saturationGatedBishopFactors(
+            level, latch_old, status_active,
+            {chi_S_L, chi_S_L_prev, dchi_dS_L}, chi);
+        if (saturationGateActs(level, latch_old, status_active))
+        {
+            chi_S_L = gated.chi;
+            chi_S_L_prev = gated.chi_prev;
+            dchi_dS_L = gated.dchi_dS_L;
+            std::get<ProcessLib::ThermoRichardsMechanics::BishopsData>(
+                constitutive_data)
+                .chi_S_L = chi_S_L;
+            std::get<ProcessLib::ThermoRichardsMechanics::BishopsData>(
+                constitutive_data)
+                .dchi_dS_L = dchi_dS_L;
+            std::get<PrevState<ProcessLib::ThermoRichardsMechanics::BishopsData>>(
+                constitutive_data)
+                ->chi_S_L = chi_S_L_prev;
+            p_FR = -chi_S_L * p_cap_ip;  // Pa
+            variables.effective_pore_pressure = p_FR;
+            variables_prev.effective_pore_pressure =
+                -chi_S_L_prev * p_cap_prev_ip;  // Pa
+        }
+        gate_relperm_acts = saturationGateActsOnRelativePermeability(
+            level, latch_old, status_active);
+    }
+
     updatePorositySplitState<DisplacementDim>(
         state_current, state_previous, phi, variables, variables_prev,
         potential_exchange_parameters);
@@ -5106,9 +5168,23 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         material_state_data.material_state_variables
             ->getEquivalentPlasticStrain();
 
-    double const k_rel =
-        medium->property(MPL::PropertyType::relative_permeability)
+    // Gated k_rel (micro_ceiling_saturation_gate = bishop_relperm, latched
+    // Active point): k_rel(S = 1), a constant of the iterate (dk_rel/dS = 0 in
+    // the assembly). Otherwise the shipped evaluation at S_L, bitwise.
+    double const k_rel = [&]()
+    {
+        if (gate_relperm_acts)
+        {
+            variables.liquid_saturation = 1.0;
+            double const k_rel_unit_saturation =
+                medium->property(MPL::PropertyType::relative_permeability)
+                    .template value<double>(variables, x_position, t, dt);
+            variables.liquid_saturation = S_L;
+            return k_rel_unit_saturation;
+        }
+        return medium->property(MPL::PropertyType::relative_permeability)
             .template value<double>(variables, x_position, t, dt);
+    }();
 
     auto const K_intrinsic = MPL::formEigenTensor<DisplacementDim>(
         medium->property(MPL::PropertyType::permeability)
@@ -5578,11 +5654,28 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                               N_p * w;
         }
 
+        // Gated point (bishop_relperm, latched and Active in this iterate):
+        // k_rel is a constant of the iterate, dk_rel/dS = 0. The same predicate
+        // as in the constitutive setting (previous latch, this iterate's
+        // status); with the gate off the shipped derivative is evaluated.
+        auto const* const potential_exchange_params_ptr_gate =
+            this->getPotentialExchangeParameters();
+        bool const gate_relperm_acts_ip =
+            potential_exchange_params_ptr_gate != nullptr &&
+            saturationGateActsOnRelativePermeability(
+                potential_exchange_params_ptr_gate
+                    ->micro_ceiling_saturation_gate,
+                **std::get<PrevState<MicroSaturatedLatch>>(
+                    this->prev_states_[ip]) == 1.0,
+                *std::get<MicroCeilingStatus>(this->current_states_[ip]) ==
+                    static_cast<double>(MicroCeilingKktStatus::Active));
         double const dk_rel_dS_l =
-            medium->property(MPL::PropertyType::relative_permeability)
-                .template dValue<double>(variables,
-                                         MPL::Variable::liquid_saturation,
-                                         x_position, t, dt);
+            gate_relperm_acts_ip
+                ? 0.0
+                : medium->property(MPL::PropertyType::relative_permeability)
+                      .template dValue<double>(
+                          variables, MPL::Variable::liquid_saturation,
+                          x_position, t, dt);
         typename ShapeMatricesTypeDisplacement::GlobalDimVectorType const
             grad_p_cap = -dNdx_p * p_L;
         local_Jac
@@ -7485,8 +7578,10 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             return medium->property(MPL::PropertyType::bishops_effective_stress)
                 .template value<double>(vs, x_position, t, dt);
         };
-        double const chi_S_L = chi(S_L);
-        double const chi_S_L_prev = chi(S_L_prev);
+        // Not const: the latched saturation gate (block after the micro update
+        // below) overwrites chi at latched KKT-active points; gate off = shipped.
+        double chi_S_L = chi(S_L);
+        double chi_S_L_prev = chi(S_L_prev);
 
         auto const alpha =
             medium->property(MPL::PropertyType::biot_coefficient)
@@ -7636,6 +7731,43 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
              .drained_bulk_modulus = K_drained_micro_solve},
             this->process_data_.micro_porosity_parameters,
             this->getPotentialExchangeParameters(), trace_tag);
+
+        // Latched saturation gate in the output re-evaluation (same block as in
+        // assembleWithJacobianEvalConstitutiveSetting, so the output stress and
+        // k_rel are those of the last Newton evaluation). Idempotent: L_old is
+        // the previous-step latch (computeSecondaryVariable runs before the
+        // previous-state copy), the status is the one just rewritten above.
+        bool gate_relperm_acts = false;
+        if (auto const* const pep_gate = this->getPotentialExchangeParameters();
+            pep_gate != nullptr &&
+            pep_gate->micro_ceiling_saturation_gate !=
+                MicroCeilingSaturationGate::Off)
+        {
+            auto const level = pep_gate->micro_ceiling_saturation_gate;
+            bool const status_active =
+                *std::get<MicroCeilingStatus>(this->current_states_[ip]) ==
+                static_cast<double>(MicroCeilingKktStatus::Active);
+            bool const latch_old =
+                **std::get<PrevState<MicroSaturatedLatch>>(
+                    this->prev_states_[ip]) == 1.0;
+            *std::get<MicroSaturatedLatch>(this->current_states_[ip]) =
+                nextSaturatedLatch(status_active, latch_old, chi_S_L) ? 1.0
+                                                                       : 0.0;
+            if (saturationGateActs(level, latch_old, status_active))
+            {
+                auto const gated = saturationGatedBishopFactors(
+                    level, latch_old, status_active,
+                    {chi_S_L, chi_S_L_prev, 0.0}, chi);
+                chi_S_L = gated.chi;
+                chi_S_L_prev = gated.chi_prev;
+                variables.effective_pore_pressure = -chi_S_L * p_cap_ip;  // Pa
+                variables_prev.effective_pore_pressure =
+                    -chi_S_L_prev * p_cap_prev_ip;  // Pa
+            }
+            gate_relperm_acts = saturationGateActsOnRelativePermeability(
+                level, latch_old, status_active);
+        }
+
         updatePorositySplitState<DisplacementDim>(
             this->current_states_[ip], this->prev_states_[ip], phi, variables,
             variables_prev, this->getPotentialExchangeParameters());
@@ -7738,9 +7870,20 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             medium->property(MPL::PropertyType::permeability)
                 .value(variables, x_position, t, dt));
 
-        double const k_rel =
-            medium->property(MPL::PropertyType::relative_permeability)
+        double const k_rel = [&]()
+        {
+            if (gate_relperm_acts)
+            {
+                variables.liquid_saturation = 1.0;
+                double const k_rel_unit_saturation =
+                    medium->property(MPL::PropertyType::relative_permeability)
+                        .template value<double>(variables, x_position, t, dt);
+                variables.liquid_saturation = S_L;
+                return k_rel_unit_saturation;
+            }
+            return medium->property(MPL::PropertyType::relative_permeability)
                 .template value<double>(variables, x_position, t, dt);
+        }();
 
         std::get<
             ProcessLib::ThermoRichardsMechanics::PermeabilityData<DisplacementDim>>(
