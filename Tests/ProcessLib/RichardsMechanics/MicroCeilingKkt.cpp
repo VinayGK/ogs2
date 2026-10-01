@@ -991,3 +991,376 @@ TEST(RichardsMechanics, DSMMicroCeilingKktActiveTangentsVersusCentralDifference)
                         "the three step factors: "
                      << ut5_worst_ratio;
 }
+
+// ── UT-A ────────────────────────────────────────────────────────────────────
+// Model IV tangent term (DESIGN_FIXES.md A.2, A.4, A.7 item 1; record folder
+// ~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/). The swelling eigenstress
+// increment of the film-ON residual, s_sw = n_S (n_prev p_film_prev - n p_film),
+// is differentiated along the KKT-active branch: eps_v -> phi (porosity law,
+// beta_SR = 0) -> n_l = phi, rho_lR = rho_EOS(n_l), K = K(phi). The composite
+// function is built from the REAL residual function (computeSwellingStressIncrement)
+// and differenced centrally; the analytic total is
+//   ds/deps_v = [ (ds/dK) K'(phi) + ds/dn|rho,K + (ds/drho)(drho/dn) ] dphi/deps_v
+// with ds/dn and ds/drho from computeKktActiveSwellingNlTangent (the function
+// the assembler calls) and the K-chain written out here from the vdW helper
+// (the formula of the existing live-K block). Separation of the shares: the
+// explicit share is differenced with n_l and rho_lR held at the base state and
+// only K moving; the implicit share with K held and n_l, rho_lR moving. No
+// parameter is calibrated and no quantity is both fitted and asserted
+// (CLAUDE.md section 2). Expected values: in-file derivation (A.2) and the
+// independent differencing of the residual function.
+//
+// Test-only values (guardrail 1.2, need Vinay's approval; none is a model
+// parameter): the strain increments +-1e-3 and the base state eps_prev = 0.205
+// (the free-swelling strain already used by makeAtCeilingCase); p_conf =
+// 0.79 MPa (IV cell 24 of DESIGN_FIXES.md A.4, MEASURED there); phi_prev =
+// 0.5937 (IV cell 24, MEASURED there); the synthetic compressibility of the
+// K_up check (beta_LR = 1/(1e3 * 1e6 Pa)). Material values: the IV deck
+// (potential_exchange block of ms33_modelIV_pellets.prj, pellet zone medium
+// id 1 for the micro solid fraction, live-K table 900/1400/1600/1800 and its
+// knot values) and, for the second EOS regime, the
+// committed-block EOS of makeParameters.
+namespace
+{
+constexpr double kUtaPhiPrev = 0.5937;    // IV cell 24 (A.4), MEASURED there
+constexpr double kUtaEpsPrev = 0.205;     // see makeAtCeilingCase
+constexpr double kUtaPconf = 0.79e6;      // IV cell 24 (A.4), MEASURED there
+constexpr double kUtaRhoLR = 1000.0;      // constant water density of the decks
+
+PotentialExchangeParameters makeUtaParameters(bool const nonconstant_eos,
+                                              bool const live_k,
+                                              bool const micro_density)
+{
+    PotentialExchangeParameters p;
+    p.enabled = true;
+    p.pressure_tolerance = 1e-12;
+    p.hamaker_constant = 2.2e-20;
+    p.specific_surface = 523.0;
+    p.micro_solid_density_reference = 2780.0;
+    // Pellet zone (medium id 1 of the IV deck), where the active cells are.
+    p.micro_solid_volume_fraction_reference = 0.3237410071942446;
+    p.micro_liquid_density_reference = 100.0;
+    p.micro_liquid_density_a = 1e-16;
+    p.micro_liquid_density_b = 1.0;
+    if (nonconstant_eos)
+    {
+        p.micro_liquid_density_reference = 1300.0;
+        p.micro_liquid_density_a = 1.3;
+    }
+    p.micro_potential_convention = MicroPotentialConvention::NegativeAttractive;
+    p.local_nonlinear_solve_mode =
+        LocalNonlinearSolveMode::ScalarReferenceMassStorage;
+    p.micro_solid_volume_fraction_mode = MicroSolidVolumeFractionMode::Reference;
+    p.potential_augmentation_exponent = 7.5e-7;
+    p.micro_water_content_floor = 7.06e-5;
+    p.use_micro_liquid_density_for_micro_pressure = micro_density;
+    p.film_pressure_coupling = true;
+    p.micro_ceiling_treatment = MicroCeilingTreatment::Kkt;
+    p.micro_ceiling_sw_tangent = MicroCeilingSwTangent::KktActive;
+    // The 1400 knot of the IV table as the scalar K of the live-K-off cases.
+    p.potential_augmentation_prefactor = 46000.3269694;
+    if (live_k)
+    {
+        p.potential_augmentation_prefactor_vs_dry_density =
+            std::make_shared<AugmentationPrefactorTable const>(
+                std::vector<double>{900.0, 1400.0, 1600.0, 1800.0},
+                std::vector<double>{18469.1763367, 46000.3269694,
+                                    104698.192423, 265909.813902});
+        p.potential_augmentation_prefactor_live_dry_density = true;
+    }
+    return p;
+}
+
+// s_sw (coefficient of the identity tensor) of the REAL residual function.
+// n_l, rho_lR, rho_LR, the total porosity for K, and the previous state are
+// arguments so that single channels can be frozen.
+double utaResidualScalar(PotentialExchangeParameters const& params,
+                         double const n_l_prev, double const rho_lR_prev,
+                         double const n_l, double const rho_lR,
+                         double const rho_LR, double const phi_for_K,
+                         double const p_conf)
+{
+    auto const C_el = MathLib::KelvinVector::KelvinMatrixType<2>::Zero().eval();
+    auto const s = computeSwellingStressIncrement<2>(
+        n_l_prev, n_l, /*n_S=*/1.0, rho_lR, rho_lR_prev, rho_LR, C_el, params,
+        /*biot_coefficient=*/1.0, p_conf,
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(), phi_for_K);
+    return s[0];
+}
+}  // namespace
+
+TEST(RichardsMechanics, DSMMicroCeilingKktSwellingTangentOnActiveBranchVersusCentralDifference)
+{
+    double worst_total = 0.0;    // max (FD error)/(tolerance), total derivative
+    double worst_shares = 0.0;   // same, the two shares and the K_up channel
+    double worst_bare = 0.0;     // bare-Pi partial: |miss - n_S b p_conf| / tol
+    int cases = 0;
+    for (bool const nonconstant_eos : {false, true})
+    {
+        for (bool const live_k : {false, true})
+        {
+            for (bool const micro_density : {true, false})
+            {
+                for (double const d_eps : {-1.0e-3, +1.0e-3})
+                {
+                    for (double const p_conf : {kUtaPconf,
+                         std::numeric_limits<double>::quiet_NaN()})
+                    {
+                        SCOPED_TRACE(testing::Message()
+                                     << "nonconstant_eos " << nonconstant_eos
+                                     << " live_k " << live_k << " micro_density "
+                                     << micro_density << " d_eps " << d_eps
+                                     << " p_conf " << p_conf);
+                        ++cases;
+                        auto const params = makeUtaParameters(
+                            nonconstant_eos, live_k, micro_density);
+                        auto const eos_at = [&](double const n, double const rho_LR)
+                        {
+                            return computeActiveMicroLiquidDensity(
+                                n, rho_LR, PotentialExchangeLocalSolveContext{},
+                                params);
+                        };
+                        double const eps_prev = kUtaEpsPrev;
+                        double const n_l_prev = kUtaPhiPrev;  // at the ceiling
+                        double const rho_lR_prev =
+                            eos_at(n_l_prev, kUtaRhoLR).rho_lR;
+
+                        // Base state of the active branch at eps_v = eps_prev + d_eps.
+                        auto const phi_of = [&](double const eps_v)
+                        { return porosityLaw(kUtaPhiPrev, eps_v - eps_prev); };
+                        double const eps0 = eps_prev + d_eps;
+                        double const phi0 = phi_of(eps0);
+                        double const n0 = phi0;  // n_l = n_max = phi
+                        auto const eos0 = eos_at(n0, kUtaRhoLR);
+                        double const rho0 = eos0.rho_lR;
+                        double const K0 = effectiveAugmentationPrefactor(params, phi0);
+                        double const dphi = porosityDerivativeWrtVolumetricStrain(
+                            1.0, phi0, kUtaPhiPrev, d_eps);
+                        ASSERT_NE(dphi, 0.0);
+
+                        // Analytic pieces.
+                        auto const swk = computeKktActiveSwellingNlTangent(
+                            1.0, n0, rho0, kUtaRhoLR, K0, 1.0, p_conf, n_l_prev,
+                            rho_lR_prev, params);
+                        auto const swk_prev = computeKktActiveSwellingNlTangent(
+                            1.0, n_l_prev, rho_lR_prev, kUtaRhoLR,
+                            effectiveAugmentationPrefactor(params, kUtaPhiPrev),
+                            1.0, p_conf, n_l_prev, rho_lR_prev, params);
+                        // Explicit K-chain written out from the vdW helper (the
+                        // formula of the live-K block of the assembler).
+                        auto const vdw_dK = [&](double const n, double const rho,
+                                                double const K)
+                        {
+                            return computeVanDerWaalsMicroPotential(
+                                       n, rho,
+                                       computeActiveMicroSolidVolumeFraction(
+                                           n, PotentialExchangeLocalSolveContext{},
+                                           params),
+                                       params.micro_solid_density_reference,
+                                       params.hamaker_constant,
+                                       params.specific_surface,
+                                       microPotentialSignFactorFromParameters(
+                                           params),
+                                       K, params.potential_augmentation_exponent,
+                                       0.0, params.micro_water_content_floor)
+                                .dmu_lR_dK;
+                        };
+                        double const rho_pi_prev =
+                            micro_density ? rho_lR_prev : kUtaRhoLR;
+                        double const rho_pi_curr = micro_density ? rho0 : kUtaRhoLR;
+                        double const ds_dK =
+                            -1.0 *
+                            (n_l_prev * rho_pi_prev *
+                                 vdw_dK(n_l_prev, rho_lR_prev,
+                                        effectiveAugmentationPrefactor(
+                                            params, kUtaPhiPrev)) -
+                             n0 * rho_pi_curr * vdw_dK(n0, rho0, K0));
+                        double const dK_dphi =
+                            effectiveAugmentationPrefactorPhiDerivative(params,
+                                                                        phi0);
+                        double const explicit_share = ds_dK * dK_dphi * dphi;
+                        double const implicit_share =
+                            (swk.ds_dn + swk.ds_drho * eos0.drho_lR_dnl) * dphi;
+                        double const total_analytic = explicit_share + implicit_share;
+
+                        double const scale_S =
+                            std::abs(swk_prev.p_film) * n_l_prev +
+                            std::abs(swk.p_film) * n0;  // Pa
+                        double const x_e = std::abs(eps0);
+
+                        // 1. Total derivative of the composite along the branch.
+                        auto const F_total = [&](double const eps_v)
+                        {
+                            double const phi = phi_of(eps_v);
+                            double const rho = eos_at(phi, kUtaRhoLR).rho_lR;
+                            return utaResidualScalar(params, n_l_prev,
+                                                     rho_lR_prev, phi, rho,
+                                                     kUtaRhoLR, phi, p_conf);
+                        };
+                        // 2. Explicit share: only K moves (n_l, rho_lR frozen).
+                        auto const F_explicit = [&](double const eps_v)
+                        {
+                            return utaResidualScalar(params, n_l_prev,
+                                                     rho_lR_prev, n0, rho0,
+                                                     kUtaRhoLR, phi_of(eps_v),
+                                                     p_conf);
+                        };
+                        // 3. Implicit share: K frozen at phi0; n_l, rho_lR move.
+                        auto const F_implicit = [&](double const eps_v)
+                        {
+                            double const phi = phi_of(eps_v);
+                            double const rho = eos_at(phi, kUtaRhoLR).rho_lR;
+                            return utaResidualScalar(params, n_l_prev,
+                                                     rho_lR_prev, phi, rho,
+                                                     kUtaRhoLR, phi0, p_conf);
+                        };
+                        auto const fd = [&](auto const& F, double const factor)
+                        {
+                            double const h = fdStep(eps0, x_e, factor);
+                            return (F(eps0 + h) - F(eps0 - h)) / (2.0 * h);
+                        };
+                        for (double const factor : {0.5, 1.0, 2.0})
+                        {
+                            double const tol_total =
+                                fdTolerance(total_analytic, scale_S / x_e);
+                            double const e_total =
+                                std::abs(fd(F_total, factor) - total_analytic);
+                            EXPECT_LE(e_total, tol_total) << "total";
+                            worst_total = std::max(worst_total, e_total / tol_total);
+
+                            double const tol_exp =
+                                fdTolerance(explicit_share, scale_S / x_e);
+                            double const e_exp = std::abs(fd(F_explicit, factor) -
+                                                          explicit_share);
+                            EXPECT_LE(e_exp, tol_exp) << "explicit share";
+                            worst_shares = std::max(worst_shares, e_exp / tol_exp);
+
+                            double const tol_imp =
+                                fdTolerance(implicit_share, scale_S / x_e);
+                            double const e_imp = std::abs(fd(F_implicit, factor) -
+                                                          implicit_share);
+                            EXPECT_LE(e_imp, tol_imp) << "implicit share";
+                            worst_shares = std::max(worst_shares, e_imp / tol_imp);
+                        }
+                        if (!live_k)
+                        {
+                            EXPECT_EQ(explicit_share, 0.0);  // dK/dphi = 0
+                        }
+
+                        // 4. The bare-Pi partial (the film-OFF form that the
+                        // existing implicit K channel of the assembler uses,
+                        // A.4 defect 3) is the helper with the p_conf term
+                        // dropped (NaN sentinel). It misses the film-ON partial by
+                        // exactly n_S b p_conf per unit n_l, and the differenced
+                        // implicit share by n_S b p_conf dphi (n_S = b = 1; zero
+                        // when p_conf is the NaN sentinel, where the residual
+                        // drops the term as well).
+                        {
+                            double const p_conf_used =
+                                std::isfinite(p_conf) ? p_conf : 0.0;
+                            auto const swk_bare = computeKktActiveSwellingNlTangent(
+                                1.0, n0, rho0, kUtaRhoLR, K0, 1.0,
+                                std::numeric_limits<double>::quiet_NaN(),
+                                n_l_prev, rho_lR_prev, params);
+                            EXPECT_NEAR(swk.ds_dn - swk_bare.ds_dn, p_conf_used,
+                                        roundoffTolerance(std::abs(swk.Pi) +
+                                                          std::abs(swk.p_film)));
+                            double const bare_implicit =
+                                (swk_bare.ds_dn + swk.ds_drho * eos0.drho_lR_dnl) *
+                                dphi;
+                            double const miss = fd(F_implicit, 1.0) - bare_implicit;
+                            double const tol =
+                                fdTolerance(implicit_share, scale_S / x_e);
+                            EXPECT_NEAR(miss, p_conf_used * dphi, tol)
+                                << "bare-Pi partial must miss by n_S b p_conf dphi";
+                            worst_bare = std::max(
+                                worst_bare,
+                                std::abs(miss - p_conf_used * dphi) / tol);
+                        }
+
+                        // 5. K_up channel (rho_LR(p_L) through the EOS and, for the
+                        // bulk-density variant, directly): n_l, phi, K fixed.
+                        {
+                            double const beta_LR = 1.0 / (1.0e3 * 1.0e6);
+                            auto const F_rho = [&](double const dp)
+                            {
+                                double const rho_LR = kUtaRhoLR * (1.0 + beta_LR * dp);
+                                double const rho = eos_at(n0, rho_LR).rho_lR;
+                                // previous state at the unperturbed p_L
+                                return utaResidualScalar(params, n_l_prev,
+                                                         rho_lR_prev, n0, rho,
+                                                         rho_LR, phi0, p_conf);
+                            };
+                            double const analytic =
+                                (swk.ds_drho * eos0.drho_lR_drho_LR +
+                                 swk.ds_drhoLR_direct) *
+                                kUtaRhoLR * beta_LR;
+                            double const x_p = 1.0e6;
+                            double const hh = fdStep(0.0, x_p);
+                            double const fd_p =
+                                (F_rho(+hh) - F_rho(-hh)) / (2.0 * hh);
+                            double const tol_p =
+                                fdTolerance(analytic, scale_S / x_p);
+                            EXPECT_LE(std::abs(fd_p - analytic), tol_p) << "K_up";
+                            worst_shares = std::max(
+                                worst_shares, std::abs(fd_p - analytic) / tol_p);
+                        }
+
+                        // 6. Defect 2 (A.4): the porosity read left by the KKT
+                        // micro update is the capped sum, = phi at a compacting
+                        // IP. With it the derivative is 0 there; with the stored
+                        // previous porosity of the law it is (alpha-phi)/(1+w).
+                        {
+                            double const old_read = porosityDerivativeWrtVolumetricStrain(
+                                1.0, phi0, std::min(kUtaPhiPrev, phi0), d_eps);
+                            if (d_eps < 0.0)
+                            {
+                                EXPECT_EQ(old_read, 0.0);
+                            }
+                            else
+                            {
+                                EXPECT_EQ(old_read, dphi);
+                            }
+                            EXPECT_NEAR(dphi, (1.0 - phi0) / (1.0 + d_eps),
+                                        roundoffTolerance(1.0));
+                        }
+
+                        if (!nonconstant_eos)
+                        {
+                            // Deck EOS (a = 1e-16): the rho channel is
+                            // numerically zero (A.2 third bullet).
+                            EXPECT_LE(std::abs(swk.ds_drho * eos0.drho_lR_dnl),
+                                      1e-12 * std::abs(swk.ds_dn));
+                        }
+                        else
+                        {
+                            EXPECT_NE(swk.ds_drho * eos0.drho_lR_dnl, 0.0);
+                        }
+
+                        if (nonconstant_eos == false && live_k && micro_density &&
+                            d_eps < 0.0 && std::isfinite(p_conf))
+                        {
+                            GTEST_LOG_(INFO)
+                                << "MEASURED UT-A (IV-like state, compacting, deck "
+                                   "EOS, live K): dphi/deps_v = "
+                                << dphi << ", explicit K-chain share = "
+                                << explicit_share << " Pa, implicit n_l share = "
+                                << implicit_share << " Pa, total = "
+                                << total_analytic << " Pa per unit eps_v; "
+                                   "film-ON ds/dn = "
+                                << swk.ds_dn << " Pa, n_S b p_conf = " << p_conf
+                                << " Pa";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    GTEST_LOG_(INFO) << "MEASURED UT-A: " << cases
+                     << " cases; largest (FD error)/(tolerance C eps^(2/3) "
+                        "(|analytic| + scale)) over the three step factors: "
+                        "total "
+                     << worst_total << ", shares and K_up " << worst_shares
+                     << ", bare-Pi miss against n_S b p_conf dphi " << worst_bare;
+}
