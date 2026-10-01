@@ -50,7 +50,13 @@ using StatefulData = std::tuple<
     MicroCeilingRejectedExchange, MicroCeilingFlips, MicroCeilingNonMonotone,
     MicroCeilingPremise, MicroCeilingEpsSeen, MicroCeilingIncLast,
     MicroCeilingAttemptT, MicroCeilingIncAlt, MicroCeilingIncSame,
-    // latched saturation gate (kkt_vii_gate branch, design part B.4)
+    // latched saturation gate (kkt_vii_gate branch, design part B.4). With
+    // micro_ceiling_saturation_gate != off, at a latched KKT-active point the
+    // data written from this point carry the GATED values, not the deck's
+    // function of S_L: BishopsData::chi_S_L (and its previous-state copy,
+    // dchi_dS_L = 0) is chi_deck(S = 1), and with bishop_relperm the output
+    // PermeabilityData::k_rel (secondary variable relative_permeability) is
+    // k_rel(S = 1). S_L (SaturationData) is NOT gated. See DSM/AGENTS.md.
     MicroSaturatedLatch>;
 
 template <int DisplacementDim>

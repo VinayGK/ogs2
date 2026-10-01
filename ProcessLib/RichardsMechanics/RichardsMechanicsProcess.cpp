@@ -209,6 +209,59 @@ void RichardsMechanicsProcess<DisplacementDim>::initializeConcreteProcess(
             const_cast<MeshLib::Mesh&>(mesh), "pressure_interpolated",
             MeshLib::MeshItemType::Node, 1);
 
+    // Latched saturation gate, restart persistence (review of part B,
+    // INTEGRATE step). The latch is read back only if the input mesh carries
+    // micro_saturated_latch_ip; setIPDataInitialConditions skips a missing
+    // array silently. WARN, not FATAL: a restart from a file of a gate-off run
+    // is a legitimate start (the latch is then built from the state: a point
+    // is latched when it is Active and chi_deck(S_L) = 1), but the user must
+    // know that points that are unsaturated at the restart stay ungated.
+    {
+        auto const gate_on = [](PotentialExchangeParameters const& pep)
+        {
+            return pep.micro_ceiling_saturation_gate !=
+                   MicroCeilingSaturationGate::Off;
+        };
+        bool any_gate = process_data_.potential_exchange_parameters &&
+                        gate_on(*process_data_.potential_exchange_parameters);
+        for (auto const& [material_id, pep] :
+             process_data_.potential_exchange_parameters_by_material)
+        {
+            any_gate = any_gate || gate_on(pep);
+        }
+        if (any_gate)
+        {
+            auto const& properties = mesh.getProperties();
+            auto const is_ip_property = [&](std::string const& name)
+            {
+                return properties.existsPropertyVector<double>(name) &&
+                       properties.getPropertyVector<double>(name)
+                               ->getMeshItemType() ==
+                           MeshLib::MeshItemType::IntegrationPoint;
+            };
+            bool restart_has_ip_data = false;
+            for (auto const& writer : _integration_point_writer)
+            {
+                restart_has_ip_data =
+                    restart_has_ip_data || is_ip_property(writer->name());
+            }
+            if (restart_has_ip_data &&
+                !is_ip_property("micro_saturated_latch_ip"))
+            {
+                WARN(
+                    "RichardsMechanics: micro_ceiling_saturation_gate is on "
+                    "and the input mesh carries integration-point data (a "
+                    "restart) but no 'micro_saturated_latch_ip'. The latch "
+                    "starts empty: a point is latched again only when it is "
+                    "KKT-active and chi_deck(S_L) = 1 in an evaluation; points "
+                    "that are unsaturated at the restart stay ungated. Write "
+                    "micro_saturated_latch_ip in the run that produces the "
+                    "restart file (list it in <output><variables> if the list "
+                    "is explicit).");
+            }
+        }
+    }
+
     setIPDataInitialConditions(_integration_point_writer, mesh.getProperties(),
                                local_assemblers_);
 

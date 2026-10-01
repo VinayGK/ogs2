@@ -1002,6 +1002,21 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                         MicroCeilingSaturationGate::BishopRelperm
                     ? ", and k_rel = k_rel(S = 1)"
                     : " (PROBE: k_rel not gated)");
+            // Restart persistence. The process is created before the output
+            // section is parsed and cannot see its variable list, so this
+            // cannot be a check; it is a notice that stays visible in every
+            // log with the gate on. The restart read itself is checked when the
+            // integration-point data are set (RichardsMechanicsProcess.cpp).
+            WARN(
+                "micro_ceiling_saturation_gate = {}: the latch is saved only if "
+                "the integration-point field micro_saturated_latch_ip is "
+                "written, i.e. if it is listed among the output variables "
+                "whenever <output> lists variables explicitly (an empty list "
+                "writes all arrays). A restart from a file without it starts "
+                "with no latch (gate not acting until chi_deck(S_L) = 1 "
+                "re-latches a point; points that are unsaturated at the "
+                "restart stay ungated).",
+                toString(micro_ceiling_saturation_gate));
         }
         // 2.2 item 5: label line (style of the variant label above).
         INFO(
@@ -1319,6 +1334,36 @@ std::unique_ptr<Process> createRichardsMechanicsProcess(
         //! \ogs_file_param{prj__processes__process__RICHARDS_MECHANICS__explicit_hm_coupling_in_unsaturated_zone}
         config.getConfigParameter<bool>(
             "explicit_hm_coupling_in_unsaturated_zone", false);
+
+    // Latched saturation gate: not combinable with the explicit HM coupling
+    // (review of part B, INTEGRATE step). That branch builds the p-u coupling
+    // from chi_S_L_prev of the previous-state Bishop data and drops the dS_L/dp
+    // Jacobian entry; the gate rewrites chi, chi_prev, dchi/dS and k_rel at
+    // latched points and was designed and tested without it.
+    {
+        auto const gate_on = [](PotentialExchangeParameters const& pep)
+        {
+            return pep.micro_ceiling_saturation_gate !=
+                   MicroCeilingSaturationGate::Off;
+        };
+        bool any_gate = potential_exchange_parameters &&
+                        gate_on(*potential_exchange_parameters);
+        for (auto const& [material_id, pep] :
+             potential_exchange_parameters_by_material)
+        {
+            any_gate = any_gate || gate_on(pep);
+        }
+        if (any_gate && explicit_hm_coupling_in_unsaturated_zone)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: micro_ceiling_saturation_gate other than "
+                "off is not combinable with "
+                "explicit_hm_coupling_in_unsaturated_zone = true (that "
+                "branch reads chi_S_L_prev of the previous-state Bishop data "
+                "and omits the dS_L/dp_cap coupling entry; the gate was "
+                "neither derived nor tested with it).");
+        }
+    }
 
     auto const is_linear =
         //! \ogs_file_param{prj__processes__process__linear}

@@ -4177,6 +4177,26 @@ void RichardsMechanicsLocalAssembler<
 {
     assert(local_x.size() == pressure_size + displacement_size);
 
+    // The latched saturation gate (micro_ceiling_saturation_gate) lives in
+    // assembleWithJacobian only. assemble() is the Picard path: it has no
+    // latch update and no gated chi / k_rel, so a Picard run with the gate on
+    // would silently run the UNGATED model. Refused (review of part B,
+    // INTEGRATE step). Parse time cannot see the nonlinear solver type, hence
+    // the check here, on the first call.
+    if (auto const* const gate_params = this->getPotentialExchangeParameters();
+        gate_params != nullptr &&
+        gate_params->micro_ceiling_saturation_gate !=
+            MicroCeilingSaturationGate::Off)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: micro_ceiling_saturation_gate = {} is "
+            "implemented in assembleWithJacobian (Newton) only; the Picard "
+            "assemble() path has no latch and no gated chi / k_rel. Use a "
+            "Newton nonlinear solver or set micro_ceiling_saturation_gate = "
+            "off.",
+            toString(gate_params->micro_ceiling_saturation_gate));
+    }
+
     auto const [p_L, u] = localDOF(local_x);
     auto const [p_L_prev, u_prev] = localDOF(local_x_prev);
 
@@ -5029,6 +5049,23 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
     // permeability model, p_SR, k_rel below). S_L, the retention law, storage,
     // exchange, the Biot term and the output saturation are not touched.
     // Switch off (default): the block is skipped, bitwise the shipped code.
+    //
+    // ORDER CAVEAT (review of part B, applied in the INTEGRATE step): the gate
+    // cannot run earlier, because the status of THIS iterate is written by the
+    // micro update just above. The porosity law (PorosityFromMassBalance,
+    // evaluated at "Porosity update" further up) therefore reads the UNGATED
+    // p_FR = -chi_deck(S_L) p_cap of the deck from variables.effective_pore_
+    // pressure, and the gated p_FR written below reaches only what is evaluated
+    // after this block. PorosityFromMassBalance reads p_FR only through the
+    // term (p_FR - p_FR_prev) * beta_SR (MaterialLib/MPL/Properties/
+    // PorosityFromMassBalance.cpp, p_eff and p_eff_prev), so the stale p_FR is
+    // harmless only because beta_SR = 0 is enforced for micro_ceiling_treatment
+    // = kkt (OGS_FATAL "beta_SR != 0; the dphi/dp_eff chain of the active
+    // tangent is not implemented" in the KKT branch of this function). With
+    // beta_SR != 0 the porosity would be evaluated with a different p_FR than
+    // the one the gate then installs. updateSwellingStressAndVolumetricStrain
+    // does not read effective_pore_pressure or chi in its own body (checked by
+    // grep; its callees were not traced). Not changed here.
     bool gate_relperm_acts = false;
     if (potential_exchange_parameters != nullptr &&
         potential_exchange_parameters->micro_ceiling_saturation_gate !=
