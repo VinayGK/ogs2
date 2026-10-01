@@ -442,6 +442,18 @@ TEST(RichardsMechanics,
 
             auto const kkt = solveKkt(c);
             ASSERT_EQ(kkt.status, MicroCeilingKktStatus::Active);
+            // Memoryless: the solver has no state argument, so two calls with
+            // identical inputs return identical output (no branch flip under
+            // a fixed residual; the sweep over p_L of UT-4 is held, DESIGN D2).
+            {
+                auto const again = solveKkt(c);
+                EXPECT_EQ(again.status, kkt.status);
+                EXPECT_EQ(again.local.n_l, kkt.local.n_l);
+                EXPECT_EQ(again.local.rho_lR, kkt.local.rho_lR);
+                EXPECT_EQ(again.multiplier, kkt.multiplier);
+                EXPECT_EQ(again.exchange_received, kkt.exchange_received);
+                EXPECT_EQ(again.rejected_exchange, kkt.rejected_exchange);
+            }
             EXPECT_EQ(kkt.local.n_l, n_max);
             EXPECT_EQ(kkt.n_max, n_max);
             EXPECT_GE(kkt.multiplier, 0.0);
@@ -672,6 +684,11 @@ TEST(RichardsMechanics,
                                       rho_lR_lo * c_lo.phi / c_lo.dt;
             EXPECT_LE(jump, L * h + roundoffTolerance(scale_rate))
                 << "jump " << jump << " L*h " << L * h << " h " << h;
+            GTEST_LOG_(INFO) << "MEASURED UT-3 regime " << static_cast<int>(regime)
+                             << " s " << s << ": kink at d_eps = " << lo
+                             << ", bracket h = " << h << ", |jump| = " << jump
+                             << ", L*h = " << L * h << ", round-off allowance "
+                             << roundoffTolerance(scale_rate);
 
             // At the Interior grid node: interior state, no multiplier,
             // independent residual of the 2x2 base solve small (the committed
@@ -838,6 +855,8 @@ TEST(RichardsMechanics, DSMMicroCeilingKktScanDetectsNonMonotoneAndFallsBack)
 // DESIGN.md 4.2 and a step-halving scan.
 TEST(RichardsMechanics, DSMMicroCeilingKktActiveTangentsVersusCentralDifference)
 {
+    double ut5_worst_ratio = 0.0;  // max over all cases of (FD error)/(tolerance)
+    int ut5_cases = 0;
     for (auto const regime : regimes)
     {
         for (double const s : signs)
@@ -850,6 +869,7 @@ TEST(RichardsMechanics, DSMMicroCeilingKktActiveTangentsVersusCentralDifference)
                                  << "regime " << static_cast<int>(regime)
                                  << " s " << s << " compressible "
                                  << compressible << " frac " << frac);
+                    ++ut5_cases;
                     Case c0 = makeAtCeilingCase(regime, s);
                     setSuctionForActiveState(c0);
                     // d_eps: 0 or a fixed fraction of the first-order root
@@ -915,6 +935,7 @@ TEST(RichardsMechanics, DSMMicroCeilingKktActiveTangentsVersusCentralDifference)
                     for (double const e : errors_p)
                     {
                         EXPECT_LE(e, tol_p) << "dp_L";
+                        ut5_worst_ratio = std::max(ut5_worst_ratio, e / tol_p);
                     }
 
                     // d/deps_v.
@@ -934,6 +955,7 @@ TEST(RichardsMechanics, DSMMicroCeilingKktActiveTangentsVersusCentralDifference)
                     for (double const e : errors_e)
                     {
                         EXPECT_LE(e, tol_e) << "deps_v";
+                        ut5_worst_ratio = std::max(ut5_worst_ratio, e / tol_e);
                     }
 
                     // dn/dp_L = 0 and dn/deps_v = phi' by differencing n_l.
@@ -963,4 +985,9 @@ TEST(RichardsMechanics, DSMMicroCeilingKktActiveTangentsVersusCentralDifference)
             }
         }
     }
+    GTEST_LOG_(INFO) << "MEASURED UT-5: " << ut5_cases
+                     << " cases; largest (FD error)/(tolerance C eps^(2/3) "
+                        "(|analytic| + scale)) over d/dp_L and d/deps_v and "
+                        "the three step factors: "
+                     << ut5_worst_ratio;
 }
