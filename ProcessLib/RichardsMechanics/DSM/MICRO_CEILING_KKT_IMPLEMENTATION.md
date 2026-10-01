@@ -56,4 +56,19 @@ is reached with the old values: `kkt_active = false` selects the old expression,
 
 1. Trace file name: `kkt_trace.csv` in the process working directory instead of `<output_prefix>_kkt_trace.csv` (the output prefix is not reachable from the local assembler).
 2. `micro_ceiling_fd_check` accepts `LinearElasticIsotropic` only (DESIGN: refuse MFront); history-dependent solids carry material state that the check does not snapshot.
-3. Unit-test batch 1 (DESIGN.md 4.1, file `Tests/ProcessLib/RichardsMechanics/MicroCeilingKkt.cpp`) is NOT part of this change (separate step; the free functions above are written to be testable).
+3. Unit-test batch 1 (DESIGN.md 4.1, file `Tests/ProcessLib/RichardsMechanics/MicroCeilingKkt.cpp`) was NOT part of C1 to C4 (separate step); it is added after them (see C6 below).
+
+## C5 (2026-10-01): value of mu_lR in the KKT solver evaluated as in the base residual
+
+Found by the unit tests (UT-2): the KKT solver's `evaluate` passed the live-nS chain (`dnS_dnl = -1` under `current_porosity_split`) to the vdW helper for the VALUE of mu_lR, while the base
+residual `evaluate` of `solveReferenceMassStorageCoupledState` passes `dnS_dnl = 0`. The chain changes `dmu_lR_dnl` and therefore `Pi' = -rho_lR*dmu_lR_dnl`, and through the integrable Maxwell
+partner `-(Pi + n_l*Pi')*eps_v/rho_lR` also the value of mu_lR whenever the film term is on and eps_v != 0 (the C2 comment "only the derivative, not values" was wrong). Effect (MEASURED in
+the fixture of the unit tests, `ut_run1_pre_fix_C5.txt` in the record folder): `f(n_max)`, the wall exchange `rhohat_pot` and the multiplier differed from the base residual by about 6e-7 relative, so
+the Active / Interior decision and the returned wall exchange were not those of the base residual. C5: the value potential is evaluated with `dnS_dnl = 0` (as the base residual); a second
+potential with the live chain feeds only J11 and J12 (as the base analytic Jacobian). Switch off or `clamp`: no code path changed. Nothing adopted.
+
+## C6 (2026-10-01): unit tests
+
+`Tests/ProcessLib/RichardsMechanics/MicroCeilingKkt.cpp`, five tests (DESIGN.md 4.1 batch 1): `DSMMicroCeilingKktBelowCeilingIsBitwiseClamp` (UT-1),
+`...ActiveBranchComplementarityAndBookkeeping` (UT-2), `...LeavingTheCeilingAndContinuityAtTheKink` (UT-3), `...ScanDetectsNonMonotoneAndFallsBack` (UT-4N), `...ActiveTangentsVersusCentralDifference` (UT-5).
+New tests only; no existing test is edited. Test-only literals that need Vinay's approval are listed in the header comment of the file.

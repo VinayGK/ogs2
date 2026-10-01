@@ -2312,3 +2312,10 @@ Open rulings NOT decided by this change (Vinay's calls): T_m (the micro part of 
 selectable through `micro_mass_strain_term_eulerian`), which water balance (E or L), Q9 (which `micro_ceiling_pu_tangent` level), `N_dec`, whether lambda should also act
 on the skeleton (option B). Consequences of the change on any deck are PREDICTED until a run measures them; `micro_exchange_source` means `rhohat_pot` in KKT runs
 (the booked sink of V1/V2 is a different quantity), the books must read `micro_exchange_received`.
+
+### 2026-10-01 - KKT ceiling: C5 (value-evaluation fix) and C6 (unit tests), same branch, NOT adopted
+
+C5: the KKT local solver now evaluates the VALUE of mu_lR with the nS chain frozen (`dnS_dnl = 0`) exactly as the base residual does; the live-nS chain feeds only the 2x2 tangent entries
+(unit test finding: the integrable Maxwell partner carries `Pi' = -rho_lR*dmu_lR_dnl`, so the chain does change the value). No effect with `micro_ceiling_treatment = clamp`.
+C6: five unit tests, `Tests/ProcessLib/RichardsMechanics/MicroCeilingKkt.cpp` (supplements; no existing test edited). Implemented as specified by Vinay (2026-09-30 21:45, "unit tests and then the ms33 suite").
+Details: `MICRO_CEILING_KKT_IMPLEMENTATION.md` (sections C5, C6) and `~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/TESTS.md`.
