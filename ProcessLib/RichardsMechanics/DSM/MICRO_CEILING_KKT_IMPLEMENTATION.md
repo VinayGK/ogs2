@@ -1,6 +1,10 @@
 # KKT treatment of the micro-water ceiling: implementation note (branch dsm_mass_conservation_v3_kkt_ceiling_2026-09-30)
 
 Status 2026-09-30: implemented as specified by Vinay, **NOT adopted, switchable, default = the shipped clamp (bitwise)**.
+Status 2026-10-02 (supersedes the line above for the configuration, not for the default): the KKT ceiling is carried forward with the
+F3 ruling of 2026-10-01 and is switched ON in the committed MS33 decks of submission candidates 2a and 2b (branches
+`gen5_masscons_1a_conformant_2026-10-02`, `gen5_masscons_1b_conformant_2026-10-02`; Vinay 2026-10-02 "do both"). The default stays the clamp, bitwise.
+The candidate-2 switch set is in the table at the end of this file.
 Formulation (derivation, weak forms, design, test plan) lives in the record folder
 `~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/` (`DERIVATION.md` = D-n, `WEAK_FORMS.md` = W-n, `DESIGN.md`, `THEORY_FIXES.md`);
 this file says only what the code does and where. Comments in the code cite those sections.
@@ -88,3 +92,21 @@ for `s = n_S (n_prev p_film,prev - n p_film)`, `p_film = Pi - b p_conf`. Before 
 
 Switch absent or `overwritten`: none of the new arithmetic executes. With the switch on the converged states agree with the switch-off states only to the discretisation of a different dt history (the iteration counts change), not bitwise.
 Not covered (stated, not fixed): the residual's p_conf is the previous iterate's (the Jacobian uses the current one), so a lag channel of the lagged formulation is in no tangent of this kind; the in-assembler FD check does not see it either.
+
+## Candidate 2 (2026-10-02): the switch set of the committed MS33 decks
+
+Branches `gen5_masscons_1a_conformant_2026-10-02` (candidate 2a) and `gen5_masscons_1b_conformant_2026-10-02` (candidate 2b), both cut from
+3101058538. The two differ only in the variant line. Every switch keeps its default (the shipped code, bitwise) outside these decks.
+
+| switch | 2a | 2b | status (ledger `2026-09-30_decision_ledger/DECISION_LEDGER.md`) |
+|---|---|---|---|
+| `micro_ceiling_treatment` | `kkt` | `kkt` | carried forward with the F3 ruling, 2026-10-01 |
+| `micro_mass_strain_term_eulerian` | `true` | `true` | F3, RULED 2026-10-01 |
+| `micro_ceiling_pu_tangent` | `kkt_active` | `kkt_active` | carried forward with the F3 ruling, 2026-10-01 |
+| `micro_ceiling_sw_tangent` | `kkt_active` | `kkt_active` | Model IV tangent, ordered 2026-10-01 |
+| `micro_ceiling_saturation_gate` | `bishop_relperm` | `bishop_relperm` | Fix B, RULED 2026-10-01 |
+| `macro_storage_uses_macro_porosity` | `true` | `true` | Q2, RULED 2026-09-30 |
+| `macro_balance_drops_micro_biot_term` | `true` | `true` | T_m dropped, RULED 2026-10-02 |
+| `darcy_relative_permeability_mobility` | `kirchhoff_element_mean` | absent (default) | 1a, RULED as a separate variant 2026-10-02 |
+| `micro_ceiling_closed_macro_gate` | absent (default) | `relperm` | 1b, RULED as a separate variant 2026-10-02 |
+| `macro_storage_exact_time_levels` | `true` | `true` | main-loop reading of "do both" (2026-10-02), open for Vinay's check |

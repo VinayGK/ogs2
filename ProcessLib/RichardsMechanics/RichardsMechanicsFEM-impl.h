@@ -5942,7 +5942,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 : phi;  // [-]
         double const specific_storage_a_p =
             S_L * (phi_storage * beta_LR + S_L * a0);
-        // v5 probe (DESIGN_V5.md 2.1-2.3; NOT adopted): with
+        // v5 probe (DESIGN_V5.md 2.1-2.3; on in MS33 cand. 2a/2b, open): with
         // macro_storage_exact_time_levels the a_S coefficient is phi_M of the
         // previous converged step, prev_states_[ip] (a constant of the step;
         // the FD check does not modify it). Off: phi_storage passes through

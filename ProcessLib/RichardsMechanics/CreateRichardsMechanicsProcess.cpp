@@ -930,7 +930,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
     // ── KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
     // 2026-09-30; DESIGN.md 2.1, 2.2 of the record folder
     // ~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/). All defaults = the
-    // shipped behaviour, bitwise. NOT adopted (Vinay's ruling is open).
+    // shipped behaviour, bitwise. Kkt carried forward (F3 ruling 2026-10-01).
     auto const micro_ceiling_treatment = parseMicroCeilingTreatment(
         config.getConfigParameter<std::string>(
             "micro_ceiling_treatment",
@@ -1020,7 +1020,7 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             context, toString(micro_ceiling_closed_macro_gate));
     }
     // v5 probe switch (branch dsm_mass_conservation_v5_P_exact_2026-10-02,
-    // DESIGN_V5.md 2.2-2.5). PROBE, NOT adopted. Default false = the v4 code,
+    // DESIGN_V5.md 2.2-2.5). On in MS33 cand. 2a/2b (main-loop reading, open). Default false = the v4 code,
     // bitwise; per-medium inheritance as the drop.
     auto const macro_storage_exact_time_levels =
         config.getConfigParameter<bool>(

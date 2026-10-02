@@ -199,7 +199,7 @@ inline constexpr bool isValidFilmEnergyRouteCombination(
 //   Kkt: complementarity problem, multiplier lambda >= 0, active set
 //     f(n_max) < 0 and no interior root (DERIVATION.md 2.3-2.5, 4.4 of the
 //     record folder ~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/, D-n).
-//     NOT adopted; Vinay's ruling is open.
+//     Kkt carried forward with the F3 ruling 2026-10-01; on in MS33 cand. 2a/2b.
 enum class MicroCeilingTreatment
 {
     Clamp,
@@ -710,7 +710,7 @@ struct PotentialExchangeParameters
     int darcy_kirchhoff_cells_per_decade = 2048;
     // ── v5 probe switch (branch dsm_mass_conservation_v5_P_exact_2026-10-02,
     // ~/ogs-models/scratch/2026-10-02_kkt_v5_P_exact/DESIGN_V5.md 2.1-2.5).
-    // PROBE, NOT adopted. Appended LAST so that the aggregate initialisation
+    // On in MS33 cand. 2a/2b (main-loop reading, open). Appended LAST so that the aggregate initialisation
     // order of every earlier member is unchanged. Default false = the v4 code,
     // bitwise. When true, the a_S coefficient of the macro storage uses phi_M
     // of the previous converged step (PrevState<TransportPorosityData>)
