@@ -102,7 +102,12 @@ MASS-CONSERVING DSM, SUBMISSION CANDIDATE 2a, 2026-10-02 (Vinay 2026-10-02 "do b
   MASS-CONSERVATION STATUS (MEASURED on the v5 probe run V5a_IV, the same switch lines with every-step output,
   Shilpa's MBP; books_table_v5.json md5 d480471922bf188d904ac04e3e64c25e in ~/ogs-models/scratch/2026-10-02_kkt_v5_compare/):
     water books under definition L (RULED): R_L/I = -1.595e-03 at t = 200 d; the macro storage product term P is removed
-    by construction, what is left is MS + BTerr - Cl (NOTE_V5.md section 0 items 1 to 3). Not yet run with this deck.
+    by construction, what is left is MS + BTerr - Cl (NOTE_V5.md section 0 items 1 to 3).
+    RUN WITH THIS DECK (header refreshed 2026-10-02, OGS fixes stage; replaces 'Not yet run with this deck'):
+      candidate-2a record run 1a/suite/IV, Shilpa's MBP, 2026-10-02, bin/ogs md5 fd2e4e76e51d490e45c15b3861c7471d; the run deck equals
+      this deck with comments and blank lines removed. 681 accepted / 0 rejected steps to t = 200 d. All 42 record
+      frames are bitwise equal to those of the v5 probe run named above (P3f), so the status above holds for this deck
+      (record BOOKS_2026-10-02_gen5_masscons_1a_v0.json, md5 bea6cab8803d17c8a6b09a47d6badc85).
 IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC to submission"; K_fix accepted,
   "your choices 1: ok"). Branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 (486235c679) + cherry-pick of
   686fcd6ef8 (RichardsMechanics DSM: the declared initial_micro_water_content is realised in the previous micro porosity).
