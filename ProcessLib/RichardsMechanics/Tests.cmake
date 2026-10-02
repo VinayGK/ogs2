@@ -76,6 +76,16 @@ if (NOT OGS_USE_MPI)
     # large_runtime = 60 (same -LARGE test name) and is not above 750, so no explicit TIMEOUT is emitted and ctest's default
     # (1500 s) applies. Model III/VII RUNTIME 300 left as they are (no ruling on them; candidate 1 kept them too). ctest (P7c):
     # run after this commit on the mac mini, RichardsMechanics-only testing build; the result is recorded outside the repository.
+    # RUNTIME, OGS fixes stage 2026-10-02 (main-loop decision: RUNTIME = the slowest measured wall of the committed-deck
+    # configuration, rounded up, for every MS33 test, from the Shilpa record runs and the mini ctests: P7c and the rerun of this
+    # stage, which ran beside other jobs on the mini and is the slower of the two). This supersedes the
+    # sentence 'Model III/VII RUNTIME 300 left as they are' above. Walls [s] Shilpa (queue wall, rounded to 1 s, so ceil(w + 0.5)) /
+    # mini ctest (ceil) -> RUNTIME: Reference 18 / 16.96 -> 19 (was 60), III 312 / 353.79 -> 354,
+    # VII 240 d 395 / 415.02 -> 416, VII ladder550 486 / 491.49 -> 492 (all three were 300).
+    # IV 296 / 329.22 -> 330 (was the D21 value 299, from the IV_nf wall; the rerun of this stage was slower).
+    # Model I: the rule gives 4 s; RUNTIME 120 is KEPT, because a value <= large_runtime = 60 renames the three
+    # ctests (drops -LARGE) and moves them from label large to small (Model I note above); open for Vinay. No other test
+    # changes name, label or TIMEOUT (every new value stays on its side of 60 and <= 750).
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1400.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1600.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj RUNTIME 120)
@@ -86,12 +96,14 @@ if (NOT OGS_USE_MPI)
     # campaign"): the deck now runs the clay r = 23 mm mesh ms33_clay_r23_h70
     # (920 quads) with the wall latching at r = 25 mm; measured 211.7 s / 943 steps
     # (OMP 2) and 2xx s at OMP 1 on 2026-09-08 -> RUNTIME 120 -> 300.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIII/ms33_modelIII_gapswitch.prj RUNTIME 300)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 300 -> 354, the slowest measured wall (Shilpa 312 s, mini ctest up to 353.79 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIII/ms33_modelIII_gapswitch.prj RUNTIME 354)
     # Reference Configuration (confined dd1600 column, no gap), TRACKED and registered
     # 2026-09-08 (spec-conformance fix 4): 160x KC-base permeability + the live K(rho_d)
     # table of III/IV/VII, so the reference curve is on the models' hydraulics.
     # Measured 9.6 s / 771 steps (OMP 1) on 2026-09-08.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_Reference/ms33_reference_dd1600.prj RUNTIME 60)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 60 -> 19, the slowest measured wall (Shilpa 18 s, mini ctest up to 16.96 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_Reference/ms33_reference_dd1600.prj RUNTIME 19)
     # DEPRECATED 2026-08-17 — soft 2-medium gap annulus surrogate: no contact
     # mechanics, over-closes to ~67% with a residual aperture. Superseded by the
     # gap-switch deck above. Deck and reference retained (CLAUDE.md §6.2/§6.3);
@@ -134,7 +146,8 @@ if (NOT OGS_USE_MPI)
     # (campaign v2 runs/IV/run.log) -> RUNTIME 10736 kept.
     # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (P7a, D21): RUNTIME 10736 -> 299, the slowest measured wall of this deck under
     # this branch's configuration (see the candidate-2a paragraph above); the 10736 history above is kept.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 299)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 299 -> 330, the slowest measured wall (Shilpa 296 s, mini ctest up to 329.22 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 330)
     # K(rho_d) equivalence pair (each material's k0 x20 spec, for speed): the
     # table-K variant resolves K = K(dry_density) at parse time and must
     # reproduce, bit-for-bit, the per-material scalar-K reference. Verified
@@ -146,7 +159,8 @@ if (NOT OGS_USE_MPI)
     # OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets_kofdd.prj RUNTIME 240)
     # 2026-09-08 (spec-conformance fix 3): step-and-hold traction ladder + 7 half-interval
     # output frames; measured 217.8 s / 973 steps (OMP 2) on 2026-09-08 -> RUNTIME 300 kept.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling.prj RUNTIME 300)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 300 -> 416, the slowest measured wall (Shilpa 395 s, mini ctest up to 415.02 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling.prj RUNTIME 416)
     # 2026-09-08 campaign v2 (spec-audit 3x, LANE1 F1 / LANE2 #1): LADDER-550 variant of Model VII on
     # the CURRENT spec ladder (theoretical_benchmarking.tex Table Loading_unloading_path: 50-d stages
     # 0.2/0.4/1/2.5/5/2.5/1/0.4 MPa, 10-d ramps, t_end 550 d; see the deck header for the citation).
@@ -155,7 +169,8 @@ if (NOT OGS_USE_MPI)
     # ms33_modelVII_freeswelling_ladder550, so the two VII ctests never share an output file name.
     # Same two-tier tolerances as the parent deck. Measured 278.75 s / 1304 steps (OMP 2) on
     # 2026-09-08 (campaign v2 runs/VII_550/run.log) -> RUNTIME 300, as the parent.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling_ladder550.prj RUNTIME 300)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 300 -> 492, the slowest measured wall (Shilpa 486 s, mini ctest up to 491.49 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling_ladder550.prj RUNTIME 492)
     # K(rho_d) feature on a 2nd model (single-material Model VII -> table resolves
     # to the rho_d=1600 node, a physical no-op; k0 x50 spec for speed). Run to
     # t_end 2026-06-08. Exercises the table-resolution path on the free-swelling cell.
