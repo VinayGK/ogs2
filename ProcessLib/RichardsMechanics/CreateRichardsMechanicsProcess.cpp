@@ -15,6 +15,8 @@
 #include "MaterialLib/MPL/CreateMaterialSpatialDistributionMap.h"
 #include "MaterialLib/MPL/MaterialSpatialDistributionMap.h"
 #include "MaterialLib/MPL/Medium.h"
+#include "MaterialLib/MPL/Properties/CapillaryPressureSaturation/SaturationTuller.h"
+#include "MaterialLib/MPL/Properties/RelativePermeability/RelPermGeneralizedPower.h"
 #include "MaterialLib/SolidModels/CreateConstitutiveRelation.h"
 #include "MaterialLib/SolidModels/MechanicsBase.h"
 #include "NumLib/CreateNewtonRaphsonSolverParameters.h"
@@ -23,6 +25,7 @@
 #include "ProcessLib/Output/CreateSecondaryVariables.h"
 #include "ProcessLib/Utils/ProcessUtils.h"
 #include "RichardsMechanicsProcess.h"
+#include "KirchhoffMobility.h"
 #include "RichardsMechanicsProcessData.h"
 
 namespace ProcessLib
@@ -151,6 +154,49 @@ MicroCeilingSaturationGate parseMicroCeilingSaturationGate(
         "RichardsMechanics: unsupported potential_exchange "
         "micro_ceiling_saturation_gate '{}'. Currently supported: 'off', "
         "'bishop_relperm', 'bishop'.",
+        value);
+}
+
+// v4 switches (DESIGN_V4.md 2.1; Vinay's ruling 2026-10-02).
+DarcyRelativePermeabilityMobility parseDarcyRelativePermeabilityMobility(
+    std::string const& value)
+{
+    if (value == "gauss_point")
+    {
+        return DarcyRelativePermeabilityMobility::GaussPoint;
+    }
+    if (value == "kirchhoff_element_mean")
+    {
+        return DarcyRelativePermeabilityMobility::KirchhoffElementMean;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "darcy_relative_permeability_mobility '{}'. Currently supported: "
+        "'gauss_point', 'kirchhoff_element_mean'.",
+        value);
+}
+
+MicroCeilingClosedMacroGate parseMicroCeilingClosedMacroGate(
+    std::string const& value)
+{
+    if (value == "off")
+    {
+        return MicroCeilingClosedMacroGate::Off;
+    }
+    if (value == "relperm")
+    {
+        return MicroCeilingClosedMacroGate::Relperm;
+    }
+    if (value == "bishop_relperm")
+    {
+        return MicroCeilingClosedMacroGate::BishopRelperm;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_closed_macro_gate '{}'. Currently supported: 'off', "
+        "'relperm', 'bishop_relperm'.",
         value);
 }
 
@@ -914,6 +960,65 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "micro_ceiling_saturation_gate",
             defaults ? toString(defaults->micro_ceiling_saturation_gate)
                      : "off"));
+    // v4 switches (branch dsm_mass_conservation_v4_tm_krel_2026-10-02,
+    // DESIGN_V4.md 2.1; Vinay's ruling 2026-10-02 "(go with L + drop T_m) x
+    // (1a, 1b separate)"). Defaults = the AB code, bitwise.
+    auto const macro_balance_drops_micro_biot_term =
+        config.getConfigParameter<bool>(
+            "macro_balance_drops_micro_biot_term",
+            defaults ? defaults->macro_balance_drops_micro_biot_term : false);
+    auto const darcy_relative_permeability_mobility =
+        parseDarcyRelativePermeabilityMobility(
+            config.getConfigParameter<std::string>(
+                "darcy_relative_permeability_mobility",
+                defaults ? toString(
+                               defaults->darcy_relative_permeability_mobility)
+                         : "gauss_point"));
+    auto const micro_ceiling_closed_macro_gate =
+        parseMicroCeilingClosedMacroGate(config.getConfigParameter<std::string>(
+            "micro_ceiling_closed_macro_gate",
+            defaults ? toString(defaults->micro_ceiling_closed_macro_gate)
+                     : "off"));
+    // Numerical choice of the 1a table (DESIGN_V4.md 2.3.2 item 4, Q5): 2048
+    // cells per decade, k interpolation error 5.1e-6 on the AB deck pair
+    // (MEASURED, REC/design_facts/out_table_resolution.txt). Not physics.
+    auto const darcy_kirchhoff_cells_per_decade = config.getConfigParameter<int>(
+        "darcy_kirchhoff_cells_per_decade",
+        defaults ? defaults->darcy_kirchhoff_cells_per_decade : 2048);
+    bool const kirchhoff_on =
+        darcy_relative_permeability_mobility ==
+        DarcyRelativePermeabilityMobility::KirchhoffElementMean;
+    if (kirchhoff_on && darcy_kirchhoff_cells_per_decade < 2)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} darcy_kirchhoff_cells_per_decade must be "
+            ">= 2, got {}.",
+            context, darcy_kirchhoff_cells_per_decade);
+    }
+    if (!kirchhoff_on && darcy_kirchhoff_cells_per_decade != 2048 &&
+        !(defaults && defaults->darcy_kirchhoff_cells_per_decade ==
+                          darcy_kirchhoff_cells_per_decade))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} darcy_kirchhoff_cells_per_decade is set "
+            "({}) but darcy_relative_permeability_mobility = {}; it is read "
+            "only with kirchhoff_element_mean.",
+            context, darcy_kirchhoff_cells_per_decade,
+            toString(darcy_relative_permeability_mobility));
+    }
+    // The ruling keeps 1a and 1b separate (DESIGN_V4.md 2.1): the combination
+    // is neither designed nor tested.
+    if (kirchhoff_on &&
+        micro_ceiling_closed_macro_gate != MicroCeilingClosedMacroGate::Off)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} darcy_relative_permeability_mobility = "
+            "kirchhoff_element_mean together with "
+            "micro_ceiling_closed_macro_gate = {} is refused: the ruling of "
+            "2026-10-02 keeps 1a and 1b separate and the combination is not "
+            "designed (DESIGN_V4.md 2.1).",
+            context, toString(micro_ceiling_closed_macro_gate));
+    }
     std::string micro_ceiling_trace_elements_default;
     if (defaults)
     {
@@ -1018,6 +1123,82 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "restart stay ungated).",
                 toString(micro_ceiling_saturation_gate));
         }
+        // Drop T_m guards (DESIGN_V4.md 2.2.5). The explicit-coupling guard is
+        // in createRichardsMechanicsProcess (that switch is parsed there).
+        if (macro_balance_drops_micro_biot_term)
+        {
+            if (!micro_mass_strain_term_eulerian)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires micro_mass_strain_term_eulerian = true "
+                    "(F3 on): definition L of the micro book is the s = -1 "
+                    "balance (DESIGN_V4.md 2.2.5).",
+                    context);
+            }
+            if (!macro_storage_uses_macro_porosity)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires macro_storage_uses_macro_porosity = true "
+                    "(Q2): the drop extends Q2; without it a_S still counts "
+                    "the micro pores (DESIGN_V4.md 2.2.5).",
+                    context);
+            }
+            if (micro_solid_volume_fraction_mode !=
+                MicroSolidVolumeFractionMode::Reference)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires micro_solid_volume_fraction_mode = "
+                    "reference (got '{}'): the interior dn_l/deps_v tangent "
+                    "is derived with a frozen n_S (DESIGN_V4.md 2.2.5).",
+                    context, toString(micro_solid_volume_fraction_mode));
+            }
+            if (use_fd_jacobian_for_exchange)
+            {
+                // Added in the IMPLEMENT stage (not in DESIGN_V4.md): the
+                // interior dn_l/dp_L and dn_l/deps_v of the drop's tangent are
+                // evaluated in the analytic exchange-Jacobian block, which
+                // this switch skips.
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires use_fd_jacobian_for_exchange = false.",
+                    context);
+            }
+            INFO(
+                "KKT v4 label: macro_balance_drops_micro_biot_term = true "
+                "(ruling 2026-10-02, '(go with L + drop T_m)'): T_m = S_L "
+                "rho_LR [(phi_m - phi_m,prev) + phi_m Delta eps_v]/dt is "
+                "subtracted from the macro mass balance at every integration "
+                "point; the Biot term Kpu itself is unchanged. NOT adopted.");
+        }
+        if (micro_ceiling_closed_macro_gate != MicroCeilingClosedMacroGate::Off)
+        {
+            INFO(
+                "KKT v4 label: micro_ceiling_closed_macro_gate = {} (1b, "
+                "ruling 2026-10-02: closed macro pores read as gas-free for "
+                "k_rel): k_rel = k_rel(S = 1), dk_rel/dS = 0 where the "
+                "previous step was KKT-active with phi_M == 0 and the iterate "
+                "is Active; {}. Independent of micro_ceiling_saturation_gate. "
+                "NOT adopted.",
+                toString(micro_ceiling_closed_macro_gate),
+                micro_ceiling_closed_macro_gate ==
+                        MicroCeilingClosedMacroGate::Relperm
+                    ? "chi not gated at relperm"
+                    : "BUILT, NOT RUN level: chi = chi_deck(S = 1) too");
+            if (micro_ceiling_closed_macro_gate ==
+                MicroCeilingClosedMacroGate::BishopRelperm)
+            {
+                WARN(
+                    "micro_ceiling_closed_macro_gate = bishop_relperm: the "
+                    "chi_prev rule reads the integration-point field "
+                    "micro_closed_macro_gate_ip of the previous step; a "
+                    "restart keeps it only if micro_closed_macro_gate_ip is "
+                    "written (listed among the output variables whenever "
+                    "<output> lists variables explicitly).");
+            }
+        }
         // 2.2 item 5: label line (style of the variant label above).
         INFO(
             "MASSFIX V3 label: micro_ceiling_treatment = kkt, F3 sign s = {} "
@@ -1026,8 +1207,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "micro_ceiling_scan_nodes_per_decade = {}, "
             "macro_storage_uses_macro_porosity = {}, "
             "micro_ceiling_fd_check = {}, trace elements = {}. "
-            "T_m (micro part of the Biot term) stays in the macro balance "
-            "(open, Vinay's ruling); multiplier hydraulic only (option A). "
+            "T_m (micro part of the Biot term): {}; "
+            "multiplier hydraulic only (option A). "
             "micro_exchange_source = rhohat_pot (NOT the booked sink of "
             "V1/V2); micro_exchange_received = what the macro sink uses. "
             "assemble() (Picard) reads the state of the last Newton-type "
@@ -1037,7 +1218,14 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             toString(micro_ceiling_sw_tangent),
             micro_ceiling_scan_nodes_per_decade,
             macro_storage_uses_macro_porosity, micro_ceiling_fd_check,
-            micro_ceiling_trace_elements.size());
+            micro_ceiling_trace_elements.size(),
+            macro_balance_drops_micro_biot_term
+                ? "dropped from the macro balance "
+                  "(macro_balance_drops_micro_biot_term = true, ruling "
+                  "2026-10-02)"
+                : "kept in the macro balance "
+                  "(macro_balance_drops_micro_biot_term = false; the ruling "
+                  "of 2026-10-02 drops it)");
     }
     else
     {
@@ -1047,6 +1235,9 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             micro_ceiling_fd_check ||
             !micro_ceiling_trace_elements.empty() ||
             micro_ceiling_saturation_gate != MicroCeilingSaturationGate::Off ||
+            macro_balance_drops_micro_biot_term ||
+            micro_ceiling_closed_macro_gate !=
+                MicroCeilingClosedMacroGate::Off ||
             (micro_ceiling_scan_nodes_per_decade != 8 &&
              !(defaults &&
                defaults->micro_ceiling_scan_nodes_per_decade ==
@@ -1057,6 +1248,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "micro_ceiling_sw_tangent (other than "
                 "overwritten), micro_ceiling_fd_check, "
                 "micro_ceiling_saturation_gate (other than off), "
+                "macro_balance_drops_micro_biot_term (true), "
+                "micro_ceiling_closed_macro_gate (other than off), "
                 "micro_ceiling_scan_nodes_per_decade and "
                 "micro_ceiling_trace_elements require "
                 "micro_ceiling_treatment = kkt.",
@@ -1155,7 +1348,11 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         micro_ceiling_scan_nodes_per_decade,
         micro_ceiling_trace_elements,
         micro_ceiling_sw_tangent,
-        micro_ceiling_saturation_gate};
+        micro_ceiling_saturation_gate,
+        macro_balance_drops_micro_biot_term,
+        darcy_relative_permeability_mobility,
+        micro_ceiling_closed_macro_gate,
+        darcy_kirchhoff_cells_per_decade};
 }
 
 template <int DisplacementDim>
@@ -1365,6 +1562,128 @@ std::unique_ptr<Process> createRichardsMechanicsProcess(
         }
     }
 
+    // v4 switches (DESIGN_V4.md 2.2.5, 2.4.6): the drop and 1b are refused
+    // with the explicit HM coupling (Kpu then uses chi_prev, not S_L, so T_m
+    // is not its micro part; the 1b chi level mirrors Fix B's guard above).
+    // 1a: one Kirchhoff table per medium whose effective potential_exchange
+    // block has kirchhoff_element_mean, built once here (DESIGN_V4.md 2.3.2).
+    std::map<MaterialPropertyLib::Medium const*,
+             std::shared_ptr<KirchhoffMobilityTable const>>
+        kirchhoff_tables;
+    {
+        auto const effective_pep =
+            [&](int const material_id) -> PotentialExchangeParameters const*
+        {
+            if (auto const it =
+                    potential_exchange_parameters_by_material.find(material_id);
+                it != potential_exchange_parameters_by_material.end())
+            {
+                return &it->second;
+            }
+            return potential_exchange_parameters ? &*potential_exchange_parameters
+                                                 : nullptr;
+        };
+        bool any_drop_or_1b =
+            potential_exchange_parameters &&
+            (potential_exchange_parameters->macro_balance_drops_micro_biot_term ||
+             potential_exchange_parameters->micro_ceiling_closed_macro_gate !=
+                 MicroCeilingClosedMacroGate::Off);
+        for (auto const& [material_id, pep] :
+             potential_exchange_parameters_by_material)
+        {
+            any_drop_or_1b =
+                any_drop_or_1b || pep.macro_balance_drops_micro_biot_term ||
+                pep.micro_ceiling_closed_macro_gate !=
+                    MicroCeilingClosedMacroGate::Off;
+        }
+        if (any_drop_or_1b && explicit_hm_coupling_in_unsaturated_zone)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: macro_balance_drops_micro_biot_term = true "
+                "and micro_ceiling_closed_macro_gate other than off are not "
+                "combinable with explicit_hm_coupling_in_unsaturated_zone = "
+                "true (the Biot term then uses chi_S_L_prev, so T_m is not "
+                "its micro part; DESIGN_V4.md 2.2.5).");
+        }
+        for (auto const& [material_id, medium] : media)
+        {
+            auto const* const pep = effective_pep(material_id);
+            if (!isKirchhoffElementMeanMobility(pep))
+            {
+                continue;
+            }
+            auto const& saturation =
+                medium->property(MaterialPropertyLib::PropertyType::saturation);
+            auto const& relperm = medium->property(
+                MaterialPropertyLib::PropertyType::relative_permeability);
+            if (dynamic_cast<MaterialPropertyLib::SaturationTuller const*>(
+                    &saturation) == nullptr ||
+                dynamic_cast<MaterialPropertyLib::RelPermGeneralizedPower const*>(
+                    &relperm) == nullptr)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: darcy_relative_permeability_mobility = "
+                    "kirchhoff_element_mean requires the medium of material id "
+                    "{} to have saturation = SaturationTuller and "
+                    "relative_permeability = RelativePermeabilityGeneralizedPower "
+                    "(the pair whose values read p_c and S_L only and have "
+                    "exactly constant branches; DESIGN_V4.md 2.3.2 item 1).",
+                    material_id);
+            }
+            // Both properties read only capillary_pressure resp.
+            // liquid_saturation (SaturationTuller.cpp value(),
+            // RelPermGeneralizedPower.cpp value()); position and time are
+            // unused, so a default position and t = dt = 0 are exact here.
+            ParameterLib::SpatialPosition const pos;
+            auto const k_of_pc = [&](double const p_c)
+            {
+                MaterialPropertyLib::VariableArray v;
+                v.capillary_pressure = p_c;
+                v.liquid_saturation =
+                    saturation.template value<double>(v, pos, 0.0, 0.0);
+                return relperm.template value<double>(v, pos, 0.0, 0.0);
+            };
+            auto table = std::make_shared<KirchhoffMobilityTable const>(
+                KirchhoffMobilityTable::build(
+                    k_of_pc, pep->darcy_kirchhoff_cells_per_decade));
+            // Creation log (DESIGN_V4.md 2.3.2 item 5): the largest relative
+            // deviation of the cumulative table integral at the nodes from a
+            // cell-wise Simpson integral of the deck law (a measurement of the
+            // table, not a check with a threshold).
+            double max_rel_dev_simpson = 0.0;
+            {
+                auto const& g = table->nodes();
+                auto const& kv = table->nodeValues();
+                double q_table = 0.0;
+                double q_simpson = 0.0;
+                for (std::size_t j = 0; j + 1 < g.size(); ++j)
+                {
+                    double const h = g[j + 1] - g[j];
+                    q_table += 0.5 * (kv[j] + kv[j + 1]) * h;
+                    q_simpson += h / 6.0 *
+                                 (kv[j] + 4.0 * k_of_pc(0.5 * (g[j] + g[j + 1])) +
+                                  kv[j + 1]);
+                    max_rel_dev_simpson =
+                        std::max(max_rel_dev_simpson,
+                                 std::abs(q_table - q_simpson) / q_simpson);
+                }
+            }
+            INFO(
+                "KKT v4 label (1a): darcy_relative_permeability_mobility = "
+                "kirchhoff_element_mean, material id {}: Kirchhoff table p_sat "
+                "= {:.12g} Pa (k_sat = {:.17g}), p_k = {:.12g} Pa (k_flat = "
+                "{:.17g}), {} cells ({} per decade, a numerical choice), max "
+                "relative deviation of the table integral from a cell-wise "
+                "Simpson integral of the deck law at the nodes {:.3e}. "
+                "relative_permeability output = the element mobility. NOT "
+                "adopted.",
+                material_id, table->pSat(), table->kSat(), table->pK(),
+                table->kFlat(), table->numberOfCells(),
+                pep->darcy_kirchhoff_cells_per_decade, max_rel_dev_simpson);
+            kirchhoff_tables.emplace(medium.get(), std::move(table));
+        }
+    }
+
     auto const is_linear =
         //! \ogs_file_param{prj__processes__process__linear}
         config.getConfigParameter("linear", false);
@@ -1384,6 +1703,7 @@ std::unique_ptr<Process> createRichardsMechanicsProcess(
         mass_lumping,
         explicit_hm_coupling_in_unsaturated_zone,
         use_numerical_jacobian};
+    process_data.kirchhoff_tables = std::move(kirchhoff_tables);
 
     SecondaryVariableCollection secondary_variables;
 

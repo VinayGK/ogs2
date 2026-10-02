@@ -152,4 +152,19 @@ constexpr std::string_view ioName(struct MicroSaturatedLatchTag*)
 {
     return "micro_saturated_latch";
 }
+
+// 1b closed-macro gate marker (branch dsm_mass_conservation_v4_tm_krel_
+// 2026-10-02; DESIGN_V4.md 2.1, 2.4): 1 when the gate
+// micro_ceiling_closed_macro_gate acted at this evaluation (previous step
+// Active with phi_M == 0, and Active now), else 0. Written at every evaluation
+// with potential exchange on, at every level (identically 0 with the switch
+// off). Read only by the bishop_relperm level (chi_prev rule, DESIGN_V4.md
+// 2.4.4) through its previous-step copy; otherwise an output map of where 1b
+// acted (micro_closed_macro_gate_ip).
+using MicroClosedMacroGateActed =
+    BaseLib::StrongType<double, struct MicroClosedMacroGateActedTag>;
+constexpr std::string_view ioName(struct MicroClosedMacroGateActedTag*)
+{
+    return "micro_closed_macro_gate";
+}
 }  // namespace ProcessLib::RichardsMechanics

@@ -57,7 +57,11 @@ using StatefulData = std::tuple<
     // dchi_dS_L = 0) is chi_deck(S = 1), and with bishop_relperm the output
     // PermeabilityData::k_rel (secondary variable relative_permeability) is
     // k_rel(S = 1). S_L (SaturationData) is NOT gated. See DSM/AGENTS.md.
-    MicroSaturatedLatch>;
+    MicroSaturatedLatch,
+    // 1b closed-macro gate marker (v4 branch, DESIGN_V4.md 2.1), appended
+    // last. With micro_ceiling_closed_macro_gate != off, PermeabilityData::
+    // k_rel is k_rel(S = 1) where it is 1 (and, at bishop_relperm, chi too).
+    MicroClosedMacroGateActed>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<

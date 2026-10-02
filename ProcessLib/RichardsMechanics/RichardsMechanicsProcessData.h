@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Eigen/Core>
+#include <map>
 #include <memory>
 #include <utility>
 
@@ -11,6 +12,7 @@
 #include "MaterialLib/MPL/MaterialSpatialDistributionMap.h"
 #include "ParameterLib/Parameter.h"
 #include "ProcessLib/Common/HydroMechanics/InitialStress.h"
+#include "KirchhoffMobility.h"
 #include "PotentialExchangeParameters.h"
 
 namespace MaterialLib
@@ -61,6 +63,14 @@ struct RichardsMechanicsProcessData
     MeshLib::PropertyVector<double>* element_porosity = nullptr;
     MeshLib::PropertyVector<double>* element_stresses = nullptr;
     MeshLib::PropertyVector<double>* pressure_interpolated = nullptr;
+
+    /// Variant 1a (v4 branch, DESIGN_V4.md 2.3.2): one Kirchhoff mobility
+    /// table per medium whose potential_exchange block selects
+    /// darcy_relative_permeability_mobility = kirchhoff_element_mean; built
+    /// once at process creation (read-only afterwards, no lazy build).
+    std::map<MaterialPropertyLib::Medium const*,
+             std::shared_ptr<KirchhoffMobilityTable const>>
+        kirchhoff_tables{};
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 };

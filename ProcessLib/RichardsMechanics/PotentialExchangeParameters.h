@@ -269,6 +269,78 @@ inline constexpr char const* toString(MicroCeilingSaturationGate const gate)
     return "unknown";
 }
 
+// ── v4 switches (branch dsm_mass_conservation_v4_tm_krel_2026-10-02; Vinay's
+// ruling 2026-10-02 "(go with L + drop T_m) x (1a, 1b separate)"; design
+// ~/ogs-models/scratch/2026-10-02_kkt_v4_tm_krel/DESIGN_V4.md). All defaults =
+// the AB code (tip 35fbd4149b), bitwise.
+//
+// darcy_relative_permeability_mobility (variant 1a, DESIGN_V4.md 2.3):
+//   GaussPoint (default): k_rel(S_L(p_c,ip)) at every integration point, the
+//     shipped Galerkin mobility, bitwise.
+//   KirchhoffElementMean: one mobility per element, the mean of the deck law
+//     k_rel(S_L(p_c)) over [min, max] of the element's nodal p_c, evaluated
+//     through the Kirchhoff potential of a piecewise-linear table of the deck
+//     law (KirchhoffMobility.h). The range-mean over the nodal [min, max] is
+//     the DESIGN's reading of the ruled "element-mean (Kirchhoff) mobility"
+//     for 2D quads (other readings exist: edge-wise / two-point Kirchhoff, a
+//     mean along the gradient; DESIGN_V4.md 2.3.1, Q6), chosen because it is
+//     monotone in the boundary-layer mode and has an exact tangent.
+enum class DarcyRelativePermeabilityMobility
+{
+    GaussPoint,
+    KirchhoffElementMean
+};
+
+inline constexpr char const* toString(
+    DarcyRelativePermeabilityMobility const mobility)
+{
+    switch (mobility)
+    {
+        case DarcyRelativePermeabilityMobility::GaussPoint:
+            return "gauss_point";
+        case DarcyRelativePermeabilityMobility::KirchhoffElementMean:
+            return "kirchhoff_element_mean";
+    }
+    return "unknown";
+}
+
+// micro_ceiling_closed_macro_gate (variant 1b, DESIGN_V4.md 2.4; offered to
+// Vinay as "Treat closed macro pores as gas-free (k_rel = 1)", ruled
+// 2026-10-02): at a KKT-active integration point whose macro pores are closed
+// (phi_M = 0) the macro pore space holds no gas, so k_rel = k_deck(S = 1).
+//   Off (default): the AB rules, bitwise.
+//   Relperm (the run level): k_rel = k_deck(S = 1), dk_rel/dS = 0 where the
+//     predicate holds; chi, chi_prev, dchi/dS and p_FR are NOT touched.
+//   BishopRelperm (BUILT, NOT RUN; Vinay's call): additionally chi =
+//     chi_deck(S = 1), dchi/dS = 0, gated p_FR, and chi_prev = chi_deck(S = 1)
+//     only if the gate acted at the end of the previous step
+//     (MicroClosedMacroGateActed), else the deck/Fix-B value.
+// The predicate (closedMacroGateActs below) mirrors the Fix B latch reading:
+// the previous converged step's status Active AND its phi_M == 0 AND this
+// iterate's status Active. The one-step lag (prev_active) is the design's
+// reading of the ruling text "k_rel = 1 at KKT-active points with phi_M = 0",
+// mirroring the Fix B latch; it is NOT in the ruling text.
+enum class MicroCeilingClosedMacroGate
+{
+    Off,
+    Relperm,
+    BishopRelperm
+};
+
+inline constexpr char const* toString(MicroCeilingClosedMacroGate const gate)
+{
+    switch (gate)
+    {
+        case MicroCeilingClosedMacroGate::Off:
+            return "off";
+        case MicroCeilingClosedMacroGate::Relperm:
+            return "relperm";
+        case MicroCeilingClosedMacroGate::BishopRelperm:
+            return "bishop_relperm";
+    }
+    return "unknown";
+}
+
 inline constexpr char const* toString(
     MicroPotentialConvention const convention)
 {
@@ -614,6 +686,28 @@ struct PotentialExchangeParameters
     // unchanged. Default off = the shipped rules, bitwise.
     MicroCeilingSaturationGate micro_ceiling_saturation_gate =
         MicroCeilingSaturationGate::Off;
+    // ── v4 switches (DESIGN_V4.md 2.1; ruling 2026-10-02). Appended LAST, in
+    // this order, so the aggregate initialisation order of every earlier
+    // member is unchanged. Defaults = the AB code, bitwise.
+    // Drop T_m (DESIGN_V4.md 2.2): the micro part of the Biot volume-change
+    // term, T_m = S_L rho_LR [(phi_m - phi_m,prev) + phi_m Delta eps_v]/dt, is
+    // subtracted from the macro mass balance (extends Vinay's Q2 ruling "macro
+    // storage is only macropores" to the volume-change term).
+    bool macro_balance_drops_micro_biot_term = false;
+    // 1a (DESIGN_V4.md 2.3).
+    DarcyRelativePermeabilityMobility darcy_relative_permeability_mobility =
+        DarcyRelativePermeabilityMobility::GaussPoint;
+    // 1b (DESIGN_V4.md 2.4).
+    MicroCeilingClosedMacroGate micro_ceiling_closed_macro_gate =
+        MicroCeilingClosedMacroGate::Off;
+    // Cells per decade of the log-uniform p_c grid of the 1a Kirchhoff table
+    // (DESIGN_V4.md 2.3.2 item 4). A NUMERICAL choice, not physics: 2048 gives
+    // a k interpolation error of 5.1e-6 and a Kirchhoff-potential error of
+    // 1.9e-7 on the AB deck pair (MEASURED, REC/design_facts/
+    // out_table_resolution.txt); pending Vinay's approval (DESIGN_V4.md Q5),
+    // like micro_ceiling_scan_nodes_per_decade = 8. A new deck name beyond the
+    // three briefed switches. >= 2; only meaningful with 1a on.
+    int darcy_kirchhoff_cells_per_decade = 2048;
 };
 
 // ── Latched saturation gate: pure logic (design part B.4) ──────────────────
@@ -682,6 +776,59 @@ inline bool saturationGateActsOnRelativePermeability(
 {
     return level == MicroCeilingSaturationGate::BishopRelperm && latch_old &&
            status_active;
+}
+
+// ── 1b closed-macro gate: pure logic (DESIGN_V4.md 2.4.1) ───────────────────
+// The gate acts in an iterate when the point was KKT-active at the end of the
+// previous converged step with closed macro pores (phi_M,prev == 0, an exact
+// comparison: on the KKT Active branch n_l = phi_s and phi_M = 0 exactly,
+// DESIGN_V4.md 1.2; no tolerance literal) AND the status of THIS iterate is
+// Active. prev_active and prev_phiM_zero are constants of the step; the
+// iterate's status is not (release semantics, DESIGN_V4.md 2.4.5).
+inline bool closedMacroGateActs(MicroCeilingClosedMacroGate const level,
+                                bool const prev_active,
+                                bool const prev_phiM_zero,
+                                bool const status_active)
+{
+    return level != MicroCeilingClosedMacroGate::Off && prev_active &&
+           prev_phiM_zero && status_active;
+}
+
+// Bishop factors at a point where the 1b gate acts at level bishop_relperm
+// (DESIGN_V4.md 2.4.4): chi = chi_deck(1), dchi/dS = 0, and chi_prev =
+// chi_deck(1) only if the gate acted at the end of the previous step
+// (acted_prev); otherwise chi_prev is the incoming value (the deck's
+// chi(S_L,prev), or Fix B's chi_deck(1) where Fix B acted). Elsewhere, and at
+// level relperm, the incoming values pass through unchanged (bitwise).
+template <typename ChiDeck>
+inline BishopFactorValues closedMacroGatedBishopFactors(
+    MicroCeilingClosedMacroGate const level, bool const gate_acts,
+    bool const acted_prev, BishopFactorValues const& incoming,
+    ChiDeck&& chi_deck)
+{
+    if (level != MicroCeilingClosedMacroGate::BishopRelperm || !gate_acts)
+    {
+        return incoming;
+    }
+    double const chi_unit_saturation = chi_deck(1.0);  // [-]
+    return {chi_unit_saturation,
+            acted_prev ? chi_unit_saturation : incoming.chi_prev, 0.0};
+}
+
+// True when any of the three v4 switches is on (Picard guard, labels).
+inline bool anyV4SwitchOn(PotentialExchangeParameters const& p)
+{
+    return p.macro_balance_drops_micro_biot_term ||
+           p.darcy_relative_permeability_mobility !=
+               DarcyRelativePermeabilityMobility::GaussPoint ||
+           p.micro_ceiling_closed_macro_gate != MicroCeilingClosedMacroGate::Off;
+}
+
+inline bool isKirchhoffElementMeanMobility(PotentialExchangeParameters const* p)
+{
+    return p != nullptr && p->darcy_relative_permeability_mobility ==
+                               DarcyRelativePermeabilityMobility::
+                                   KirchhoffElementMean;
 }
 
 // True when the KKT treatment of the micro-water ceiling is selected.
