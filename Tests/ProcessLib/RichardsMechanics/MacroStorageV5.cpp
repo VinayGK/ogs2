@@ -492,5 +492,5 @@ TEST(RichardsMechanics, DSMv5DefaultsAndAdmissibility)
     EXPECT_FALSE(macroStorageExactTimeLevelsAdmissible(4.5e-10, 0.0));
     EXPECT_FALSE(macroStorageExactTimeLevelsAdmissible(
         std::numeric_limits<double>::quiet_NaN(), 0.0));
-    std::cout << "UT-V5-6 defaults false; admissibility predicate: 7 cases\n";
+    std::cout << "UT-V5-6 defaults false; admissibility predicate: 6 cases\n";
 }
