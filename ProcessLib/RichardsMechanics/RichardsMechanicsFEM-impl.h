@@ -4314,6 +4314,17 @@ void RichardsMechanicsLocalAssembler<
             "off.",
             toString(gate_params->micro_ceiling_saturation_gate));
     }
+    // v5 probe switch (DESIGN_V5.md 2.4): the Picard path keeps phi_M of the
+    // iterate in its storage coefficient. The switch requires the drop, so the
+    // v4 guard below fires anyway; this sibling only names the switch.
+    if (isMacroStorageExactTimeLevels(this->getPotentialExchangeParameters()))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: macro_storage_exact_time_levels = true is "
+            "implemented in assembleWithJacobian (Newton) only; the Picard "
+            "assemble() path keeps phi_M of the iterate in the storage "
+            "coefficient. Use a Newton nonlinear solver or switch it off.");
+    }
     // v4 switches (DESIGN_V4.md 2.1): the Picard path has neither the T_m
     // drop, nor the Kirchhoff element mobility, nor the closed-macro gate.
     if (auto const* const v4_params = this->getPotentialExchangeParameters();
@@ -5583,6 +5594,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
     bool const v4_drop_tm =
         pep_v4 != nullptr && pep_v4->macro_balance_drops_micro_biot_term;
     bool const v4_kirchhoff = isKirchhoffElementMeanMobility(pep_v4);
+    // v5 probe switch (DESIGN_V5.md 2.2): a_S on phi_M of the previous step.
+    bool const v5_exact_time_levels = isMacroStorageExactTimeLevels(pep_v4);
     // Drop T_m: p-u entries of -T, kept apart from local_Jac because the
     // assembly line `local_Jac.pu = Kpu/dt` erases local_Jac.pu (Q9); added
     // after it at every Q9 level (DESIGN_V4.md 2.2.2).
@@ -5929,7 +5942,37 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 : phi;  // [-]
         double const specific_storage_a_p =
             S_L * (phi_storage * beta_LR + S_L * a0);
-        double const specific_storage_a_S = phi_storage - p_cap_ip * S_L * a0;
+        // v5 probe (DESIGN_V5.md 2.1-2.3; NOT adopted): with
+        // macro_storage_exact_time_levels the a_S coefficient is phi_M of the
+        // previous converged step, prev_states_[ip] (a constant of the step;
+        // the FD check does not modify it). Off: phi_storage passes through
+        // unchanged (the same double, no operation added). a_p keeps
+        // phi_storage (it is 0 under the guard below). The tangent needs no new
+        // line (DESIGN_V5.md 2.3(c)): with a constant coefficient the S-chain
+        // of storage_p_a_S_Jpp below is the exact derivative; the phi_M-chain
+        // of the correction cancels the phi_M-chain that the v4 a_S tangent
+        // omits, so it is deliberately NOT coded.
+        double const phi_storage_a_S = macroStorageCoefficient(
+            v5_exact_time_levels, phi_storage,
+            std::get<PrevState<
+                ProcessLib::ThermoRichardsMechanics::TransportPorosityData>>(
+                this->prev_states_[ip])
+                ->phi);  // [-]
+        if (v5_exact_time_levels &&
+            !macroStorageExactTimeLevelsAdmissible(beta_LR, a0))
+        {
+            // DESIGN_V5.md 2.4 / Q-A, checked at every IP evaluation with the
+            // switch on (review should-fix S8), exact comparisons.
+            OGS_FATAL(
+                "RichardsMechanics: macro_storage_exact_time_levels = true "
+                "requires beta_LR == 0 and a0 == 0 at every integration point "
+                "(constant liquid density, beta_SR = 0); got beta_LR = {:g}, "
+                "a0 = {:g} at element {}, ip {}. The rho_LR time levels of a "
+                "variable density are not designed (DESIGN_V5.md 2.4, Q-A).",
+                beta_LR, a0, this->element_.getID(), ip);
+        }
+        double const specific_storage_a_S =
+            phi_storage_a_S - p_cap_ip * S_L * a0;
 
         double const dspecific_storage_a_p_dp_cap =
             dS_L_dp_cap * (phi_storage * beta_LR + 2 * S_L * a0);

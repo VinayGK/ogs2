@@ -708,6 +708,23 @@ struct PotentialExchangeParameters
     // like micro_ceiling_scan_nodes_per_decade = 8. A new deck name beyond the
     // three briefed switches. >= 2; only meaningful with 1a on.
     int darcy_kirchhoff_cells_per_decade = 2048;
+    // ── v5 probe switch (branch dsm_mass_conservation_v5_P_exact_2026-10-02,
+    // ~/ogs-models/scratch/2026-10-02_kkt_v5_P_exact/DESIGN_V5.md 2.1-2.5).
+    // PROBE, NOT adopted. Appended LAST so that the aggregate initialisation
+    // order of every earlier member is unchanged. Default false = the v4 code,
+    // bitwise. When true, the a_S coefficient of the macro storage uses phi_M
+    // of the previous converged step (PrevState<TransportPorosityData>)
+    // instead of phi_M of the iterate, so that, together with the Biot term
+    // (S_L at the new level) after the T_m drop, the discrete macro
+    // accumulation is the exact difference Delta(rho_LR S_L phi_M) plus the
+    // Biot strain term: the product term P = rho_LR Delta S_L Delta phi_M of
+    // the L-books is removed. The uniqueness of phi_M,prev is CONDITIONAL on
+    // keeping v4's S_L-new Biot/T_m form (an implementation choice, not a
+    // ruling; review must-fix M2). Legal only with
+    // macro_balance_drops_micro_biot_term = true and
+    // macro_storage_uses_macro_porosity = true; FATAL at runtime on a
+    // non-zero beta_LR or a0 (constant liquid density only, DESIGN_V5.md Q-A).
+    bool macro_storage_exact_time_levels = false;
 };
 
 // ── Latched saturation gate: pure logic (design part B.4) ──────────────────
@@ -822,6 +839,33 @@ inline bool anyV4SwitchOn(PotentialExchangeParameters const& p)
            p.darcy_relative_permeability_mobility !=
                DarcyRelativePermeabilityMobility::GaussPoint ||
            p.micro_ceiling_closed_macro_gate != MicroCeilingClosedMacroGate::Off;
+}
+
+// ── v5 probe: exact time levels of the macro storage (DESIGN_V5.md 2.5) ────
+// The a_S coefficient: phi_M of the previous converged step when the switch
+// is on, else the incoming phi_M (pass-through, the same double, bitwise).
+// No floating-point operation either way.
+inline double macroStorageCoefficient(bool const exact_time_levels,
+                                      double const phi_M,
+                                      double const phi_M_prev)
+{
+    return exact_time_levels ? phi_M_prev : phi_M;
+}
+
+// Runtime admissibility of the switch at one integration point (DESIGN_V5.md
+// 2.4): the exact-difference statement is derived for a constant liquid
+// density (beta_LR == 0) and a0 == 0 (beta_SR == 0, enforced by the KKT
+// FATAL as well). Exact comparisons, no tolerance literal: a Constant density
+// gives dValue == 0 exactly.
+inline bool macroStorageExactTimeLevelsAdmissible(double const beta_LR,
+                                                  double const a0)
+{
+    return beta_LR == 0.0 && a0 == 0.0;
+}
+
+inline bool isMacroStorageExactTimeLevels(PotentialExchangeParameters const* p)
+{
+    return p != nullptr && p->macro_storage_exact_time_levels;
 }
 
 inline bool isKirchhoffElementMeanMobility(PotentialExchangeParameters const* p)

@@ -1019,6 +1019,48 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "designed (DESIGN_V4.md 2.1).",
             context, toString(micro_ceiling_closed_macro_gate));
     }
+    // v5 probe switch (branch dsm_mass_conservation_v5_P_exact_2026-10-02,
+    // DESIGN_V5.md 2.2-2.5). PROBE, NOT adopted. Default false = the v4 code,
+    // bitwise; per-medium inheritance as the drop.
+    auto const macro_storage_exact_time_levels =
+        config.getConfigParameter<bool>(
+            "macro_storage_exact_time_levels",
+            defaults ? defaults->macro_storage_exact_time_levels : false);
+    if (macro_storage_exact_time_levels)
+    {
+        // DESIGN_V5.md 2.4: the exact-difference statement of 2.1 is about
+        // the macro part of the Biot term, i.e. after the T_m drop, and about
+        // phi_M in a_S (Q2). The drop's own guards (KKT, F3, reference n_S,
+        // analytic exchange Jacobian, no explicit HM coupling) then hold
+        // transitively.
+        if (!macro_balance_drops_micro_biot_term)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} macro_storage_exact_time_levels = true "
+                "requires macro_balance_drops_micro_biot_term = true: without "
+                "the drop the Biot term still carries T_m and the macro "
+                "accumulation is not the exact difference of the macro water "
+                "(DESIGN_V5.md 2.4).",
+                context);
+        }
+        if (!macro_storage_uses_macro_porosity)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} macro_storage_exact_time_levels = true "
+                "requires macro_storage_uses_macro_porosity = true: without "
+                "Q2 a_S counts the total porosity, not phi_M "
+                "(DESIGN_V5.md 2.4).",
+                context);
+        }
+        INFO(
+            "KKT v5 label: macro_storage_exact_time_levels = true (probe, NOT "
+            "adopted): a_S uses phi_M of the previous step, so the macro "
+            "accumulation is the exact difference Delta(rho_LR S_L phi_M) "
+            "plus the Biot strain term; product term P removed "
+            "(DESIGN_V5.md 2.1). Conditional on v4's S_L-new Biot/T_m form "
+            "(implementation, not ruled). Constant liquid density only "
+            "(runtime FATAL on beta_LR != 0).");
+    }
     std::string micro_ceiling_trace_elements_default;
     if (defaults)
     {
@@ -1352,7 +1394,8 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         macro_balance_drops_micro_biot_term,
         darcy_relative_permeability_mobility,
         micro_ceiling_closed_macro_gate,
-        darcy_kirchhoff_cells_per_decade};
+        darcy_kirchhoff_cells_per_decade,
+        macro_storage_exact_time_levels};
 }
 
 template <int DisplacementDim>
