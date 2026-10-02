@@ -71,7 +71,7 @@ if (NOT OGS_USE_MPI)
     # vtkdiff replay with each deck's own tolerances (MEASURED on the mini): new reference vs its source frame 11/11, 11/11, 11/11, 11/11, 11/11;
     # old vs new reference 1/11, 3/11, 0/11, 3/11, 3/11. Model I dd1400/1600/1800 (D22): references UNCHANGED (shipped-K frames); the candidate-2a
     # record-run frames pass all 11 checks of each deck against them, step counts 308/311/308 unchanged. Measured walls (one run per
-    # core, OMP 1, nice 10): Reference 18 s, III 312 s, IV 296 s (298 s with every-step output), VII 395 s / 486 s. RUNTIME: only Model IV
+    # core, OMP 1, nice 10): Reference 18 s, III 312 s, IV 296 s (298 s for IV_nf = the same deck + NodalForces output), VII 395 s / 486 s. RUNTIME: only Model IV
     # changes (D21: the slowest measured wall), 10736 -> 299 = ceil(298 s + 0.5 s rounding of the wall); it stays above
     # large_runtime = 60 (same -LARGE test name) and is not above 750, so no explicit TIMEOUT is emitted and ctest's default
     # (1500 s) applies. Model III/VII RUNTIME 300 left as they are (no ruling on them; candidate 1 kept them too). ctest (P7c):
