@@ -2816,6 +2816,124 @@ inline double computeImplicitNlDK(
     return std::isfinite(dn_l_dK) ? dn_l_dK : 0.0;
 }
 
+// ── v4 drop T_m (branch dsm_mass_conservation_v4_tm_krel_2026-10-02;
+// DESIGN_V4.md 2.2.2; JACOBIAN-ONLY) ─────────────────────────────────────────
+// Sensitivity of the locally solved micro water content n_l to the volumetric
+// strain at an INTERIOR point of the ScalarReferenceMassStorage solve. Sibling of
+// computeImplicitNlDK: the same 1x1 REV-mass reduction (rho_lR slaved along the
+// EOS), the same dr/dn_l expression, and the partial of
+//   r = c f rho_lR tf - rho_l_prev - dt rhohat,  c = 1 - phi, f = n/(1-n),
+//   tf = 1 - s Delta eps_v
+// with respect to eps_v at fixed n_l:
+//   (i)   phi(eps_v) in c:        -(dphi/deps_v) f rho_lR tf
+//   (ii)  the strain term tf:     -s c f rho_lR
+//   (iii)+(iv) the exchange:      -dt drhohat/dmu_lR * dmu_lR/deps_v|_n,
+// where the caller passes dmu_lR/deps_v|_n = d(mu_lR_mech)/deps_v (integrable
+// Maxwell partner, iv) + dmu_lR/dK * dK/dphi * dphi/deps_v (live K, iii).
+// The EOS (omega = n_l rho_lR/(n_S rho_SR), n_S reference) has no eps_v at
+// fixed n_l. Not included: the lagged p_conf channel (as every existing
+// tangent), and the macro-floor cutoff's phi dependence (macro_porosity_floor
+// > 0 only; dd900_f008 deck). dn_l/deps_v = -(dr/deps_v)/(dr/dn_l); 0 on a
+// singular or non-finite dr/dn_l, matching the siblings.
+inline double computeImplicitNlDEpsV(
+    double const n_l_prev, double const dt, double const rho_LR,
+    double const mu,
+    VanDerWaalsMicroPotentialData const& micro_potential,
+    PotentialDrivenMassExchangeData const& exchange,
+    PotentialExchangeLocalSolveContext const& local_context,
+    PotentialExchangeParameters const& potential_exchange_params,
+    double const dphi_deps_v, double const dmu_lR_deps_v_fixed_n,
+    double const n_l_converged, double const rho_lR_micro)
+{
+    requirePositiveViscosity("computeImplicitNlDEpsV", mu);
+    double const dt_safe = std::isfinite(dt) && dt > 0.0 ? dt : 0.0;
+    if (dt_safe <= 0.0 ||
+        potential_exchange_params.local_nonlinear_solve_mode !=
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+    {
+        return 0.0;
+    }
+    double const s = microMassStrainTermSign(potential_exchange_params);  // [-]
+    double const eps_v_rate =
+        (local_context.volumetric_strain -
+         local_context.volumetric_strain_prev) /
+        dt_safe;  // 1/s
+    double const time_factor = 1.0 - s * dt_safe * eps_v_rate;  // [-]
+    double const n_l =
+        std::max(1e-16, std::isfinite(n_l_converged) ? n_l_converged
+                                                     : n_l_prev);
+    double const nS = computeActiveMicroSolidVolumeFraction(
+        n_l, local_context, potential_exchange_params);  // [-]
+    auto const eos = computeReducedMicroLiquidDensity(
+        n_l, rho_LR, nS, potential_exchange_params);
+    double const rho_lR = (std::isfinite(rho_lR_micro) && rho_lR_micro > 0.0)
+                              ? rho_lR_micro
+                              : eos.rho_lR;  // kg/m^3
+    double const phi = std::isfinite(local_context.phi)
+                           ? std::clamp(local_context.phi, 0.0, 1.0 - 1e-12)
+                           : std::clamp(local_context.phi_M_prev +
+                                            local_context.phi_m_prev,
+                                        0.0, 1.0 - 1e-12);  // [-]
+    double const c = 1.0 - phi;                                // [-]
+    double const one_minus_n_l = std::max(1e-12, 1.0 - n_l);  // [-]
+    double const f = n_l / one_minus_n_l;                     // [-]
+    double const f_prime = 1.0 / (one_minus_n_l * one_minus_n_l);
+    // dr/dn_l exactly as computeImplicitNlDpL / computeImplicitNlDK.
+    double const drho_l_dn_l = c * (f_prime * rho_lR + f * eos.drho_lR_dnl);
+    double const dmu_lR_dn_l_tot =
+        micro_potential.dmu_lR_dnl +
+        micro_potential.dmu_lR_drho_lR * eos.drho_lR_dnl;
+    double const drho_l_hat_dn_l =
+        exchange.drho_l_hat_dmu_lR * dmu_lR_dn_l_tot;
+    double const dr_dn_l =
+        drho_l_dn_l * time_factor - dt_safe * drho_l_hat_dn_l;
+    if (!(std::isfinite(dr_dn_l) && std::abs(dr_dn_l) > 1e-20))
+    {
+        return 0.0;
+    }
+    double const dr_deps_v =
+        -dphi_deps_v * f * rho_lR * time_factor  // (i)
+        - s * c * f * rho_lR                     // (ii)
+        - dt_safe * exchange.drho_l_hat_dmu_lR *
+              dmu_lR_deps_v_fixed_n;  // (iii) + (iv)
+    double const dn_l_deps_v = -dr_deps_v / dr_dn_l;  // n_l per unit eps_v
+    return std::isfinite(dn_l_deps_v) ? dn_l_deps_v : 0.0;
+}
+
+// The micro part of the Biot volume-change term at one integration point
+// (DESIGN_V4.md 2.2.1), in the operation order of the books
+// (2026-10-01_kkt_full_compare/tools/massbook_v3.py:170,
+//  tm_pt = sat * rho_LR * ((phim - phim_prev) + phim * de) * W),
+// divided by dt instead of multiplied by the weight:
+//   T = S_L rho_LR [(phi_m - phi_m,prev) + phi_m Delta eps_v] / dt
+// [kg/(m^3 s)], and its partial derivatives in its four arguments.
+struct DroppedMicroBiotRate
+{
+    double T = 0.0;           // kg/(m^3 s)
+    double D = 0.0;           // [-] (phi_m - phi_m,prev) + phi_m Delta eps_v
+    double dT_dS_L = 0.0;     // kg/(m^3 s)
+    double dT_dphi_m = 0.0;   // kg/(m^3 s)
+    double dT_ddeps = 0.0;    // kg/(m^3 s)
+    double dT_drho_LR = 0.0;  // 1/s
+};
+
+inline DroppedMicroBiotRate droppedMicroBiotRate(double const S_L,
+                                                 double const rho_LR,
+                                                 double const phi_m,
+                                                 double const phi_m_prev,
+                                                 double const d_eps,
+                                                 double const dt)
+{
+    DroppedMicroBiotRate r;
+    r.D = (phi_m - phi_m_prev) + phi_m * d_eps;
+    r.T = S_L * rho_LR * ((phi_m - phi_m_prev) + phi_m * d_eps) / dt;
+    r.dT_dS_L = rho_LR * r.D / dt;
+    r.dT_dphi_m = S_L * rho_LR * (1.0 + d_eps) / dt;
+    r.dT_ddeps = S_L * rho_LR * phi_m / dt;
+    r.dT_drho_LR = S_L * r.D / dt;
+    return r;
+}
+
 template <int DisplacementDim>
 inline void updateMicroscaleHydraulicState(
     StatefulData<DisplacementDim>& state_current,
@@ -4196,6 +4314,22 @@ void RichardsMechanicsLocalAssembler<
             "off.",
             toString(gate_params->micro_ceiling_saturation_gate));
     }
+    // v4 switches (DESIGN_V4.md 2.1): the Picard path has neither the T_m
+    // drop, nor the Kirchhoff element mobility, nor the closed-macro gate.
+    if (auto const* const v4_params = this->getPotentialExchangeParameters();
+        v4_params != nullptr && anyV4SwitchOn(*v4_params))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: macro_balance_drops_micro_biot_term = {}, "
+            "darcy_relative_permeability_mobility = {}, "
+            "micro_ceiling_closed_macro_gate = {}: the v4 switches are "
+            "implemented in assembleWithJacobian (Newton) only; the Picard "
+            "assemble() path has none of them. Use a Newton nonlinear solver "
+            "or switch them off.",
+            v4_params->macro_balance_drops_micro_biot_term,
+            toString(v4_params->darcy_relative_permeability_mobility),
+            toString(v4_params->micro_ceiling_closed_macro_gate));
+    }
 
     auto const [p_L, u] = localDOF(local_x);
     auto const [p_L_prev, u_prev] = localDOF(local_x_prev);
@@ -5114,6 +5248,57 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             level, latch_old, status_active);
     }
 
+    // 1b closed-macro gate (micro_ceiling_closed_macro_gate; v4 branch,
+    // DESIGN_V4.md 2.4; ruling 2026-10-02 "Treat closed macro pores as gas-free
+    // (k_rel = 1)"). Evaluated OUTSIDE the Fix B block above (review should-fix
+    // 1), so it acts with micro_ceiling_saturation_gate = off as well. The
+    // marker is written at every evaluation (0 when the switch is off). At
+    // level relperm only k_rel is gated (OR-ed into gate_relperm_acts); chi,
+    // chi_prev, dchi/dS and p_FR are touched only at bishop_relperm (built,
+    // not run). Switch off: only the (zero) marker is written; bitwise AB.
+    if (potential_exchange_parameters != nullptr)
+    {
+        auto const level_1b =
+            potential_exchange_parameters->micro_ceiling_closed_macro_gate;
+        bool const closed_macro_gate_acts = closedMacroGateActs(
+            level_1b,
+            **std::get<PrevState<MicroCeilingStatus>>(state_previous) ==
+                static_cast<double>(MicroCeilingKktStatus::Active),
+            std::get<PrevState<ProcessLib::ThermoRichardsMechanics::
+                                   TransportPorosityData>>(state_previous)
+                    ->phi == 0.0,
+            *std::get<MicroCeilingStatus>(state_current) ==
+                static_cast<double>(MicroCeilingKktStatus::Active));
+        *std::get<MicroClosedMacroGateActed>(state_current) =
+            closed_macro_gate_acts ? 1.0 : 0.0;
+        if (level_1b == MicroCeilingClosedMacroGate::BishopRelperm &&
+            closed_macro_gate_acts)
+        {
+            auto const gated_1b = closedMacroGatedBishopFactors(
+                level_1b, closed_macro_gate_acts,
+                **std::get<PrevState<MicroClosedMacroGateActed>>(
+                    state_previous) == 1.0,
+                {chi_S_L, chi_S_L_prev, dchi_dS_L}, chi);
+            chi_S_L = gated_1b.chi;
+            chi_S_L_prev = gated_1b.chi_prev;
+            dchi_dS_L = gated_1b.dchi_dS_L;
+            std::get<ProcessLib::ThermoRichardsMechanics::BishopsData>(
+                constitutive_data)
+                .chi_S_L = chi_S_L;
+            std::get<ProcessLib::ThermoRichardsMechanics::BishopsData>(
+                constitutive_data)
+                .dchi_dS_L = dchi_dS_L;
+            std::get<PrevState<ProcessLib::ThermoRichardsMechanics::BishopsData>>(
+                constitutive_data)
+                ->chi_S_L = chi_S_L_prev;
+            p_FR = -chi_S_L * p_cap_ip;  // Pa
+            variables.effective_pore_pressure = p_FR;
+            variables_prev.effective_pore_pressure =
+                -chi_S_L_prev * p_cap_prev_ip;  // Pa
+        }
+        gate_relperm_acts = gate_relperm_acts || closed_macro_gate_acts;
+    }
+
     updatePorositySplitState<DisplacementDim>(
         state_current, state_previous, phi, variables, variables_prev,
         potential_exchange_parameters);
@@ -5391,6 +5576,42 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
     MPL::VariableArray variables;
     MPL::VariableArray variables_prev;
 
+    // ── v4 switches (branch dsm_mass_conservation_v4_tm_krel_2026-10-02,
+    // DESIGN_V4.md 2.2-2.4; ruling 2026-10-02). Every new term below sits in a
+    // block entered only with its switch on; off = the AB code, bitwise.
+    auto const* const pep_v4 = this->getPotentialExchangeParameters();
+    bool const v4_drop_tm =
+        pep_v4 != nullptr && pep_v4->macro_balance_drops_micro_biot_term;
+    bool const v4_kirchhoff = isKirchhoffElementMeanMobility(pep_v4);
+    // Drop T_m: p-u entries of -T, kept apart from local_Jac because the
+    // assembly line `local_Jac.pu = Kpu/dt` erases local_Jac.pu (Q9); added
+    // after it at every Q9 level (DESIGN_V4.md 2.2.2).
+    typename ShapeMatricesTypeDisplacement::template MatrixType<
+        pressure_size, displacement_size>
+        tm_Kpu = ShapeMatricesTypeDisplacement::template MatrixType<
+            pressure_size, displacement_size>::Zero(pressure_size,
+                                                    displacement_size);
+    // 1a: element mobility kbar_e from the nodal p_L and its gradient g
+    // (DESIGN_V4.md 2.3.4); r_u = sum over the non-gated IPs of
+    // w gradN^T (K rho_LR/mu)(gradN p_L - rho_LR b), so that J_pp += r_u g^T.
+    KirchhoffElementMobility<ShapeFunctionPressure::NPOINTS> kirchhoff_mobility;
+    typename ShapeMatricesTypePressure::NodalVectorType kirchhoff_r_u =
+        ShapeMatricesTypePressure::NodalVectorType::Zero(pressure_size);
+    if (v4_kirchhoff)
+    {
+        auto const it = this->process_data_.kirchhoff_tables.find(medium);
+        if (it == this->process_data_.kirchhoff_tables.end())
+        {
+            OGS_FATAL(
+                "darcy_relative_permeability_mobility = kirchhoff_element_mean: "
+                "no Kirchhoff table for the medium of element {}.",
+                this->element_.getID());
+        }
+        kirchhoff_mobility =
+            kirchhoffElementMobility<ShapeFunctionPressure::NPOINTS>(
+                *it->second, p_L);
+    }
+
     unsigned const n_integration_points =
         this->integration_method_.getNumberOfPoints();
     for (unsigned ip = 0; ip < n_integration_points; ip++)
@@ -5586,6 +5807,12 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         // (B') moves only a_p and a_S to phi_M and leaves this term unchanged:
         // the variant is 'phi_M in a_p/a_S only', not 'macro storage = macro pores
         // only'. Not removed here (formulation decision, CLAUDE.md section 9).
+        // RESOLVED 2026-10-02 (annotation; the note above is kept as the
+        // record): Vinay's ruling "(go with L + drop T_m) x (1a, 1b separate)"
+        // drops the micro part T_m from the macro balance. Implemented as the
+        // switch macro_balance_drops_micro_biot_term (v4 branch, DESIGN_V4.md
+        // 2.2): Kpu below is unchanged and -T_m is subtracted right after it;
+        // off (default) = the AB code, bitwise.
         if (this->process_data_.explicit_hm_coupling_in_unsaturated_zone)
         {
             double const chi_S_L_prev = std::get<PrevState<
@@ -5599,11 +5826,57 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             Kpu.noalias() += N_p.transpose() * S_L * rho_LR * alpha *
                              identity2.transpose() * B * w;
         }
+        // v4 drop T_m, residual (DESIGN_V4.md 2.2.1): R_p -= N_p^T T w at every
+        // integration point, not lumped (Kpu is not lumped; the books integrate
+        // at the IPs). S_L is the ungated SaturationData state (the same S_L as
+        // Kpu); phi_m is the current MicroPorosity (after the gate fix),
+        // phi_m,prev its previous-step state, Delta eps_v = m^T B (u - u_prev).
+        DroppedMicroBiotRate tm_ip;
+        double tm_d_eps_v = 0.0;  // [-]
+        if (v4_drop_tm)
+        {
+            double const phi_m_tm =
+                *std::get<MicroPorosity>(this->current_states_[ip]);  // [-]
+            double const phi_m_prev_tm =
+                **std::get<PrevState<MicroPorosity>>(this->prev_states_[ip]);
+            tm_d_eps_v =
+                (identity2.transpose() * B * (u - u_prev)).eval()(0, 0);  // [-]
+            tm_ip = droppedMicroBiotRate(S_L, rho_LR, phi_m_tm, phi_m_prev_tm,
+                                         tm_d_eps_v, dt);
+            local_rhs.template segment<pressure_size>(pressure_index)
+                .noalias() += N_p.transpose() * tm_ip.T * w;
+        }
 
         //
         // pressure equation, pressure part.
         //
 
+        // k_rel gate of this iterate: Fix B (bishop_relperm, latched Active)
+        // OR the 1b closed-macro gate (its marker was written by the
+        // constitutive setting of this iterate). The same predicates as in
+        // assembleWithJacobianEvalConstitutiveSetting.
+        auto const* const potential_exchange_params_ptr_gate =
+            this->getPotentialExchangeParameters();
+        bool const gate_relperm_acts_ip =
+            potential_exchange_params_ptr_gate != nullptr &&
+            (saturationGateActsOnRelativePermeability(
+                 potential_exchange_params_ptr_gate
+                     ->micro_ceiling_saturation_gate,
+                 **std::get<PrevState<MicroSaturatedLatch>>(
+                     this->prev_states_[ip]) == 1.0,
+                 *std::get<MicroCeilingStatus>(this->current_states_[ip]) ==
+                     static_cast<double>(MicroCeilingKktStatus::Active)) ||
+             *std::get<MicroClosedMacroGateActed>(this->current_states_[ip]) ==
+                 1.0);
+        // 1a: the element mobility at every non-gated IP (DESIGN_V4.md 2.3.1);
+        // written to the output data so the residual, the reaction and the
+        // relative_permeability output carry the mobility the residual uses.
+        if (v4_kirchhoff && !gate_relperm_acts_ip)
+        {
+            std::get<ProcessLib::ThermoRichardsMechanics::PermeabilityData<
+                DisplacementDim>>(this->output_data_[ip])
+                .k_rel = kirchhoff_mobility.k_bar;
+        }
         double const k_rel =
             std::get<ProcessLib::ThermoRichardsMechanics::PermeabilityData<
                 DisplacementDim>>(this->output_data_[ip])
@@ -5620,6 +5893,14 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
 
         laplace_p.noalias() +=
             dNdx_p.transpose() * k_rel * rho_Ki_over_mu * dNdx_p * w;
+        // 1a tangent (DESIGN_V4.md 2.3.4): J_pp += r_u g^T after the loop.
+        if (v4_kirchhoff && !gate_relperm_acts_ip)
+        {
+            kirchhoff_r_u.noalias() +=
+                dNdx_p.transpose() * rho_Ki_over_mu *
+                (dNdx_p * p_L - rho_LR * this->process_data_.specific_body_force) *
+                w;
+        }
 
         auto const beta_LR =
             1 / rho_LR *
@@ -5691,23 +5972,13 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                               N_p * w;
         }
 
-        // Gated point (bishop_relperm, latched and Active in this iterate):
-        // k_rel is a constant of the iterate, dk_rel/dS = 0. The same predicate
-        // as in the constitutive setting (previous latch, this iterate's
-        // status); with the gate off the shipped derivative is evaluated.
-        auto const* const potential_exchange_params_ptr_gate =
-            this->getPotentialExchangeParameters();
-        bool const gate_relperm_acts_ip =
-            potential_exchange_params_ptr_gate != nullptr &&
-            saturationGateActsOnRelativePermeability(
-                potential_exchange_params_ptr_gate
-                    ->micro_ceiling_saturation_gate,
-                **std::get<PrevState<MicroSaturatedLatch>>(
-                    this->prev_states_[ip]) == 1.0,
-                *std::get<MicroCeilingStatus>(this->current_states_[ip]) ==
-                    static_cast<double>(MicroCeilingKktStatus::Active));
+        // Gated point (Fix B bishop_relperm latched and Active, or the 1b gate;
+        // predicate gate_relperm_acts_ip above): k_rel is a constant of the
+        // iterate, dk_rel/dS = 0. 1a: no IP derivative at all, the element
+        // mobility's tangent is the r_u g^T term (DESIGN_V4.md 2.3.4). With the
+        // gates off and 1a off the shipped derivative is evaluated.
         double const dk_rel_dS_l =
-            gate_relperm_acts_ip
+            (gate_relperm_acts_ip || v4_kirchhoff)
                 ? 0.0
                 : medium->property(MPL::PropertyType::relative_permeability)
                       .template dValue<double>(
@@ -5729,6 +6000,16 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
 
         local_rhs.template segment<pressure_size>(pressure_index).noalias() +=
             dNdx_p.transpose() * rho_LR * k_rel * rho_Ki_over_mu * b * w;
+
+        // v4 drop T_m: interior n_l sensitivities captured in the exchange
+        // block below (DESIGN_V4.md 2.2.2 (b) and pu), consumed by the T_m
+        // tangent at the end of this integration point. Written only with the
+        // drop on.
+        double tm_dn_l_dpL = 0.0;     // n_l per Pa (interior)
+        double tm_dn_l_deps_v = 0.0;  // n_l per unit eps_v (interior)
+        double tm_dmu_lR_deps_v_mech = 0.0;  // J/kg per unit eps_v, fixed n_l
+        double tm_dmu_lR_dK_tot = 0.0;       // [-] d mu_lR/dK at fixed n_l
+        double tm_dK_dphi = 0.0;             // J/kg per unit phi
 
         auto const* const potential_exchange_params_ptr =
             this->getPotentialExchangeParameters();
@@ -6308,6 +6589,20 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         effectiveAugmentationPrefactorPhiDerivative(
                             *potential_exchange_params_ptr,
                             phi);  // J/kg per unit phi
+                    if (v4_drop_tm)
+                    {
+                        // Interior IP (this block runs only at non-KKT-active
+                        // points): d mu_lR/d eps_v at fixed n_l of the
+                        // integrable partner, and the live-K pieces, for
+                        // computeImplicitNlDEpsV (DESIGN_V4.md 2.2.2, channels
+                        // iii and iv). Captured only; nothing assembled here.
+                        tm_dmu_lR_deps_v_mech = dmu_lR_deps_v_film;
+                        tm_dmu_lR_dK_tot =
+                            vdw_pu.dmu_lR_dK +
+                            (vdw_pu.dmu_lR_dK + n_l * vdw_pu.ddmu_lR_dnl_dK) *
+                                variables.volumetric_strain;  // [-]
+                        tm_dK_dphi = dK_dphi_pu;
+                    }
                     if (dK_dphi_pu != 0.0)
                     {
                         // dphi/deps_v of the porosity law the residual actually
@@ -6406,6 +6701,39 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         *potential_exchange_params_ptr,
                         /*n_l_converged=*/n_l,
                         /*rho_lR_micro=*/rho_lR_exchange_input);
+                    // v4 drop T_m (DESIGN_V4.md 2.2.2): interior dn_l/dp_L
+                    // (the same value as the exchange tangent above) and
+                    // dn_l/deps_v (new sibling helper). Active: both 0 / the
+                    // n_max(eps_v) rule, applied in the T_m tangent below.
+                    if (v4_drop_tm && !kkt_active)
+                    {
+                        tm_dn_l_dpL = dn_l_dpL;
+                        double const phi_prev_law_tm =
+                            std::get<PrevState<ProcessLib::
+                                                   ThermoRichardsMechanics::
+                                                       PorosityData>>(
+                                this->prev_states_[ip])
+                                ->phi;  // [-]
+                        double const dphi_deps_v_tm =
+                            dynamic_cast<MPL::PorosityFromMassBalance const*>(
+                                &medium->property(
+                                    MPL::PropertyType::porosity)) != nullptr
+                                ? porosityDerivativeWrtVolumetricStrain(
+                                      alpha, phi, phi_prev_law_tm,
+                                      variables.volumetric_strain -
+                                          variables_prev.volumetric_strain)
+                                : 0.0;  // [-]
+                        double const dmu_lR_deps_v_fixed_n =
+                            tm_dmu_lR_deps_v_mech +
+                            tm_dmu_lR_dK_tot * tm_dK_dphi *
+                                dphi_deps_v_tm;  // J/kg per unit eps_v
+                        tm_dn_l_deps_v = computeImplicitNlDEpsV(
+                            n_l_prev, dt, rho_LR, mu, micro_potential, exchange,
+                            local_solve_context, *potential_exchange_params_ptr,
+                            dphi_deps_v_tm, dmu_lR_deps_v_fixed_n,
+                            /*n_l_converged=*/n_l,
+                            /*rho_lR_micro=*/rho_lR_exchange_input);
+                    }
 
                     // Full total derivative of the vdW micro potential w.r.t.
                     // pL. NOTE (on-disk): dmu_lR_drho_lR is NON-zero here
@@ -7247,6 +7575,74 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                   (p_cap_ip - p_cap_prev_ip) * N_p * w;
             }
         }
+
+        // v4 drop T_m, Jacobian (DESIGN_V4.md 2.2.2), J = dR/dx with
+        // R_p containing -N^T T w:
+        //  pp (a) S-chain:  += N^T rho_LR dS_L/dp_c (D/dt) N w
+        //  pp (b) phi_m:    -= N^T S_L rho_LR (1 + Deps) dphi_m/dp_L /dt N w
+        //  pp (c) rho_LR:   -= N^T S_L rho_LR beta_LR (D/dt) N w
+        //  pu:      tm_Kpu -= N^T S_L rho_LR [(1 + Deps) dphi_m/deps_v + phi_m]/dt
+        //                     m^T B w   (added after the Q9 line, every level)
+        // Active (status 1): phi_m = n_max(eps_v) = phi_s, dphi_m/dp_L = 0,
+        // dphi_m/deps_v = dphi/deps_v of the porosity law (beta_SR = 0 is
+        // enforced under KKT). Otherwise (Interior; status 2/3 never observed
+        // on AB, DESIGN_V4.md 1.2, take this rule too): phi_m = n_l(1-phi)/(1-n_l),
+        //   dphi_m/dp_L   = (1-phi)/(1-n_l)^2 dn_l/dp_L,
+        //   dphi_m/deps_v = (1-phi)/(1-n_l)^2 dn_l/deps_v - n_l/(1-n_l) dphi/deps_v.
+        if (v4_drop_tm)
+        {
+            bool const active_tm =
+                *std::get<MicroCeilingStatus>(this->current_states_[ip]) ==
+                static_cast<double>(MicroCeilingKktStatus::Active);
+            double const phi_prev_law_tm =
+                std::get<PrevState<
+                    ProcessLib::ThermoRichardsMechanics::PorosityData>>(
+                    this->prev_states_[ip])
+                    ->phi;  // [-]
+            double const dphi_deps_v_tm =
+                dynamic_cast<MPL::PorosityFromMassBalance const*>(
+                    &medium->property(MPL::PropertyType::porosity)) != nullptr
+                    ? porosityDerivativeWrtVolumetricStrain(
+                          alpha, phi, phi_prev_law_tm,
+                          variables.volumetric_strain -
+                              variables_prev.volumetric_strain)
+                    : 0.0;  // [-]
+            double dphi_m_dpL = 0.0;    // 1/Pa
+            double dphi_m_deps_v = 0.0;  // [-]
+            if (active_tm)
+            {
+                dphi_m_deps_v = dphi_deps_v_tm;
+            }
+            else
+            {
+                double const n_l_tm = std::max(
+                    1e-16, *std::get<MicroWaterContent>(
+                               this->current_states_[ip]));  // [-]
+                double const phi_s_tm =
+                    std::clamp(phi, 0.0, 1.0 - 1e-12);  // [-]
+                double const one_minus_n_l_tm =
+                    std::max(1e-12, 1.0 - n_l_tm);  // [-]
+                double const dphi_m_dn_l = (1.0 - phi_s_tm) /
+                                           (one_minus_n_l_tm *
+                                            one_minus_n_l_tm);  // [-]
+                dphi_m_dpL = dphi_m_dn_l * tm_dn_l_dpL;
+                dphi_m_deps_v = dphi_m_dn_l * tm_dn_l_deps_v -
+                                n_l_tm / one_minus_n_l_tm * dphi_deps_v_tm;
+            }
+            local_Jac
+                .template block<pressure_size, pressure_size>(pressure_index,
+                                                              pressure_index)
+                .noalias() +=
+                N_p.transpose() *
+                (tm_ip.dT_dS_L * dS_L_dp_cap -
+                 tm_ip.dT_dphi_m * dphi_m_dpL -
+                 tm_ip.dT_drho_LR * rho_LR * beta_LR) *
+                N_p * w;
+            tm_Kpu.noalias() -=
+                N_p.transpose() *
+                (tm_ip.dT_dphi_m * dphi_m_deps_v + tm_ip.dT_ddeps) *
+                identity2.transpose() * B * w;
+        }
     }
 
     if (this->process_data_.apply_mass_lumping)
@@ -7262,6 +7658,37 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         .template block<pressure_size, pressure_size>(pressure_index,
                                                       pressure_index)
         .noalias() += laplace_p + storage_p_a_p / dt + storage_p_a_S_Jpp;
+
+    // 1a (DESIGN_V4.md 2.3.4): the element mobility depends on the nodal p_L
+    // through min/max: J_pp += r_u g^T, r_u the residual per unit mobility of
+    // the non-gated IPs, g = d kbar/d p_L (tie shares, KirchhoffMobility.h).
+    if (v4_kirchhoff)
+    {
+        Eigen::Map<Eigen::Matrix<double, pressure_size, 1> const> const
+            kirchhoff_g(kirchhoff_mobility.dk_dpL.data());
+        local_Jac
+            .template block<pressure_size, pressure_size>(pressure_index,
+                                                          pressure_index)
+            .noalias() += kirchhoff_r_u * kirchhoff_g.transpose();
+        // Trace of the traced elements (review should-fix 4): the min/max
+        // node sets (argmin/argmax masks) per assembly, so an argmax
+        // flip-flop between tied nodes is visible in the log.
+        if (pep_v4 != nullptr && !pep_v4->micro_ceiling_trace_elements.empty() &&
+            std::find(pep_v4->micro_ceiling_trace_elements.begin(),
+                      pep_v4->micro_ceiling_trace_elements.end(),
+                      static_cast<std::size_t>(this->element_.getID())) !=
+                pep_v4->micro_ceiling_trace_elements.end())
+        {
+            INFO(
+                "KKT-V4-1A t={:.10g} dt={:.6g} elem={} a={:.17g} b={:.17g} "
+                "argmin_mask={} argmax_mask={} kbar={:.17g} dkbar_da={:.6e} "
+                "dkbar_db={:.6e}",
+                t, dt, this->element_.getID(), kirchhoff_mobility.a,
+                kirchhoff_mobility.b, kirchhoff_mobility.argmin_mask,
+                kirchhoff_mobility.argmax_mask, kirchhoff_mobility.k_bar,
+                kirchhoff_mobility.mean.dk_da, kirchhoff_mobility.mean.dk_db);
+        }
+    }
 
     // pressure equation, displacement part.
     // Q9 (DESIGN.md D1): micro_ceiling_pu_tangent. overwritten (default, the
@@ -7299,6 +7726,14 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 .template block<pressure_size, displacement_size>(
                     pressure_index, displacement_index)
                 .noalias() += kkt_Kpu_exchange;
+        }
+        // v4 drop T_m p-u entries (DESIGN_V4.md 2.2.2), at every Q9 level.
+        if (v4_drop_tm)
+        {
+            local_Jac
+                .template block<pressure_size, displacement_size>(
+                    pressure_index, displacement_index)
+                .noalias() += tm_Kpu;
         }
     }
 
@@ -7396,6 +7831,51 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             double const h_rel =
                 std::cbrt(std::numeric_limits<double>::epsilon());
 
+            // v4 (IMPLEMENT stage, review should-fix 5): per perturbation,
+            // the number of integration points whose KKT status, Fix B latch
+            // or 1b marker differs from the base evaluation, and (1a) whether
+            // the nodal argmin/argmax sets of p_c changed. Diagnostic only; the
+            // FD columns are computed as before.
+            unsigned fd_state_flips = 0;
+            unsigned fd_kirchhoff_mask_flips = 0;
+            auto const count_state_flips = [&]()
+            {
+                unsigned n = 0;
+                for (unsigned ip = 0; ip < n_integration_points; ++ip)
+                {
+                    auto const& cur = this->current_states_[ip];
+                    auto const& base = states_backup[ip];
+                    n += (*std::get<MicroCeilingStatus>(cur) !=
+                              *std::get<MicroCeilingStatus>(base) ||
+                          *std::get<MicroSaturatedLatch>(cur) !=
+                              *std::get<MicroSaturatedLatch>(base) ||
+                          *std::get<MicroClosedMacroGateActed>(cur) !=
+                              *std::get<MicroClosedMacroGateActed>(base))
+                             ? 1u
+                             : 0u;
+                }
+                return n;
+            };
+            auto const p_c_masks = [&](std::vector<double> const& x)
+            {
+                double a = -x[0];
+                double b = -x[0];
+                for (unsigned n = 1; n < pressure_size; ++n)
+                {
+                    a = std::min(a, -x[n]);
+                    b = std::max(b, -x[n]);
+                }
+                unsigned m_a = 0;
+                unsigned m_b = 0;
+                for (unsigned n = 0; n < pressure_size; ++n)
+                {
+                    m_a |= (-x[n] == a) ? (1u << n) : 0u;
+                    m_b |= (-x[n] == b) ? (1u << n) : 0u;
+                }
+                return std::pair{m_a, m_b};
+            };
+            auto const base_masks = p_c_masks(local_x);
+
             Eigen::MatrixXd J_fd = Eigen::MatrixXd::Zero(n_dof, n_dof);
             for (int j = 0; j < n_dof; ++j)
             {
@@ -7414,12 +7894,21 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 std::vector<double> jac_scratch;
                 this->assembleWithJacobian(t, dt, x_plus, local_x_prev,
                                            rhs_plus, jac_scratch);
+                fd_state_flips += count_state_flips();
                 this->current_states_ = states_backup;
                 this->output_data_ = output_backup;
                 this->assembleWithJacobian(t, dt, x_minus, local_x_prev,
                                            rhs_minus, jac_scratch);
+                fd_state_flips += count_state_flips();
                 this->current_states_ = states_backup;
                 this->output_data_ = output_backup;
+                if (isKirchhoffElementMeanMobility(pep_fd) &&
+                    static_cast<unsigned>(j) < pressure_size)
+                {
+                    fd_kirchhoff_mask_flips +=
+                        (p_c_masks(x_plus) != base_masks ? 1u : 0u) +
+                        (p_c_masks(x_minus) != base_masks ? 1u : 0u);
+                }
                 for (int i = 0; i < n_dof; ++i)
                 {
                     J_fd(i, j) = -(rhs_plus[i] - rhs_minus[i]) / h_total;
@@ -7446,7 +7935,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     "pu_tangent={} kkt_active_ip_straining={} "
                     "kkt_dphi_zero_with_strain={} sw_tangent={} "
                     "sw_active_ip={} sw_explicit_mean={:.6e} "
-                    "sw_implicit_mean={:.6e}",
+                    "sw_implicit_mean={:.6e} v4_state_flips={} "
+                    "v4_kirchhoff_mask_flips={}",
                     t, dt, this->element_.getID(), element_class, n_active_ip,
                     n_integration_points, name, max_abs_dev, max_rel_dev,
                     max_abs_an, max_abs_fd, h_rel, scale_p,
@@ -7458,7 +7948,8 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     kkt_sw_ip_count > 0 ? kkt_sw_explicit_sum / kkt_sw_ip_count
                                         : 0.0,
                     kkt_sw_ip_count > 0 ? kkt_sw_implicit_sum / kkt_sw_ip_count
-                                        : 0.0);
+                                        : 0.0,
+                    fd_state_flips, fd_kirchhoff_mask_flips);
             };
             constexpr int np = static_cast<int>(pressure_size);
             constexpr int nu = static_cast<int>(displacement_size);
@@ -7466,6 +7957,31 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             report("pu", 0, np, np, nu);
             report("up", np, 0, nu, np);
             report("uu", np, np, nu, nu);
+            // v4 (IMPLEMENT stage): full analytic and FD matrices of the
+            // traced elements (micro_ceiling_trace_elements), row-major, for
+            // the differential switch-on minus switch-off comparison of the
+            // test plan (DESIGN_V4.md 3.2), plus the flip counters above.
+            if (std::find(pep_fd->micro_ceiling_trace_elements.begin(),
+                          pep_fd->micro_ceiling_trace_elements.end(),
+                          static_cast<std::size_t>(this->element_.getID())) !=
+                pep_fd->micro_ceiling_trace_elements.end())
+            {
+                std::string an_str;
+                std::string fd_str;
+                for (int i = 0; i < n_dof; ++i)
+                {
+                    for (int j = 0; j < n_dof; ++j)
+                    {
+                        an_str += fmt::format("{:.17g},", J_analytic(i, j));
+                        fd_str += fmt::format("{:.17g},", J_fd(i, j));
+                    }
+                }
+                INFO(
+                    "KKT-FD-MAT t={:.10g} dt={:.6g} elem={} n_p={} n_u={} "
+                    "state_flips={} kirchhoff_mask_flips={} J_an={} J_fd={}",
+                    t, dt, this->element_.getID(), np, nu, fd_state_flips,
+                    fd_kirchhoff_mask_flips, an_str, fd_str);
+            }
         }
     }
 }
@@ -7552,6 +8068,29 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
 
     using KV = MathLib::KelvinVector::KelvinVectorType<DisplacementDim>;
     KV sigma_avg = KV::Zero();
+
+    // 1a (v4 branch, DESIGN_V4.md 2.3.6): the element mobility from the final
+    // p_L, with the same function as the assembly; written as
+    // relative_permeability and used in the Darcy velocity at every non-gated
+    // integration point.
+    bool const v4_kirchhoff_out =
+        isKirchhoffElementMeanMobility(this->getPotentialExchangeParameters());
+    double kirchhoff_k_bar_out = 1.0;  // [-]
+    if (v4_kirchhoff_out)
+    {
+        auto const it = this->process_data_.kirchhoff_tables.find(medium);
+        if (it == this->process_data_.kirchhoff_tables.end())
+        {
+            OGS_FATAL(
+                "darcy_relative_permeability_mobility = kirchhoff_element_mean: "
+                "no Kirchhoff table for the medium of element {}.",
+                this->element_.getID());
+        }
+        kirchhoff_k_bar_out =
+            kirchhoffElementMobility<ShapeFunctionPressure::NPOINTS>(
+                *it->second, p_L)
+                .k_bar;
+    }
 
     for (unsigned ip = 0; ip < n_integration_points; ip++)
     {
@@ -7804,6 +8343,43 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             gate_relperm_acts = saturationGateActsOnRelativePermeability(
                 level, latch_old, status_active);
         }
+        // 1b closed-macro gate in the output re-evaluation (same block as in
+        // assembleWithJacobianEvalConstitutiveSetting; outside the Fix B block;
+        // idempotent: the previous-step states are those of the converged
+        // previous step, the status is the one just rewritten above).
+        if (auto const* const pep_1b = this->getPotentialExchangeParameters();
+            pep_1b != nullptr)
+        {
+            auto const level_1b = pep_1b->micro_ceiling_closed_macro_gate;
+            bool const closed_macro_gate_acts = closedMacroGateActs(
+                level_1b,
+                **std::get<PrevState<MicroCeilingStatus>>(
+                    this->prev_states_[ip]) ==
+                    static_cast<double>(MicroCeilingKktStatus::Active),
+                std::get<PrevState<ProcessLib::ThermoRichardsMechanics::
+                                       TransportPorosityData>>(
+                    this->prev_states_[ip])
+                        ->phi == 0.0,
+                *std::get<MicroCeilingStatus>(this->current_states_[ip]) ==
+                    static_cast<double>(MicroCeilingKktStatus::Active));
+            *std::get<MicroClosedMacroGateActed>(this->current_states_[ip]) =
+                closed_macro_gate_acts ? 1.0 : 0.0;
+            if (level_1b == MicroCeilingClosedMacroGate::BishopRelperm &&
+                closed_macro_gate_acts)
+            {
+                auto const gated_1b = closedMacroGatedBishopFactors(
+                    level_1b, closed_macro_gate_acts,
+                    **std::get<PrevState<MicroClosedMacroGateActed>>(
+                        this->prev_states_[ip]) == 1.0,
+                    {chi_S_L, chi_S_L_prev, 0.0}, chi);
+                chi_S_L = gated_1b.chi;
+                chi_S_L_prev = gated_1b.chi_prev;
+                variables.effective_pore_pressure = -chi_S_L * p_cap_ip;  // Pa
+                variables_prev.effective_pore_pressure =
+                    -chi_S_L_prev * p_cap_prev_ip;  // Pa
+            }
+            gate_relperm_acts = gate_relperm_acts || closed_macro_gate_acts;
+        }
 
         updatePorositySplitState<DisplacementDim>(
             this->current_states_[ip], this->prev_states_[ip], phi, variables,
@@ -7909,6 +8485,10 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
 
         double const k_rel = [&]()
         {
+            if (v4_kirchhoff_out && !gate_relperm_acts)
+            {
+                return kirchhoff_k_bar_out;  // 1a element mobility
+            }
             if (gate_relperm_acts)
             {
                 variables.liquid_saturation = 1.0;
