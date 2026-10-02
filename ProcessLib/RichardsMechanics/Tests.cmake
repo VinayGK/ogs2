@@ -64,9 +64,18 @@ if (NOT OGS_USE_MPI)
     # carry, inside <potential_exchange>, the KKT micro ceiling, F3, the ruled tangents and latched gate, the T_m drop,
     # variant 1a (darcy_relative_permeability_mobility = kirchhoff_element_mean) and macro_storage_exact_time_levels = true
     # (no every-step output, no diagnostic _ip variables). The other candidate-2 branch differs only in that variant line.
-    # References: still the IC-fix frames listed above; whether they pass under this configuration is NOT tested yet.
-    # <P7a: re-registered frames, step counts old -> new; replaced frames in superseded_references_2026-10-02_masscons_1a/>.
-    # Model I: <P7a: replay result (D22)>. RUNTIME: <P7a/D21: measured walls>. ctest: <P7c: host, result>.
+    # References (P7a, 2026-10-02): Reference, III, IV and both VII re-registered to the t_end frames of the candidate-2a record
+    # runs (Shilpa's MBP, bin/ogs md5 fd2e4e76e51d490e45c15b3861c7471d, libRichardsMechanics 31b02f0b7e28b25b9590c767d3f6b8aa,
+    # built from e03c32a1a3, the code of this branch); the replaced IC-fix frames are in superseded_references_2026-10-02_masscons_1a/
+    # next to each, with a README. Final step counts: Reference 895 -> 698 (0 rejected), III 970 -> 822 (0 rejected), IV 16494 -> 681 (0 rejected), VII 240 d 1006 -> 887 (0 rejected), VII ladder550 1287 -> 1147 (0 rejected).
+    # vtkdiff replay with each deck's own tolerances (MEASURED on the mini): new reference vs its source frame 11/11, 11/11, 11/11, 11/11, 11/11;
+    # old vs new reference 1/11, 3/11, 0/11, 3/11, 3/11. Model I dd1400/1600/1800 (D22): references UNCHANGED (shipped-K frames); the candidate-2a
+    # record-run frames pass all 11 checks of each deck against them, step counts 308/311/308 unchanged. Measured walls (one run per
+    # core, OMP 1, nice 10): Reference 18 s, III 312 s, IV 296 s (298 s with every-step output), VII 395 s / 486 s. RUNTIME: only Model IV
+    # changes (D21: the slowest measured wall), 10736 -> 299 = ceil(298 s + 0.5 s rounding of the wall); it stays above
+    # large_runtime = 60 (same -LARGE test name) and is not above 750, so no explicit TIMEOUT is emitted and ctest's default
+    # (1500 s) applies. Model III/VII RUNTIME 300 left as they are (no ruling on them; candidate 1 kept them too). ctest (P7c):
+    # run after this commit on the mac mini, RichardsMechanics-only testing build; the result is recorded outside the repository.
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1400.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1600.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj RUNTIME 120)
@@ -123,7 +132,9 @@ if (NOT OGS_USE_MPI)
     # 5-day rows (41 fixed output times); physics/BCs/knot unchanged; reference re-registered ts_16008 -> ts_16527
     # (old one in superseded_references_2026-09-08_v2/). Measured 7957.37 s / 16527 steps at OMP 6 on 2026-09-08
     # (campaign v2 runs/IV/run.log) -> RUNTIME 10736 kept.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 10736)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (P7a, D21): RUNTIME 10736 -> 299, the slowest measured wall of this deck under
+    # this branch's configuration (see the candidate-2a paragraph above); the 10736 history above is kept.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 299)
     # K(rho_d) equivalence pair (each material's k0 x20 spec, for speed): the
     # table-K variant resolves K = K(dry_density) at parse time and must
     # reproduce, bit-for-bit, the per-material scalar-K reference. Verified
