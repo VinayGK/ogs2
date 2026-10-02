@@ -5,6 +5,21 @@ Swelling pressure under isotropic constant-volume conditions
 BGR / DSM native hierarchical vdW-augmented model
 
 Dry density: 900 kg/m³  (9 kN/m³)  |  phi0 = 0.676259  |  n_s = 0.323741
+MASS-CONSERVING DSM, SUBMISSION CANDIDATE 2a, 2026-10-02 (Vinay 2026-10-02 "do both": candidate 2 is cut twice,
+  2a = variant 1a, 2b = variant 1b, each end to end like candidate 1). Branch gen5_masscons_1a_conformant_2026-10-02,
+  cut from 3101058538 (v5 probe tip); MS33 test tree from gen5_icfix_conformant_2026-09-30 (d64c47cb30).
+  CONFIGURATION (switch lines inside <potential_exchange> below; default of every switch = the shipped code):
+    micro_ceiling_treatment = kkt, micro_ceiling_pu_tangent = kkt_active (carried forward with the F3 ruling, 2026-10-01);
+    micro_mass_strain_term_eulerian = true (F3, RULED 2026-10-01); micro_ceiling_sw_tangent = kkt_active (Model IV
+    tangent, ordered 2026-10-01); micro_ceiling_saturation_gate = bishop_relperm (Fix B, RULED 2026-10-01);
+    macro_storage_uses_macro_porosity = true (Q2, RULED 2026-09-30); macro_balance_drops_micro_biot_term = true
+    (T_m dropped, RULED 2026-10-02 "go with L + drop T_m"); darcy_relative_permeability_mobility = kirchhoff_element_mean (1a: element-mean Kirchhoff k_rel in the Darcy term);
+    macro_storage_exact_time_levels = true (exact P; MAIN-LOOP READING of "do both", open for Vinay's check).
+  K table: K_fix of the IC-FIX V0 block below, unchanged (D3 default). No every-step output, no diagnostic _ip variables.
+  MASS-CONSERVATION STATUS (MEASURED on the v5 probe run V5a_I_dd900_f0, the same switch lines with every-step output,
+  Shilpa's MBP; books_table_v5.json md5 d480471922bf188d904ac04e3e64c25e in ~/ogs-models/scratch/2026-10-02_kkt_v5_compare/):
+    water books under definition L (RULED): R_L/I = -1.003e-04 at t = 200 d; the macro storage product term P is removed
+    by construction, what is left is MS + BTerr - Cl (NOTE_V5.md section 0 items 1 to 3). Not yet run with this deck.
 IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC to submission"; K_fix accepted,
   "your choices 1: ok"). Branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 (486235c679) + cherry-pick of
   686fcd6ef8 (RichardsMechanics DSM: the declared initial_micro_water_content is realised in the previous micro porosity).
@@ -315,7 +330,16 @@ Official benchmark specs (MSXX theoretical_benchmarking.tex, Table TH-G_model_pa
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
                   <micro_water_content_floor>7.06e-5</micro_water_content_floor>
                   <macro_porosity_floor>0.0</macro_porosity_floor> <!-- GEN 5 (Vinay 2026-09-07): 0.0, matching dd1400/1600/1800 and III/IV/VII (all 0.0 since 2026-06-23). Was 0.08 here through gen 4 (Vinay 2026-06-17: MS33=0.08; born 6af2391ff6), which is the state the superseded 18469.144929 knot was fit in; audit 2026-09-04 blocker B1. -->
-    </potential_exchange>
+    <micro_ceiling_treatment>kkt</micro_ceiling_treatment>
+                <macro_storage_uses_macro_porosity>true</macro_storage_uses_macro_porosity>
+                <micro_mass_strain_term_eulerian>true</micro_mass_strain_term_eulerian>
+                <micro_ceiling_pu_tangent>kkt_active</micro_ceiling_pu_tangent>
+                <micro_ceiling_sw_tangent>kkt_active</micro_ceiling_sw_tangent>
+                <micro_ceiling_saturation_gate>bishop_relperm</micro_ceiling_saturation_gate>
+                <macro_balance_drops_micro_biot_term>true</macro_balance_drops_micro_biot_term>
+                <darcy_relative_permeability_mobility>kirchhoff_element_mean</darcy_relative_permeability_mobility>
+                <macro_storage_exact_time_levels>true</macro_storage_exact_time_levels>
+            </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>
                 <youngs_modulus>E</youngs_modulus>
