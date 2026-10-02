@@ -1,11 +1,27 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
+<OpenGeoSysProject>
+<!-- CAMPAIGN v2 2026-09-08 (Vinay: '3x audit against specs ... results ground up'): output grid set to the data-collection template's
+     5-day rows (audit 2026-09-08_spec_audit_3x LANE2 finding 3); physics, BCs and numerics unchanged from the 2026-09-08 conformant deck. -->
+
 <!--
   DSM provenance (CLAUDE.md 12)
+  (block moved to immediately after the root tag on 2026-09-07 per CLAUDE.md 12.2; text otherwise unchanged
+  except the dated GEN 5 additions)
   Benchmark family : EURAD-MS (EURAD-2 MS33 theoretical benchmarking, Model III)
-  Geometry / BC    : axisymmetric cylinder r=25 mm, h=70 mm, 2 mm lateral technological
-                     gap represented by a BC SWITCH - the outer radial boundary swells
-                     FREE until u_r reaches 2 mm, then becomes a rigid Dirichlet wall
-                     (container contact).  Switch implemented in
+  Geometry / BC    : axisymmetric clay cylinder r=23 mm (Ø46 mm), h=70 mm, inside the Ø50 mm
+                     cell: 2 mm lateral technological gap represented by a BC SWITCH - the outer
+                     radial boundary swells FREE until u_r reaches 2 mm (r = 25 mm = cell wall),
+                     then becomes a rigid Dirichlet wall (container contact).
+                     SPEC-CONFORMANCE FIX 2 (Vinay 2026-09-08 "approve all five, run them as one
+                     campaign"; audits/2026-09-08_spec_conformance_full/AUDIT.md §3 + refutation
+                     row 2): spec Fig3gapelementa.jpg labels the clay "46 mm" in the "50 mm" cell;
+                     UCLM.tex L370 "radius of 23 mm"; CIMNE template row (23,0,40); CIMNE.tex L591
+                     ~1.35 g/cm3 = 1600*(23/25)^2. Through gen 4 (2026-08-31) the clay was r = 25 mm
+                     with the wall latched at r = 27 mm (effective Ø54 cell, +18 % clay volume,
+                     post-closure rho_d 1372 vs the spec's 1354 kg/m3) - SUPERSEDED. Mesh: MaterialID 0
+                     of the tracked ms33_gap2mm_r25_h70.vtu (1 x 1.75 mm, 920 quads) extracted as
+                     ms33_clay_r23_h70.vtu; NOTE the discretisation is finer than the gen-4 5 x 5 mm
+                     mesh (a refinement rides along with the geometry fix).  Switch implemented in
                      ms33_modelIII_gapswitch_bc.py (mirrors the Task-13 2023
                      getDirichletBCValue switch).  rho_d = 1600 kg/m3 at emplacement.
 
@@ -16,11 +32,21 @@
   deprecated deck is retained on disk and in history (CLAUDE.md 6.2/6.3); its
   ctest registration is commented out in Tests.cmake, not deleted.
 
+  IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC to submission"; K_fix accepted,
+  "your choices 1: ok"). Branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 (486235c679) + cherry-pick of
+  686fcd6ef8 (RichardsMechanics DSM: the declared initial_micro_water_content is realised in the previous micro porosity).
+  K re-fitted with that binary (ogs archive/dsm_native_Pi_fofnlev_branchtip_2026-08-11-50-g686fcd6e, bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3)
+  by the SHIPPED procedure (13-point sweep 0.70-1.30 x previous knot, log-linear secant, tolerance |Ps/target - 1| <= 1e-9).
+  Ps = target is CALIBRATION, not validation. Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json (md5 e6f29bd492a5011c8f8a6f7688d6980e), K_fix.md, K_fix_attribution.md (same folder).
+  LIVE K table: knots 900/1400/1600/1800 = 24241.938995 46000.3269694 104698.192423 265909.813902 J/kg (the same table in Reference and VII). Texts below that cite the
+  previous table (24241.892204 / 46000.0 / 104689.9129 / 265905.06) document history.
+
   Calibration anchor:
     source         : Dixon (2023) Fig. 1, MX-80 swelling pressure vs EMDD, EMDD = rho_d
     dataset row    : median at rho_d = 1600 kg/m3
     target sigma   : 14.161 MPa
-    fitted K       : 104689.9129 J/kg  (sigma0 = 0 "Option C" form-(a) recalibration,
+    fitted K       : live K(rho_d) table (knots below); knot in force at rho_d = 1600: 104698.192423 J/kg (IC-FIX V0 RE-FIT 2026-09-30, Vinay-approved K_fix,
+                     binary md5 23640465bff1ef6ce5c83d6c5dcd48d3, record ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json). PREVIOUS scalar/knot 104689.9129 J/kg  (sigma0 = 0 "Option C" form-(a) recalibration,
                      Vinay 2026-08-06; recorded in CANONICAL_RESULTS_2026-08-12.json,
                      model_I_sigma0zero_form_a.cells).  SUPERSEDES the 103879 J/kg that
                      the deprecated soft-gap deck still carries.  This deck's OWN
@@ -32,10 +58,14 @@
   the run, because a swelling material loses swelling potential and holding K at the
   emplacement density is physically wrong.  Knots are the Dixon-propagated Model I
   calibration chain, each cell fitted to the Dixon Fig.1 median at its own rho_d:
-      rho_d =  900 -> K =   4367.2277   (target 0.3500522009 MPa)   RATIFIED 2026-08-17 [see note]
-      rho_d = 1400 -> K =  46000.0      (target  4.9    MPa)
-      rho_d = 1600 -> K = 104689.9129   (target 14.161  MPa)
-      rho_d = 1800 -> K = 265905.06     (target 40.6    MPa)
+      rho_d =  900 -> K =  24241.938995 (target 0.3500522009 MPa)   IC-FIX V0 RE-FIT 2026-09-30 (previous 24241.892204, GEN 5 RE-FIT 2026-09-07 at
+          macro_porosity_floor = 0.0 (Vinay "i approve gen 5"; the state this deck evaluates the
+          knot in), supersedes 18469.144929 (gen 4, RE-FIT 2026-08-28 but fit at floor 0.08 in the
+          dd900 cell, audit 2026-09-04 blocker B1), which superseded 4367.2277 (contaminated fit,
+          see dd900.prj/DSM/AGENTS.md entry 27-28) [see note]
+      rho_d = 1400 -> K =  46000.3269694 (target  4.9    MPa)   IC-FIX V0 (previous 46000.0)
+      rho_d = 1600 -> K = 104698.192423  (target 14.161  MPa)   IC-FIX V0 (previous 104689.9129)
+      rho_d = 1800 -> K = 265909.813902  (target 40.6    MPa)   IC-FIX V0 (previous 265905.06)
     note: the 900 knot is the EXACT Dixon median-fit extrapolation
           Ps = 0.003*exp(5.2883*rho_d[g/cm3]) -> 0.003*exp(5.2883*0.9) = 0.3500522009 MPa
           (Vinay 2026-08-17, "exact interpolation"), replacing a 0.051 MPa placeholder
@@ -45,6 +75,10 @@
           (MathLib PiecewiseLinearInterpolation, clamped at the ends) while Dixon's law
           is exponential in rho_d.  Across the wide 900-1400 chord the linear segment
           overshoots the log-linear value by ~10-16 % at this model's operating density.
+          RESOLVED 2026-08-26 (Vinay's decision, commit bed3e395da): the LIVE
+          K(rho_d) path now interpolates LOG-LINEARLY between knots (node-preserving,
+          fitted K values untouched); the paragraph above describes the superseded
+          linear scheme and is kept as history.
 
   Material parameters (source per parameter group) - carried over VERBATIM from
   ms33_modelIII_gap2mm.prj's provenance block; single clay medium here (the separate
@@ -53,7 +87,33 @@
                                 2026-06-15 WITH this warning; absent from the spec and
                                 from thm-lit; not calibrated.  Warning is mandatory.
     elastic nu = 0.3          : EURAD-MS, CIMNE-UPC spec set
-    retention (P0=27 MPa, a=0.45) : EURAD-MS, MS33 task specification
+    macro retention           : SaturationTuller.  *** HEADER CORRECTED 2026-08-31
+                                (§6.7(1) header–value consistency). *** This line previously
+                                read "retention (P0=27 MPa, a=0.45) : EURAD-MS, MS33 task
+                                specification", i.e. it documented a van Genuchten curve that
+                                this file does NOT implement: no van-Genuchten property exists
+                                in this deck and the literals 27e6 / 2.7e7 / 27000000 / 0.45
+                                occur ZERO times in it.  The LIVE macro retention property is
+                                <type>SaturationTuller</type>, with
+                                    area_factor_tuller           = 1.0
+                                    pore_area_shapefactor_tuller = 0.8584073464102069
+                                    characteristic_pore_size     = 1e-5   m
+                                    surface_tension              = 0.0715 N/m
+                                    cavitation_pressure          = 1.4e8  Pa
+                                Source status, per parameter:
+                                  cavitation_pressure = 1.4e8 Pa : Or and Tuller (2002),
+                                    WRR 38(5) 1061 — see the p_cav line below.
+                                  area_factor_tuller / pore_area_shapefactor_tuller /
+                                    characteristic_pore_size / surface_tension : Tuller pore
+                                    geometry and water surface tension, carried over from the
+                                    parity PRJs of the dsm_mfront_hierarchical branch (cf. the
+                                    equivalent inline comments in Models IV and VII).  A parity
+                                    or port branch is NOT one of §12.1's six allowed source
+                                    families (Beacon / EPFL / Dixon / Villar / EURAD-MS /
+                                    FEBEX); it is recorded here as historical provenance only.
+                                    TODO(Vinay) — §12.1-admissible source required; live value documented, provenance outstanding.
+                                No numeric literal was changed by this correction; the live
+                                values above are transcribed from the property block itself.
     rel. permeability S_e^3   : EURAD-MS, MS33 task specification
     solid density rho_s=2780  : EURAD-MS, MS33 task specification
     initial porosity phi0=0.42446 : EURAD-MS (from rho_d=1600 and rho_s=2780)
@@ -61,7 +121,13 @@
     vdW base A_Hamaker=2.2e-20 : Israelachvili & Adams (1978), J. Chem. Soc. Faraday
                                 Trans. I 74, p. 975, Tab. 2 (mica-water-mica SFA)
     augmentation exponent lambda=7.5e-7 : Dixon (2023) calibration chain
-    specific_surface = 523    : TODO(Vinay) - locator still outstanding
+    specific_surface = 523    : EPFL family (CLAUDE.md 12.1 family 2): Seiphoori, Ferrari & Laloui
+                       (2014), Geotechnique 64(9):721-734, Tab. 1 p. 724, in m2/g. RULED Vinay
+                       2026-09-02; corroborated Tang & Cui (2005) CGJ Tab. 3 and Saiyouri et al.
+                       (1998) at 522 m2/g. UNIT CLASH, disclosed not changed: declared m2/g here,
+                       consumed as m2/kg by PotentialExchange.h (CLAUDE.md 1.3 incident 2026-09-02).
+                       Locator entered 2026-09-07 (audit 2026-09-04 item B9); the previous text of
+                       this line was "literature MX-80  [TODO(Vinay): primary locator]".
     micro EOS (a=1e-16, b=1)  : as Model I; a=1e-16 makes the micro EOS effectively
                                 constant (CLAUDE.md 2 EOS-bypass note applies)
     intrinsic permeability 9.392480e-19 : 160x the deck's Kozeny-Carman base
@@ -136,16 +202,21 @@
                                 equilibrates the confined Reference within 200 d.
     floors                    : micro_water_content_floor = 7.06e-5 (1W interlayer,
                                 Boek & Sprik 2003 / Marry 2008);
-                                macro_porosity_floor = 0.0 (INERT, LE submission config)
+                                macro_porosity_floor = 0.0 (LE submission config; GEN 5 2026-09-07:
+                                0.0 in ALL seven decks incl. the dd900 calibration cell, so the
+                                900 knot is fit in the state it is consumed in)
     mass-transfer alpha_M     : phenomenological, NOT identified by these benchmarks
 -->
-<OpenGeoSysProject>
     <meshes>
-        <mesh axially_symmetric="true">ms33_cylinder_r25_h70.vtu</mesh>
-        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_left.vtu</mesh>
-        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_right.vtu</mesh>
-        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_bottom.vtu</mesh>
-        <mesh axially_symmetric="true">ms33_cylinder_r25_h70_top.vtu</mesh>
+        <!-- 2026-09-08 (spec-conformance fix 2): clay r = 23 mm, 920 quads (1 x 1.75 mm), = MaterialID 0 of
+             the tracked ms33_gap2mm_r25_h70.vtu extracted; boundary meshes regenerated (_right at r = 23 mm).
+             Through gen 4 this list read ms33_cylinder_r25_h70(.vtu/_left/_right/_bottom/_top): the r = 25 mm,
+             5 x 5 mm, 70-quad mesh - clay Ø50 in an effective Ø54 cell. Those files stay tracked. -->
+        <mesh axially_symmetric="true">ms33_clay_r23_h70.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_clay_r23_h70_left.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_clay_r23_h70_right.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_clay_r23_h70_bottom.vtu</mesh>
+        <mesh axially_symmetric="true">ms33_clay_r23_h70_top.vtu</mesh>
     </meshes>
     <python_script>ms33_modelIII_gapswitch_bc.py</python_script>
     <processes>
@@ -175,9 +246,24 @@
                 <local_nonlinear_solve_mode>scalar_micro_macro_mass_storage_mode</local_nonlinear_solve_mode>
                 <micro_potential_convention>negative_attractive</micro_potential_convention>
                 <use_micro_liquid_density_for_micro_pressure>true</use_micro_liquid_density_for_micro_pressure>
+                <!-- K-TABLE UPDATE RATIFIED 2026-08-31 (Vinay, live conversation): adopted
+                     per Vinay's go-ahead to bring this file's 900-knot into line with the
+                     corrected dd900 re-fit (18469.144929 J/kg, supersedes the n_s-contaminated
+                     4367.227700212952 J/kg; DSM/AGENTS.md 2026-08-28 entry 28). Fresh
+                     end-to-end run cross-validated bit-for-bit against the independently
+                     recovered 2026-08-28 run (max abs/rel diff = 0.0, every point_data field,
+                     all 90 nodes). Reference rebaselined ts_880 -> ts_888 (t=17280000 s). Full
+                     record: DSM/AGENTS.md 2026-08-31 entry 29. -->
+                <!-- GEN 5 (Vinay 2026-09-07, "i approve gen 5"): 900 knot 18469.144929 -> 24241.892204 J/kg,
+                     re-fit in the dd900 cell at macro_porosity_floor = 0.0 (this deck's own floor) instead
+                     of 0.08; 1400/1600/1800 knots untouched. Same table byte-identical in III/IV/VII.
+                     Re-run and reference rebaselined the same day; record
+                     CANONICAL_RESULTS_2026-09-07_gen5.json and DSM/AGENTS.md gen-5 entry. -->
+                <!-- IC-FIX V0 RE-FIT 2026-09-30 (Vinay-approved K_fix; binary md5 23640465bff1ef6ce5c83d6c5dcd48d3, commit 686fcd6ef8): knots 900/1400/1600/1800 = 24241.938995 46000.3269694 104698.192423 265909.813902 J/kg;
+                     previous table 24241.892204 46000.0 104689.9129 265905.06 (gen 5). Record: ANCHORS_MS33_ModelI/icfix_2026-09-30/K_fix.json.  -->
                 <potential_augmentation_prefactor_vs_dry_density>
                     <dry_densities>900 1400 1600 1800</dry_densities>
-                    <prefactors>4367.227700212952 46000.0 104689.9129 265905.06</prefactors>
+                    <prefactors>24241.938995 46000.3269694 104698.192423 265909.813902</prefactors>
                 </potential_augmentation_prefactor_vs_dry_density>
                 <potential_augmentation_prefactor_live_dry_density>true</potential_augmentation_prefactor_live_dry_density>
                 <potential_augmentation_exponent>7.5e-7</potential_augmentation_exponent>
@@ -254,6 +340,16 @@
                     <exponent>3</exponent>
                 </property>
                 <property>
+                    <!-- Tuller macro retention (parity-branch params: area_factor=1.0,
+                         shapefactor=0.8584073464102069, char_pore_size=1e-5 m,
+                         surface_tension=0.0715 N/m (water)); cavitation_pressure=1.4e8 Pa =
+                         homogeneous-nucleation tensile strength of water (Or and Tuller 2002,
+                         WRR 38(5) 1061).  The geometry params and surface_tension come from
+                         the dsm_mfront_hierarchical parity PRJs, which is NOT one of the six
+                         source families allowed by CLAUDE.md 12.1 (Beacon / EPFL / Dixon /
+                         Villar / EURAD-MS / FEBEX): historical provenance only.
+                         TODO(Vinay) — §12.1-admissible source required; live value documented, provenance outstanding.
+                         Comment added 2026-08-31; no value changed. -->
                     <name>saturation</name>
                     <type>SaturationTuller</type>
                     <residual_liquid_saturation>0.0</residual_liquid_saturation>
@@ -295,7 +391,7 @@
             <type>VTK</type>
             <prefix>ms33_modelIII_gapswitch</prefix>
             <suffix>_ts_{:timestep}_t_{:time}</suffix>
-            <fixed_output_times>86400 432000 864000 1296000 1728000 4320000 8640000 12960000 17280000</fixed_output_times>
+            <fixed_output_times>86400 432000 864000 1296000 1728000 2160000 2592000 3024000 3456000 3888000 4320000 4752000 5184000 5616000 6048000 6480000 6912000 7344000 7776000 8208000 8640000 9072000 9504000 9936000 10368000 10800000 11232000 11664000 12096000 12528000 12960000 13392000 13824000 14256000 14688000 15120000 15552000 15984000 16416000 16848000 17280000</fixed_output_times>
             <variables>
                 <variable>pressure</variable>
                 <variable>displacement</variable>
@@ -337,13 +433,13 @@
             <initial_condition>displacement0</initial_condition>
             <boundary_conditions>
                 <!-- Axis of symmetry: u_r = 0 -->
-                <boundary_condition><mesh>ms33_cylinder_r25_h70_left</mesh><type>Dirichlet</type><component>0</component><parameter>zero</parameter></boundary_condition>
+                <boundary_condition><mesh>ms33_clay_r23_h70_left</mesh><type>Dirichlet</type><component>0</component><parameter>zero</parameter></boundary_condition>
                 <!-- Outer radial boundary: PYTHON SWITCH free-swell -> Dirichlet u_r=2mm on gap closure -->
-                <boundary_condition><mesh>ms33_cylinder_r25_h70_right</mesh><type>Python</type><component>0</component><bc_object>gap_switch</bc_object></boundary_condition>
+                <boundary_condition><mesh>ms33_clay_r23_h70_right</mesh><type>Python</type><component>0</component><bc_object>gap_switch</bc_object></boundary_condition>
                 <!-- Bottom: u_z = 0 -->
-                <boundary_condition><mesh>ms33_cylinder_r25_h70_bottom</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
+                <boundary_condition><mesh>ms33_clay_r23_h70_bottom</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
                 <!-- Top lid: u_z = 0 -->
-                <boundary_condition><mesh>ms33_cylinder_r25_h70_top</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
+                <boundary_condition><mesh>ms33_clay_r23_h70_top</mesh><type>Dirichlet</type><component>1</component><parameter>zero</parameter></boundary_condition>
             </boundary_conditions>
         </process_variable>
         <process_variable>
@@ -353,7 +449,7 @@
             <initial_condition>pressure_ic</initial_condition>
             <boundary_conditions>
                 <!-- Hydration from bottom: suction ramp 100->0 MPa over 20 days -->
-                <boundary_condition><mesh>ms33_cylinder_r25_h70_bottom</mesh><type>Dirichlet</type><parameter>pressure_bc</parameter></boundary_condition>
+                <boundary_condition><mesh>ms33_clay_r23_h70_bottom</mesh><type>Dirichlet</type><parameter>pressure_bc</parameter></boundary_condition>
             </boundary_conditions>
         </process_variable>
     </process_variables>
@@ -370,6 +466,78 @@
             <values>-1e8 0 0</values>
         </curve>
     </curves>
+    <!--
+      ============================================================
+      REGRESSION BASELINE (CLAUDE.md s3), Vinay-ratified reference chain
+      (DSM/AGENTS.md entry 16: ts_832 ratified 2026-08-17).
+      RE-BASELINED 2026-08-26, commit bed3e395da (live K(rho_d) interpolation
+      switched linear -> log-linear, Vinay's decision 2026-08-26): reference
+      became ms33_modelIII_gapswitch_ts_880_t_17280000.000000.vtu
+      (md5 4e3228d44dd5398f0d244823ccabe29b; that file is ITSELF SUPERSEDED
+      as of 2026-08-31 and now lives in superseded_references_2026-08-31/ in
+      this directory, see the RE-BASELINED AGAIN paragraph below), from the
+      reconciled double-run
+      campaign round1_modelIII_gapswitch_2026-08-26 — two independent full runs
+      byte-identical (same md5), 880 steps accepted / 1 rejected (startup
+      transient at t=5.67 s, recovered), binary maxwell-conjugate-20260602 @
+      bed3e395da. The former reference ts_832_t_17280000.000000.vtu
+      (md5 e60493e974dee9f9afb2e89ec48ea651, linear-K) is SUPERSEDED and moved
+      (git mv, never deleted) to superseded_references_2026-08-26/ in this
+      directory: the ctest wrapper enumerates every REFERENCE-side file matching
+      the ts_.* regex and requires a same-named output for each, so a superseded
+      reference left beside the PRJ fails the test by construction.
+      RE-BASELINED AGAIN 2026-08-31, commit 2c066ce187 (corrected dd900 K knot,
+      18469.144929 J/kg, adopted into this file's live K(rho_d) table; see the
+      K-TABLE UPDATE RATIFIED 2026-08-31 comment at the <prefactors> block
+      above): the LIVE reference is now
+      ms33_modelIII_gapswitch_ts_888_t_17280000.000000.vtu
+      (md5 645c5308d3ac7c2d89c4309c7c947e61, recomputed 2026-08-31 from the
+      committed file; the same md5 is recorded in DSM/AGENTS.md entry 29).
+      Fresh run: 888 accepted steps, 1 rejected (the same startup transient),
+      cross-validated against an independently recovered 2026-08-28 run of the
+      same PRJ/K/binary with max abs and rel diff = 0.0 over every point_data
+      field at all 90 nodes. The former reference
+      ts_880_t_17280000.000000.vtu (md5 4e3228d44dd5398f0d244823ccabe29b) is
+      SUPERSEDED and was moved (git mv, never deleted) to
+      superseded_references_2026-08-31/ in this directory, for the enumeration
+      reason stated just above. Full record: DSM/AGENTS.md entry 29.
+      RE-BASELINED 2026-09-08, gen5_conformant campaign (spec-conformance fix 2, Vinay's ruling of 2026-09-08 "approve
+      all five, run them as one campaign": clay radius r = 23 mm with the 2 mm gap, the spec's Model III geometry):
+      reference became ms33_modelIII_gapswitch_ts_943_t_17280000.000000.vtu (md5 cbfd07f1813e9954935b327866382d17;
+      ITSELF SUPERSEDED by the same day's campaign v2, see below, now in superseded_references_2026-09-08_v2/). Run: 943
+      accepted steps, 5 rejected (startup transient), 211.66 s. The former reference ts_888_t_17280000.000000.vtu
+      (md5 645c5308d3ac7c2d89c4309c7c947e61) is SUPERSEDED and was moved (git mv, never deleted) to
+      superseded_references_2026-09-08/ in this directory, for the enumeration reason stated above.
+      RE-BASELINED AGAIN 2026-09-08, campaign v2 (the ONLY change to this deck is <fixed_output_times> set to the
+      organizers' data-collection 5-day grid, audit 2026-09-08_spec_audit_3x LANE2 finding 3; physics, BCs, mesh and
+      numerics unchanged): the reference at that date was (HISTORY, SUPERSEDED 2026-09-30, see RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0) below) ms33_modelIII_gapswitch_ts_1116_t_17280000.000000.vtu
+      (md5 1579f009e48a2b09ab11fd3c5e65f223, recomputed 2026-09-08 from the committed file), = the campaign-v2 run
+      frame (~/ogs-models/scratch/2026-09-08_0936_gen5_conformant_v2_inflight/runs/III/out, same md5). Run: 1116
+      accepted steps, 5 rejected (the same startup transient, all at t < 8 s), 243.9 s at OMP 2, binary
+      maxwell-conjugate-20260602 (md5 cea9d7d81972f732385b41a71e50f20e). The former reference
+      ts_943_t_17280000.000000.vtu is SUPERSEDED and was moved (git mv, never deleted) to
+      superseded_references_2026-09-08_v2/. Denser output grid => different adaptive-stepping path => different ts
+      index; same physical time (200 d). vtkdiff old-vs-new (MEASURED) in the campaign's OGS_TREE_LANE_2026-09-08.md:
+      the TIGHT tier fails on displacement and the porosity family, which is why the old reference cannot serve the grid.
+      RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0): the LIVE reference is now ms33_modelIII_gapswitch_ts_970_t_17280000.000000.vtu
+      (md5 020aa0821051c3ef993f93138f976b0a), = the last frame of run fx_III of the IC-fix readiness suite (Shilpa's MBP,
+      ~/ogs-models/scratch/2026-09-30_readiness_icfix/runs/fx_III/out/, full copy on the WD_elements drive under
+      run_outputs_2026-09-30/shilpas-macbook-pro/, same md5). Run: 970 accepted steps, 0 rejected, rc 0, 349.0 s (OMP 2),
+      patched binary bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3, OGS commit 686fcd6ef8 = the declared initial_micro_water_content realised in the previous micro porosity, with the K_fix table of this deck (K only; comment-stripped, this deck differs from
+      486235c679 in the K prefactor lines and nowhere else; physics, BCs, mesh, numerics, output times, tolerances unchanged).
+      The former reference ms33_modelIII_gapswitch_ts_1116_t_17280000.000000.vtu (md5 1579f009e48a2b09ab11fd3c5e65f223) is SUPERSEDED and was moved (git mv, never deleted) to
+      superseded_references_2026-09-30_icfix/ in this directory (README.md); it cannot pass by construction (the ctest wrapper pairs
+      output and reference by IDENTICAL file name and the step index changed) and, with this deck's own tolerances, passes 4 of 11 checks against the new frame
+      (MEASURED with vtkdiff on the mac mini, tables in that README). The sentence above that names the older frame as LIVE is HISTORY.
+      NOT run through ctest (the mini has no ctest, the patched binary was built with OGS_BUILD_TESTING=OFF): passing on the MBP is PREDICTED, not verified.
+      Ps = Dixon target after the K refit is CALIBRATION, not validation. Record: ~/ogs-models/scratch/2026-09-30_icfix_v0_recut/OGS_GATE.md and REPAIR_2.md.
+      Physics anchor: (f) regression baseline previously approved by user.
+      Two-tier tolerances as in ModelIV/ModelVII (Vinay's choice 2026-06-23):
+      TIGHT on displacement/saturation/porosity/transport_porosity/
+      micro_porosity/micro_water_content/dry_density_solid; LOOSE (rel 1e-2,
+      abs 1e3 Pa) on sigma/swelling_stress/pressure/micro_pressure.
+      ============================================================
+    -->
     <test_definition>
         <vtkdiff><regex>ms33_modelIII_gapswitch_ts_.*_t_17280000\.0+\.vtu</regex><field>displacement</field><absolute_tolerance>1e-9</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
         <vtkdiff><regex>ms33_modelIII_gapswitch_ts_.*_t_17280000\.0+\.vtu</regex><field>saturation</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-8</relative_tolerance></vtkdiff>

@@ -38,6 +38,17 @@ Boundary conditions (official spec):
   registered ctest (ProcessLib/RichardsMechanics/Tests.cmake), with a
   Vinay-ratified reference VTU (ts_832_t_17280000.000000.vtu, DSM/AGENTS.md
   entry 16). This PRJ's own registration is commented out below, not deleted.
+  UPDATE 2026-08-26 (ITSELF SUPERSEDED 2026-08-31, see the next UPDATE): the
+  gapswitch reference is now ts_880_t_17280000.000000.vtu
+  (log-linear live-K rebaseline, commit bed3e395da); ts_832 moved to
+  superseded_references_2026-08-26/ in this directory's sibling files.
+  UPDATE 2026-08-31, commit 2c066ce187: ts_880 is SUPERSEDED in turn. The live
+  gapswitch reference is now ts_888_t_17280000.000000.vtu
+  (md5 645c5308d3ac7c2d89c4309c7c947e61), after the corrected dd900 K knot
+  (18469.144929 J/kg) was adopted into that deck's live K(rho_d) table; ts_880
+  moved to superseded_references_2026-08-31/ in the ModelIII directory. See
+  ms33_modelIII_gapswitch.prj's own REGRESSION BASELINE block and
+  DSM/AGENTS.md entry 29.
 -->
 <OpenGeoSysProject>
   <!-- GUARDRAIL §12.5 audit (2026-06-09, Vinay-approved): intrinsic permeability

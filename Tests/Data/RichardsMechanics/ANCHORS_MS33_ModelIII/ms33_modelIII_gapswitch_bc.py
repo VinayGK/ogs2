@@ -9,8 +9,11 @@
 # ~/ogs-models/EBS/Task13/2023_August_submitted/prj-common/top-gap-bc.py,
 # which actually ran and produced the submitted gap-closure figures - applied
 # here to the RADIAL boundary instead of the axial top):
-#   the bentonite cylinder (r = 25 mm, the spec sample) swells radially into a
-#   2 mm technological gap. While the outer-boundary radial displacement
+#   the bentonite cylinder (r = 23 mm since 2026-09-08, spec Fig3gapelementa.jpg
+#   "46 mm" clay in the "50 mm" cell; r = 25 mm through gen 4, which put the
+#   wall at r = 27 mm) swells radially into a 2 mm technological gap. The
+#   switch tests the DISPLACEMENT u_r, not the radius, so the r = 23 mm mesh
+#   latches at r = 25 mm (= the spec cell wall) with NO change to this script. While the outer-boundary radial displacement
 #   u_r < GAP the boundary is LEFT FREE (return apply_bc=False) -> free
 #   swelling, gap still open. Once u_r reaches GAP the node is CONSTRAINED to
 #   u_r = GAP (return apply_bc=True, value=GAP) -> rigid container contact;

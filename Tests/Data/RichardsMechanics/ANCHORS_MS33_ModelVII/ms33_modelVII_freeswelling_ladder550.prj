@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <!--
-EURAD-2 MS33 Theoretical Benchmarking — Model VII
-Free swelling, loading and unloading
+EURAD-2 MS33 Theoretical Benchmarking — Model VII — LADDER-550 VARIANT (supplement, CLAUDE.md §3)
+Free swelling, loading and unloading on the CURRENT spec ladder (50-d stages, 10-d ramps, t_end 550 d)
+SUPPLEMENTS ms33_modelVII_freeswelling.prj (the 240-d Q&A-schedule deck stays registered and unchanged).
 BGR / DSM native hierarchical vdW-augmented model
 
 Reference configuration: rho_d=1600 kg/m³, phi0=0.424460.
@@ -38,20 +39,27 @@ Free swelling under constant axial stress = 0.2 MPa (1-D oedometer-like):
   Bottom (z=0): u_z = 0 (fixed base), pressure BC (suction ramp)
   Top   (z=0.07): Neumann (applied axial stress, time-varying)
 
-Loading/unloading path per MSXX Table Loading_unloading_path (STEP-AND-HOLD since 2026-09-08,
-spec-conformance fix 3; each rung reached by a 0.1 d ramp then HELD for the rest of its 5 d):
-  0   – 17280000 s (200 d): saturation under 0.2 MPa
-  17280000 – 17712000 s (200–205 d): hold at 0.2 MPa
-  17712000 – 18144000 s (205–210 d): 0.4 MPa (ramp 205-205.1 d, hold to 210 d)
-  18144000 – 18576000 s (210–215 d): 1.0 MPa (ramp 210-210.1 d, hold to 215 d)
-  18576000 – 19008000 s (215–220 d): 2.5 MPa (ramp, hold)
-  19008000 – 19440000 s (220–225 d): 5.0 MPa (ramp, hold)
-  19440000 – 19872000 s (225–230 d): 2.5 MPa (ramp, hold)
-  19872000 – 20304000 s (230–235 d): 1.0 MPa (ramp, hold)
-  20304000 – 20736000 s (235–240 d): 0.4 MPa (ramp, hold)
-  HISTORY: through gen 4 (2026-08-31) the curve had one knot per rung boundary and therefore RAMPED
-  linearly across each 5-d interval (mid-interval error up to 1.25 MPa vs the held spec value);
-  see the traction_ramp curve comment.
+Loading/unloading path per the CURRENT spec Table Loading_unloading_path (theoretical_benchmarking.tex,
+EURAD Overleaf mirror HEAD 6698004 of 2026-09-08, ladder text from commit f626d67 of 2026-07-01: 'Each loading and
+unloading step will be applied over a duration of 50 days'; 'A 10-day ramp can be applied during each loading and
+unloading stage'). Each stage = 10-d linear ramp from the previous rung, then HELD for the remaining 40 d:
+  0        – 17280000 s (0–200 d)   : saturation under 0.2 MPa
+  17280000 – 21600000 s (200–250 d) : 0.4 MPa (ramp 200–210 d, hold to 250 d)
+  21600000 – 25920000 s (250–300 d) : 1.0 MPa (ramp 250–260 d, hold to 300 d)
+  25920000 – 30240000 s (300–350 d) : 2.5 MPa (ramp 300–310 d, hold to 350 d)
+  30240000 – 34560000 s (350–400 d) : 5.0 MPa (ramp 350–360 d, hold to 400 d)
+  34560000 – 38880000 s (400–450 d) : 2.5 MPa (ramp 400–410 d, hold to 450 d)
+  38880000 – 43200000 s (450–500 d) : 1.0 MPa (ramp 450–460 d, hold to 500 d)
+  43200000 – 47520000 s (500–550 d) : 0.4 MPa (ramp 500–510 d, hold to 550 d)
+  RAMP SENSITIVITY (campaign v2 2026-09-08, runs/VII_550 vs runs/VII_550_r01): the same ladder with 0.1-d ramps was
+  run as a sensitivity. End-of-path e_top: 1.1300 (10-d ramps, this deck) vs 1.1293 (0.1-d ramps); MEASURED
+  2026-09-08 campaign v2 (lane figures). Independent re-derivation from the two final frames, mean of phi/(1-phi)
+  over the 26 top-face nodes: 1.130139 vs 1.129489 (MEASURED 2026-09-08, this lane). The 0.1-d-ramp variant is NOT
+  shipped as a deck. WHICH LADDER IS THE HEADLINE (this 550-d spec ladder or the 240-d Q&A schedule of
+  ms33_modelVII_freeswelling.prj): RULED 2026-09-12 (Vinay: keep both variants of model vii): both ladders
+  registered and reported, neither is the headline.
+  LINEAGE: the parent deck's 240-d step-and-hold schedule (0.1-d ramps, 5-d holds, Questions.tex R23/R27) is kept
+  in the traction_ramp curve comment below as the superseded-for-this-deck curve.
 
 Traction sign convention: compression = negative (σ_zz < 0 → traction t_z < 0).
 Curve traction_ramp gives the Neumann z-traction on the top face.
@@ -61,8 +69,15 @@ For consistency with the benchmark-aligned Pi-path initialization used in Models
 initial micro water content is set to the 99 MPa-equilibrium value.
 -->
 <OpenGeoSysProject>
-<!-- CAMPAIGN v2 2026-09-08 (Vinay: '3x audit against specs ... results ground up'): output grid set to the data-collection template's
-     5-day rows (audit 2026-09-08_spec_audit_3x LANE2 finding 3); physics, BCs and numerics unchanged from the 2026-09-08 conformant deck. -->
+<!-- CAMPAIGN v2 2026-09-08 - Model VII on the CURRENT spec ladder (SPEC-AUDIT 3x, LANE1 F1 / LANE2 #1):
+     EURAD Overleaf theoretical_benchmarking.tex as of mirror HEAD 6698004 (2026-09-08), ladder text introduced by commit f626d67
+     (2026-07-01): 'Each loading and unloading step will be applied over a duration of 50 days'; Table Loading_unloading_path
+     0-200 d 0.2 / 200-250 0.4 / 250-300 1 / 300-350 2.5 / 350-400 5 / 400-450 2.5 / 450-500 1 / 500-550 0.4 MPa;
+     'A 10-day ramp can be applied during each loading and unloading stage'. THIS DECK: 10-day linear ramps at each stage
+     start, t_end 550 d, suction BC held at 0 to 550 d, output on the template's 5-day grid. The shipped 2026-09-08 deck
+     follows the Q&A schedule (5-d holds, 240 d; Questions.tex R23/R27) - the spec is self-contradictory.
+     Headline ladder: RULED 2026-09-12 (Vinay: keep both variants of model vii): both ladders registered and reported,
+     neither is the headline. No other change. -->
 
   <!-- GUARDRAIL §12.5 audit (2026-08-17, Vinay-approved): intrinsic permeability
        set to 160x the deck's Kozeny-Carman base 5.8703e-21 m^2 = 9.39248e-19 m^2
@@ -112,8 +127,18 @@ initial micro water content is set to the 99 MPa-equilibrium value.
       Benchmark family : MS LE  (gating regression standard, §12.3)
       Geometry / BC    : axisym cylinder 50 mm diam x 70 mm; FREE radial swelling (right face
                          u_r free), fixed base, time-varying axial traction (load/unload path
-                         to 240 d); bottom suction ramp 100->0 MPa / 20 d. Source: EURAD-2 MS33
-                         spec (Table Loading_unloading_path).
+                         to 550 d; 50-d stages 0.2/0.4/1/2.5/5/2.5/1/0.4 MPa with 10-d ramps);
+                         bottom suction ramp 100->0 MPa / 20 d, then 0 to 550 d. Source: EURAD-2
+                         MS33 spec, theoretical_benchmarking.tex Table Loading_unloading_path
+                         (EURAD Overleaf mirror HEAD 6698004, 2026-09-08; ladder text from
+                         commit f626d67, 2026-07-01: 'Each loading and unloading step will be
+                         applied over a duration of 50 days'; 'A 10-day ramp can be applied
+                         during each loading and unloading stage'). LADDER-550 VARIANT of the
+                         240-d deck, added 2026-09-08 (campaign v2). Headline ladder: RULED
+                         2026-09-12 (Vinay: keep both variants of model vii): both ladders
+                         registered and reported, neither is the headline (see the file header).
+                         The paragraph below describes the
+                         parent deck's 240-d fix and is kept as lineage.
                          SPEC-CONFORMANCE FIX 3 (2026-09-08, Vinay "approve all five, run them as
                          one campaign"; audit audits/2026-09-08_spec_conformance_full/AUDIT.md §5 +
                          VERIFY_refutation §1(a)): the traction ladder is now STEP-AND-HOLD (each
@@ -420,8 +445,8 @@ initial micro water content is set to the 99 MPa-equilibrium value.
                 <time_stepping>
                     <type>IterationNumberBasedTimeStepping</type>
                     <t_initial>0.0</t_initial>
-                    <!-- 240 days = 20736000 s (200 d saturation + 40 d load/unload) -->
-                    <t_end>20736000</t_end>
+                    <!-- 550 days = 47520000 s (200 d saturation + 7 x 50 d load/unload stages) -->
+                    <t_end>47520000</t_end>
                     <initial_dt>10</initial_dt>
                     <minimum_dt>0.1</minimum_dt>
                     <maximum_dt>86400</maximum_dt>
@@ -432,13 +457,12 @@ initial micro water content is set to the 99 MPa-equilibrium value.
         </processes>
         <output>
             <type>VTK</type>
-            <prefix>ms33_modelVII_freeswelling</prefix>
+            <prefix>ms33_modelVII_freeswelling_ladder550</prefix>
             <suffix>_ts_{:timestep}_t_{:time}</suffix>
-            <!-- Output at: 20d (ramp end), 100d, 200d (end saturation), each loading step, each unloading step -->
-            <!-- half-interval frames 207.5/212.5/.../237.5 d (17928000 ... 20520000 s) added 2026-09-08 with the
-                 step-and-hold ladder so the HELD traction can be verified in an output frame (§13); they
-                 force a step to land at each of these times (output choice, stated in the header). -->
-            <fixed_output_times>86400 432000 864000 1296000 1728000 2160000 2592000 3024000 3456000 3888000 4320000 4752000 5184000 5616000 6048000 6480000 6912000 7344000 7776000 8208000 8640000 9072000 9504000 9936000 10368000 10800000 11232000 11664000 12096000 12528000 12960000 13392000 13824000 14256000 14688000 15120000 15552000 15984000 16416000 16848000 17280000 17712000 17928000 18144000 18360000 18576000 18792000 19008000 19224000 19440000 19656000 19872000 20088000 20304000 20520000 20736000</fixed_output_times>
+            <!-- Output on the data-collection template's 5-day grid (1 d, then every 5 d to 550 d) plus the
+                 ramp-end times (t0 + 10 d of every stage); every listed time forces a step to land there
+                 (output choice, stated in the header; campaign v2 2026-09-08). -->
+            <fixed_output_times>86400 432000 864000 1296000 1728000 2160000 2592000 3024000 3456000 3888000 4320000 4752000 5184000 5616000 6048000 6480000 6912000 7344000 7776000 8208000 8640000 9072000 9504000 9936000 10368000 10800000 11232000 11664000 12096000 12528000 12960000 13392000 13824000 14256000 14688000 15120000 15552000 15984000 16416000 16848000 17280000 17712000 18144000 18576000 19008000 19440000 19872000 20304000 20736000 21168000 21600000 22032000 22464000 22896000 23328000 23760000 24192000 24624000 25056000 25488000 25920000 26352000 26784000 27216000 27648000 28080000 28512000 28944000 29376000 29808000 30240000 30672000 31104000 31536000 31968000 32400000 32832000 33264000 33696000 34128000 34560000 34992000 35424000 35856000 36288000 36720000 37152000 37584000 38016000 38448000 38880000 39312000 39744000 40176000 40608000 41040000 41472000 41904000 42336000 42768000 43200000 43632000 44064000 44496000 44928000 45360000 45792000 46224000 46656000 47088000 47520000</fixed_output_times>
             <variables>
                 <variable>pressure</variable>
                 <variable>displacement</variable>
@@ -509,7 +533,7 @@ initial micro water content is set to the 99 MPa-equilibrium value.
             <order>1</order>
             <initial_condition>pressure_ic</initial_condition>
             <boundary_conditions>
-                <!-- Hydration from bottom (0–200 days), then drained at 0 Pa (200–240 days) -->
+                <!-- Hydration from bottom (0–200 days), then drained at 0 Pa (200–550 days) -->
                 <boundary_condition><mesh>ms33_cylinder_r25_h70_bottom</mesh><type>Dirichlet</type><parameter>pressure_bc</parameter></boundary_condition>
             </boundary_conditions>
         </process_variable>
@@ -523,45 +547,67 @@ initial micro water content is set to the 99 MPa-equilibrium value.
     <curves>
         <curve>
             <name>suction_ramp</name>
-            <!-- Suction ramp 100→0 MPa in 20 days; constant 0 for remaining 220 days. -->
-            <coords>0 1728000 20736000</coords>
+            <!-- Suction ramp 100→0 MPa in 20 days; constant 0 for remaining 530 days. -->
+            <coords>0 1728000 47520000</coords>
             <values>-1e8 0 0</values>
         </curve>
         <curve>
             <name>traction_ramp</name>
             <!-- Axial traction on top face (negative = compression, OGS sign convention).
-                 STEP-AND-HOLD ladder per the spec Table Loading_unloading_path
-                 (theoretical_benchmarking.tex L361-390; L344: "Each loading and unloading step will be
-                 applied over a duration of 5 days ... until pore pressure dissipation"). Rewritten
-                 2026-09-08 (spec-conformance fix 3, Vinay ruling 2026-09-08 "approve all five"):
-                 OGS builds every <curve> as MathLib::PiecewiseLinearInterpolation (ProjectData.cpp:1488),
-                 so the previous 10-knot curve (one knot per rung boundary) RAMPED LINEARLY between rungs
-                 and the earlier comment here, "Piecewise constant steps ... hold for 5 days", misdescribed
-                 it (audit 2026-09-08 §5; refutation §1(a): mid-interval error up to +-1.25 MPa).
-                 NOW: each rung is HELD at its spec value; the jump to the next rung is realised over a
-                 0.1 d = 8640 s ramp (a NUMERICS choice - a strict duplicate-knot step is not
-                 representable by a strictly increasing support; the rung is then held 4.9 d):
-                   0         - 17280000 s (0-200 d)    : -0.2 MPa (saturation phase)
-                   17280000  - 17712000 s (200-205 d)  : -0.2 MPa (hold)
-                   17712000  - 17720640 s (205-205.1 d): ramp -0.2 -> -0.4 MPa
-                   17720640  - 18144000 s (to 210 d)   : -0.4 MPa (hold)
-                   18144000  - 18152640 s              : ramp -> -1.0 MPa;  hold to 18576000 s (215 d)
-                   18576000  - 18584640 s              : ramp -> -2.5 MPa;  hold to 19008000 s (220 d)
-                   19008000  - 19016640 s              : ramp -> -5.0 MPa;  hold to 19440000 s (225 d)
-                   19440000  - 19448640 s              : ramp -> -2.5 MPa;  hold to 19872000 s (230 d)
-                   19872000  - 19880640 s              : ramp -> -1.0 MPa;  hold to 20304000 s (235 d)
-                   20304000  - 20312640 s              : ramp -> -0.4 MPa;  hold to 20736000 s (240 d)
+                 CURRENT-SPEC LADDER (campaign v2 2026-09-08): theoretical_benchmarking.tex Table
+                 Loading_unloading_path, 50-d stages, 10-d linear ramp at each stage start, then held
+                 (OGS builds every <curve> as MathLib::PiecewiseLinearInterpolation, so the ramp is the
+                 two-knot segment and the hold the flat segment):
+                   0        - 17280000 s (0-200 d)   : -0.2 MPa (saturation phase)
+                   17280000 - 18144000 s (200-210 d) : ramp -0.2 -> -0.4 MPa;  hold to 21600000 s (250 d)
+                   21600000 - 22464000 s (250-260 d) : ramp -> -1.0 MPa;       hold to 25920000 s (300 d)
+                   25920000 - 26784000 s (300-310 d) : ramp -> -2.5 MPa;       hold to 30240000 s (350 d)
+                   30240000 - 31104000 s (350-360 d) : ramp -> -5.0 MPa;       hold to 34560000 s (400 d)
+                   34560000 - 35424000 s (400-410 d) : ramp -> -2.5 MPa;       hold to 38880000 s (450 d)
+                   38880000 - 39744000 s (450-460 d) : ramp -> -1.0 MPa;       hold to 43200000 s (500 d)
+                   43200000 - 44064000 s (500-510 d) : ramp -> -0.4 MPa;       hold to 47520000 s (550 d)
+                 PARENT-DECK curve (ms33_modelVII_freeswelling.prj, 240-d Q&A schedule, 0.1-d ramps / 5-d holds,
+                 kept for lineage, NOT the curve of this deck):
+                   coords 0 17280000 17712000 17720640 18144000 18152640 18576000 18584640 19008000 19016640 19440000 19448640 19872000 19880640 20304000 20312640 20736000
+                   values -2e5 -2e5 -2e5 -4e5 -4e5 -1e6 -1e6 -2.5e6 -2.5e6 -5e6 -5e6 -2.5e6 -2.5e6 -1e6 -1e6 -4e5 -4e5
                  SUPERSEDED curve (gen 4 and earlier, kept for lineage, NOT deleted):
                    coords 0 17280000 17712000 18144000 18576000 19008000 19440000 19872000 20304000 20736000
                    values -2e5 -2e5 -4e5 -1e6 -2.5e6 -5e6 -2.5e6 -1e6 -4e5 -4e5
             -->
-            <coords>0 17280000 17712000 17720640 18144000 18152640 18576000 18584640 19008000 19016640 19440000 19448640 19872000 19880640 20304000 20312640 20736000</coords>
-            <values>-2e5 -2e5 -2e5 -4e5 -4e5 -1e6 -1e6 -2.5e6 -2.5e6 -5e6 -5e6 -2.5e6 -2.5e6 -1e6 -1e6 -4e5 -4e5</values>
+            <coords>0 17280000 18144000 21600000 22464000 25920000 26784000 30240000 31104000 34560000 35424000 38880000 39744000 43200000 44064000 47520000</coords>
+            <values>-200000 -200000 -400000 -400000 -1e+06 -1e+06 -2.5e+06 -2.5e+06 -5e+06 -5e+06 -2.5e+06 -2.5e+06 -1e+06 -1e+06 -400000 -400000</values>
         </curve>
     </curves>
     <!--
       ============================================================
       REGRESSION BASELINE (CLAUDE.md s3) - approved by Vinay 2026-06-23.
+      THIS DECK (ladder550, added 2026-09-08 campaign v2): the reference of the campaign v2 was (HISTORY, SUPERSEDED 2026-09-30, see RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0) below)
+      ms33_modelVII_freeswelling_ladder550_ts_1304_t_47520000.000000.vtu
+      (md5 255f08988a8b9fbbaf3d08be8c85c65d), byte-identical to the campaign frame
+      <campaign v2>/runs/VII_550/out/ms33_modelVII_freeswelling_ts_1304_t_47520000.000000.vtu
+      (renamed only for this deck's output prefix, so the two VII ctests never share an
+      output file name). Physics anchor: (f) regression baseline, pending Vinay's
+      explicit approval of this reference. That approval is a separate item from the
+      headline-ladder question, which is RULED 2026-09-12 (Vinay: keep both variants of model vii): both
+      ladders registered and reported, neither is the headline; that ruling does not
+      by itself approve this reference. Tolerances are the parent deck's
+      two-tier set, unchanged.
+      RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0): the LIVE reference is now ms33_modelVII_freeswelling_ladder550_ts_1287_t_47520000.000000.vtu
+      (md5 d57025c5811e0df56b61f11977216f50), = the last frame of run fx_VII_550 of the IC-fix readiness suite (Shilpa's MBP,
+      ~/ogs-models/scratch/2026-09-30_readiness_icfix/runs/fx_VII_550/out/, full copy on the WD_elements drive under
+      run_outputs_2026-09-30/shilpas-macbook-pro/, same md5). Run: 1287 accepted steps, 0 rejected, rc 0, 466.5 s (OMP 2),
+      patched binary bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3, OGS commit 686fcd6ef8 = the declared initial_micro_water_content realised in the previous micro porosity, with the K_fix table of this deck (K only; comment-stripped, this deck differs from
+      486235c679 in the K prefactor lines and nowhere else; physics, BCs, mesh, numerics, output times, tolerances unchanged).
+      The former reference ms33_modelVII_freeswelling_ladder550_ts_1304_t_47520000.000000.vtu (md5 255f08988a8b9fbbaf3d08be8c85c65d) is SUPERSEDED and was moved (git mv, never deleted) to
+      superseded_references_2026-09-30_icfix/ in this directory (README_fx_VII_550.md); it cannot pass by construction (the ctest wrapper pairs
+      output and reference by IDENTICAL file name and the step index changed) and, with this deck's own tolerances, passes 4 of 11 checks against the new frame
+      (MEASURED with vtkdiff on the mac mini, tables in that README). The sentence above that names the older frame as LIVE is HISTORY.
+      NOT run through ctest (the mini has no ctest, the patched binary was built with OGS_BUILD_TESTING=OFF): passing on the MBP is PREDICTED, not verified.
+      Ps = Dixon target after the K refit is CALIBRATION, not validation. Record: ~/ogs-models/scratch/2026-09-30_icfix_v0_recut/OGS_GATE.md and REPAIR_2.md.
+      The approval status stated above (pending Vinay's explicit approval of this deck's reference) is unchanged and applies to the new frame; nothing here approves it.
+      Every paragraph below this one is the PARENT deck's
+      reference lineage (ms33_modelVII_freeswelling_ts_*_t_20736000), inherited as
+      history and not describing this deck's reference.
       RE-BASELINED 2026-08-12 (ratified by Vinay): the analytic micro 2x2
       Jacobian is re-enabled as default, which changes the adaptive step path
       of this model only; the live reference became ms33_modelVII_freeswelling_ts_669_t_20736000.000000.vtu
@@ -615,36 +661,6 @@ initial micro water content is set to the 99 MPa-equilibrium value.
       (md5 e1cafac2a3cd079d78074b10b2ae3ce2) is SUPERSEDED and was moved
       (git mv, never deleted) to superseded_references_2026-08-31/ in this
       directory. Full record: DSM/AGENTS.md entry 29.
-      RE-BASELINED 2026-09-08, gen5_conformant campaign (spec-conformance fix 3, Vinay's ruling of 2026-09-08 "approve all
-      five, run them as one campaign": the step-and-hold traction ladder of the spec table replaced the monotone ramp):
-      reference became ms33_modelVII_freeswelling_ts_973_t_20736000.000000.vtu (md5 22c865d5d77d767296de28a0946437ce; ITSELF
-      SUPERSEDED by the same day's campaign v2, see below, now in superseded_references_2026-09-08_v2/). Run: 973 accepted
-      steps, 0 rejected, 217.77 s. The former reference ts_920_t_20736000.000000.vtu (md5 f6c5ab0816df428c3a28fa5146f0bda6)
-      is SUPERSEDED and was moved (git mv, never deleted) to superseded_references_2026-09-08/ in this directory.
-      RE-BASELINED AGAIN 2026-09-08, campaign v2 (the ONLY change to this deck is <fixed_output_times> set to the organizers'
-      data-collection 5-day grid plus the ramp-end frames, audit 2026-09-08_spec_audit_3x LANE2 finding 3; physics, BCs, mesh
-      and numerics unchanged): the reference at that date was (HISTORY, SUPERSEDED 2026-09-30, see RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0) below) ms33_modelVII_freeswelling_ts_1023_t_20736000.000000.vtu
-      (md5 5509fa9e33df94a6b2456dfa63325f7e, recomputed 2026-09-08 from the committed file), = the campaign-v2 run frame
-      (~/ogs-models/scratch/2026-09-08_0936_gen5_conformant_v2_inflight/runs/VII_240/out, same md5). Run: 1023 accepted
-      steps, 0 rejected, 233.64 s at OMP 2, binary maxwell-conjugate-20260602 (md5 cea9d7d81972f732385b41a71e50f20e). The
-      former reference ts_973_t_20736000.000000.vtu is SUPERSEDED and was moved (git mv, never deleted) to
-      superseded_references_2026-09-08_v2/. Same physical time (240 d); vtkdiff old-vs-new (MEASURED) in the campaign's
-      OGS_TREE_LANE_2026-09-08.md: the TIGHT tier fails on displacement and the porosity family. This deck keeps the 240-d
-      Q&A schedule; the CURRENT spec ladder (50-d holds to 550 d) is the SUPPLEMENT deck ms33_modelVII_freeswelling_ladder550.prj
-      beside it (CLAUDE.md 3: supplement, never replace). Headline ladder: RULED 2026-09-12 (Vinay: keep both variants of
-      model vii): both ladders registered and reported, neither is the headline.
-      RE-BASELINED AGAIN 2026-09-30 (IC-FIX V0): the LIVE reference is now ms33_modelVII_freeswelling_ts_1006_t_20736000.000000.vtu
-      (md5 a30214d8c8505abe059bf89f9e3fa2ad), = the last frame of run fx_VII_240 of the IC-fix readiness suite (Shilpa's MBP,
-      ~/ogs-models/scratch/2026-09-30_readiness_icfix/runs/fx_VII_240/out/, full copy on the WD_elements drive under
-      run_outputs_2026-09-30/shilpas-macbook-pro/, same md5). Run: 1006 accepted steps, 0 rejected, rc 0, 368.7 s (OMP 2),
-      patched binary bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3, OGS commit 686fcd6ef8 = the declared initial_micro_water_content realised in the previous micro porosity, with the K_fix table of this deck (K only; comment-stripped, this deck differs from
-      486235c679 in the K prefactor lines and nowhere else; physics, BCs, mesh, numerics, output times, tolerances unchanged).
-      The former reference ms33_modelVII_freeswelling_ts_1023_t_20736000.000000.vtu (md5 5509fa9e33df94a6b2456dfa63325f7e) is SUPERSEDED and was moved (git mv, never deleted) to
-      superseded_references_2026-09-30_icfix/ in this directory (README_fx_VII_240.md); it cannot pass by construction (the ctest wrapper pairs
-      output and reference by IDENTICAL file name and the step index changed) and, with this deck's own tolerances, passes 4 of 11 checks against the new frame
-      (MEASURED with vtkdiff on the mac mini, tables in that README). The sentence above that names the older frame as LIVE is HISTORY.
-      NOT run through ctest (the mini has no ctest, the patched binary was built with OGS_BUILD_TESTING=OFF): passing on the MBP is PREDICTED, not verified.
-      Ps = Dixon target after the K refit is CALIBRATION, not validation. Record: ~/ogs-models/scratch/2026-09-30_icfix_v0_recut/OGS_GATE.md and REPAIR_2.md.
       Physics anchor: (f) regression baseline previously approved by user.
       Reference = the SINGLE final-time output VTU committed beside this PRJ
       (timestep at t_end). vtkdiff (Applications/ApplicationsLib/
@@ -672,17 +688,17 @@ initial micro water content is set to the 99 MPa-equilibrium value.
     -->
     <test_definition>
         <!-- TIER A (tight) -->
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>displacement</field><absolute_tolerance>1e-9</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>saturation</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-8</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>porosity</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>transport_porosity</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>micro_porosity</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>micro_water_content</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>dry_density_solid</field><absolute_tolerance>1e-5</absolute_tolerance><relative_tolerance>1e-8</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>displacement</field><absolute_tolerance>1e-9</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>saturation</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-8</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>porosity</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>transport_porosity</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>micro_porosity</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>micro_water_content</field><absolute_tolerance>1e-8</absolute_tolerance><relative_tolerance>1e-7</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>dry_density_solid</field><absolute_tolerance>1e-5</absolute_tolerance><relative_tolerance>1e-8</relative_tolerance></vtkdiff>
         <!-- TIER B (LOOSE - intentional, see comment block above) -->
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>sigma</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>swelling_stress</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>pressure</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
-        <vtkdiff><regex>ms33_modelVII_freeswelling_ts_.*_t_20736000\.0+\.vtu</regex><field>micro_pressure</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>sigma</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>swelling_stress</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>pressure</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
+        <vtkdiff><regex>ms33_modelVII_freeswelling_ladder550_ts_.*_t_47520000\.0+\.vtu</regex><field>micro_pressure</field><absolute_tolerance>1e3</absolute_tolerance><relative_tolerance>1e-2</relative_tolerance></vtkdiff>
     </test_definition>
 </OpenGeoSysProject>

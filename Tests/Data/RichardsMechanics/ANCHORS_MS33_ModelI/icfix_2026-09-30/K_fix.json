@@ -1,0 +1,278 @@
+{
+ "created": "2026-09-30",
+ "binary_fix": "dsm-ic-fix-20260930, commit 686fcd6ef894ae3bf324fd21f45f572d5ff2093c, bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3",
+ "binary_ship": "maxwell-conjugate-20260602 bed3e395da, bin/ogs md5 cea9d7d81972f732385b41a71e50f20e",
+ "TOL_rel": 1e-09,
+ "targets_source": "900: 0.3500522009 (Dixon relation, ratified 2026-08-17); 1400/1600/1800: 4.900/14.161/40.600 (ratified read-offs as printed; v68-run-05)",
+ "status": "NOT ADOPTED; the K_fix values enter only the copies in decks_kfix/",
+ "cells": {
+  "dd900_f0": {
+   "target_MPa": 0.3500522009,
+   "K_ship": 24241.892204,
+   "floor": "0.0 (deck as shipped)",
+   "control_shipped_binary_at_K_ship": {
+    "Ps_MPa": 0.35005220097603473,
+    "dev_rel": 2.1720980569739368e-10,
+    "steps": 311,
+    "rejected": 0
+   },
+   "patched_binary_at_K_ship_before_refit": {
+    "Ps_MPa": 0.3500515273581061,
+    "dev_rel": -1.9241184376905807e-06,
+    "steps": 311,
+    "rejected": 0
+   },
+   "rounds": {
+    "scan_round_runs": 13,
+    "iteration_rounds": 1,
+    "runs_in_fit": 14,
+    "runs_total_incl_controls_and_diagnostics": 25
+   },
+   "failures": {
+    "n_fit_runs_failed": 3,
+    "failed_K": [
+     24120.682743,
+     25453.9868142,
+     29090.2706448
+    ],
+    "failed_at": "time step 103, t = 1893877.2233632712 s, Eigen linear solve (NaN residual); same K fail with the shipped binary and reproduce with the patched one (diag_fragility.py)"
+   },
+   "K_fix": 24241.938995,
+   "K_rel_change_vs_ship": 1.9301711107200248e-06,
+   "K_abs_change": 0.04679100000066683,
+   "Ps_achieved_MPa": 0.35005220121435854,
+   "Ps_node0_MPa": 0.3500522012143569,
+   "Ps_swelling_mean_MPa": 0.35005220121435854,
+   "dev_rel_achieved": 8.980334254005129e-10,
+   "steps": 311,
+   "rejected": 0,
+   "run_dir": "calib/runs/dd900_f0__it01",
+   "deck_md5": "69962a710e5d820a9937dd2ffad9a9ba",
+   "converged": true,
+   "n_l_ts0": 0.0004488466325519552,
+   "n_l_end": 0.6762589928057543,
+   "fix_forward_2026-09-30": {
+    "fix_only_shift": -1.924335647052189e-06,
+    "shipped_fit_residual": 2.1720980569739368e-10,
+    "patched_deviation_at_K_ship": -1.9241184376905807e-06,
+    "share_K_change_from_fix_first_order": 1.000112887838059,
+    "share_K_change_from_shipped_miss_first_order": -0.00011288785162609119,
+    "vs_exact_dixon": {
+     "target_exact": 0.3500522008569968,
+     "shipped_dev": 3.4005775972900665e-10,
+     "patched_at_K_ship_dev": -1.9239955899585937e-06,
+     "K_fix_Ps": 0.35005220121435854,
+     "K_fix_dev": 1.0208813794321259e-09,
+     "K_fix_dev_vs_printed_target": 8.980334254005129e-10
+    }
+   }
+  },
+  "dd900_f008": {
+   "target_MPa": 0.3500522009,
+   "K_ship": 18469.144929,
+   "floor": "0.08 (gen-4 condition of Model IV's 900 knot; one live tag changed in a copy)",
+   "control_shipped_binary_at_K_ship": {
+    "Ps_MPa": 0.35005220099112866,
+    "dev_rel": 2.6032886957239043e-10,
+    "steps": 311,
+    "rejected": 0
+   },
+   "patched_binary_at_K_ship_before_refit": {
+    "Ps_MPa": 0.3500516078583508,
+    "dev_rel": -1.6941520368796148e-06,
+    "steps": 311,
+    "rejected": 0
+   },
+   "rounds": {
+    "scan_round_runs": 13,
+    "iteration_rounds": 1,
+    "runs_in_fit": 14,
+    "runs_total_incl_controls_and_diagnostics": 19
+   },
+   "failures": {
+    "n_fit_runs_failed": 1,
+    "failed_K": [
+     16622.2304361
+    ],
+    "failed_at": "time step 103, t = 1893877.2233632712 s, Eigen linear solve (NaN residual); same K fail with the shipped binary and reproduce with the patched one (diag_fragility.py)"
+   },
+   "K_fix": 18469.1763367,
+   "K_rel_change_vs_ship": 1.700549761229908e-06,
+   "K_abs_change": 0.0314077000002726,
+   "Ps_achieved_MPa": 0.350052200947372,
+   "Ps_node0_MPa": 0.3500522009473711,
+   "Ps_swelling_mean_MPa": 0.35005220094737205,
+   "dev_rel_achieved": 1.353284151406342e-10,
+   "steps": 311,
+   "rejected": 0,
+   "run_dir": "calib/runs/dd900_f008__it01",
+   "deck_md5": "63f1fa41fbb68e67e7e883671ddec6cb",
+   "converged": true,
+   "n_l_ts0": 0.0004330626707401664,
+   "n_l_end": 0.6481076008352648,
+   "fix_forward_2026-09-30": {
+    "fix_only_shift": -1.6944123651940757e-06,
+    "shipped_fit_residual": 2.6032886957239043e-10,
+    "patched_deviation_at_K_ship": -1.6941520368796148e-06,
+    "share_K_change_from_fix_first_order": 1.0001536630298498,
+    "share_K_change_from_shipped_miss_first_order": -0.00015366309714421401,
+    "vs_exact_dixon": {
+     "target_exact": 0.3500522008569968,
+     "shipped_dev": 3.831768236040034e-10,
+     "patched_at_K_ship_dev": -1.6940291891476278e-06,
+     "K_fix_Ps": 0.350052200947372,
+     "K_fix_dev": 2.581763691722472e-10,
+     "K_fix_dev_vs_printed_target": 1.353284151406342e-10
+    }
+   }
+  },
+  "dd1400": {
+   "target_MPa": 4.9,
+   "K_ship": 46000.0,
+   "floor": "0.0 (deck as shipped)",
+   "control_shipped_binary_at_K_ship": {
+    "Ps_MPa": 4.899970339977161,
+    "dev_rel": -6.053065885636144e-06,
+    "steps": 308,
+    "rejected": 0
+   },
+   "patched_binary_at_K_ship_before_refit": {
+    "Ps_MPa": 4.899965277939723,
+    "dev_rel": -7.086134750533546e-06,
+    "steps": 308,
+    "rejected": 0
+   },
+   "rounds": {
+    "scan_round_runs": 13,
+    "iteration_rounds": 2,
+    "runs_in_fit": 15,
+    "runs_total_incl_controls_and_diagnostics": 17
+   },
+   "failures": {
+    "n_fit_runs_failed": 0,
+    "failed_K": [],
+    "failed_at": "none"
+   },
+   "K_fix": 46000.3269694,
+   "K_rel_change_vs_ship": 7.108030434688217e-06,
+   "K_abs_change": 0.3269693999973242,
+   "Ps_achieved_MPa": 4.900000000004896,
+   "Ps_node0_MPa": 4.900000000004896,
+   "Ps_swelling_mean_MPa": 4.900000000004897,
+   "dev_rel_achieved": 9.992007221626409e-13,
+   "steps": 308,
+   "rejected": 0,
+   "run_dir": "calib/runs/dd1400__it02",
+   "deck_md5": "fcbd0dc16061622995e5ed21d8e29298",
+   "converged": true,
+   "n_l_ts0": 0.0009272117007015624,
+   "n_l_end": 0.4964028776978406,
+   "fix_forward_2026-09-30": {
+    "fix_only_shift": -1.033075118228588e-06,
+    "shipped_fit_residual": -6.053065885636144e-06,
+    "patched_deviation_at_K_ship": -7.086134750533546e-06,
+    "share_K_change_from_fix_first_order": 0.14578779940817663,
+    "share_K_change_from_shipped_miss_first_order": 0.8542122006002103
+   }
+  },
+  "dd1600": {
+   "target_MPa": 14.161,
+   "K_ship": 104689.9129,
+   "floor": "0.0 (deck as shipped)",
+   "control_shipped_binary_at_K_ship": {
+    "Ps_MPa": 14.159948034188327,
+    "dev_rel": -7.428612468562967e-05,
+    "steps": 311,
+    "rejected": 0
+   },
+   "patched_binary_at_K_ship_before_refit": {
+    "Ps_MPa": 14.159891423445492,
+    "dev_rel": -7.828377618157578e-05,
+    "steps": 311,
+    "rejected": 0
+   },
+   "rounds": {
+    "scan_round_runs": 13,
+    "iteration_rounds": 2,
+    "runs_in_fit": 15,
+    "runs_total_incl_controls_and_diagnostics": 17
+   },
+   "failures": {
+    "n_fit_runs_failed": 0,
+    "failed_K": [],
+    "failed_at": "none"
+   },
+   "K_fix": 104698.192423,
+   "K_rel_change_vs_ship": 7.908615807061814e-05,
+   "K_abs_change": 8.279523000004701,
+   "Ps_achieved_MPa": 14.160999999963988,
+   "Ps_node0_MPa": 14.160999999963996,
+   "Ps_swelling_mean_MPa": 14.160999999963986,
+   "dev_rel_achieved": -2.5430768602063836e-12,
+   "steps": 311,
+   "rejected": 0,
+   "run_dir": "calib/runs/dd1600__it02",
+   "deck_md5": "969e761edb9a2f564c5056ba8b8cd1ed",
+   "converged": true,
+   "n_l_ts0": 0.0011775942698129347,
+   "n_l_end": 0.42446043165467556,
+   "fix_forward_2026-09-30": {
+    "fix_only_shift": -3.99794848804369e-06,
+    "shipped_fit_residual": -7.428612468562967e-05,
+    "patched_deviation_at_K_ship": -7.828377618157578e-05,
+    "share_K_change_from_fix_first_order": 0.051068052478477524,
+    "share_K_change_from_shipped_miss_first_order": 0.9489319475214933
+   }
+  },
+  "dd1800": {
+   "target_MPa": 40.6,
+   "K_ship": 265905.06,
+   "floor": "0.0 (deck as shipped)",
+   "control_shipped_binary_at_K_ship": {
+    "Ps_MPa": 40.6003131773509,
+    "dev_rel": 7.713727854685715e-06,
+    "steps": 308,
+    "rejected": 0
+   },
+   "patched_binary_at_K_ship_before_refit": {
+    "Ps_MPa": 40.599275952992585,
+    "dev_rel": -1.7833670133415858e-05,
+    "steps": 308,
+    "rejected": 0
+   },
+   "rounds": {
+    "scan_round_runs": 13,
+    "iteration_rounds": 2,
+    "runs_in_fit": 15,
+    "runs_total_incl_controls_and_diagnostics": 17
+   },
+   "failures": {
+    "n_fit_runs_failed": 0,
+    "failed_K": [],
+    "failed_at": "none"
+   },
+   "K_fix": 265909.813902,
+   "K_rel_change_vs_ship": 1.787819306642291e-05,
+   "K_abs_change": 4.753902000025846,
+   "Ps_achieved_MPa": 40.60000000003225,
+   "Ps_node0_MPa": 40.60000000003225,
+   "Ps_swelling_mean_MPa": 40.600000000032246,
+   "dev_rel_achieved": 7.94475596421762e-13,
+   "steps": 308,
+   "rejected": 0,
+   "run_dir": "calib/runs/dd1800__it02",
+   "deck_md5": "b897f2f76b83f119ec4a4afcaac8c07e",
+   "converged": true,
+   "n_l_ts0": 0.0015479961403083733,
+   "n_l_end": 0.35251798561151043,
+   "fix_forward_2026-09-30": {
+    "fix_only_shift": -2.5547200923847768e-05,
+    "shipped_fit_residual": 7.713727854685715e-06,
+    "patched_deviation_at_K_ship": -1.7833670133415858e-05,
+    "share_K_change_from_fix_first_order": 1.432531793189892,
+    "share_K_change_from_shipped_miss_first_order": -0.43253179319541124
+   }
+  }
+ },
+ "fix_forward_2026-09-30_note": "patched_binary_at_K_ship_before_refit.dev_rel is the deviation from the target, NOT the fix-only shift; see fix_forward_2026-09-30 per cell and K_fix_attribution.md"
+}

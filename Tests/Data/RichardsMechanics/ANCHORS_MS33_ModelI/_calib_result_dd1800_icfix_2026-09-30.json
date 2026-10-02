@@ -1,0 +1,22 @@
+{
+  "dd": 1800,
+  "cell": "dd1800",
+  "deck_using_the_knot": "ms33_modelI_dd1800.prj",
+  "K": 265909.813902,
+  "K_previous": 265905.06,
+  "K_rel_change_vs_previous": 1.787819306642291e-05,
+  "Ps_sim_MPa": 40.60000000003225,
+  "Ps_target_MPa": 40.6,
+  "rel_err": 7.94475596421762e-13,
+  "converged": true,
+  "n_runs": 15,
+  "steps": 308,
+  "rejected": 0,
+  "binary": "ogs archive/dsm_native_Pi_fofnlev_branchtip_2026-08-11-50-g686fcd6e, bin/ogs md5 23640465bff1ef6ce5c83d6c5dcd48d3 (commit 686fcd6ef8, IC fix)",
+  "procedure": "shipped procedure re-run: 13-point sweep 0.70-1.30 x K_previous, log-linear secant, tolerance |Ps/target-1|<=1e-9; Ps = mean -tr(sigma)/3 over 4 nodes at 200 d",
+  "target_source": "900: 0.3500522009 (Dixon relation, ratified 2026-08-17); 1400/1600/1800: 4.900/14.161/40.600 (ratified read-offs as printed; v68-run-05)",
+  "calibration_deck_md5": "b897f2f76b83f119ec4a4afcaac8c07e",
+  "calibration_deck_note": "live content identical to the committed deck (check_decks_vs_kfix.py); committed deck differs in header comments only",
+  "record": "K_fix.json (md5 e6f29bd492a5011c8f8a6f7688d6980e), cell \"dd1800\"; run folder calib/runs/dd1800__it02 on Shilpa's MBP (mirror on WD_elements)",
+  "note": "Ps = target is calibration, not validation (CLAUDE.md section 2)."
+}
