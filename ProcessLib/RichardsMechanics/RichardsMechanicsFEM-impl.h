@@ -9303,10 +9303,48 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                        MechanicalStrainData<DisplacementDim>>>(
                     state_previous);
 
-            ip_data_[ip].updateConstitutiveRelation(
+            auto C_out = ip_data_[ip].updateConstitutiveRelation(
                 variables, t, x_position, dt, temperature, sigma_eff,
                 sigma_eff_prev, eps_m, eps_m_prev, this->solid_material_,
                 this->material_states_[ip].material_state_variables);
+
+            // DIAGNOSTIC fix (b): the output pass re-evaluates the elastic
+            // tangent at the final stress (history-dependent skeleton: a
+            // different C_el than the assembly's lagged one), so its stress
+            // update is a pass of its own; iterate the level equation here too,
+            // so that the OUTPUT (sigma_sw, sigma') pair is on the level
+            // equation as well (see iterateSwellingLevelWithStressUpdate).
+            if (isSwellingStressLevelForm(
+                    this->getPotentialExchangeParameters()) &&
+                isFilmPressureCouplingEnabled(
+                    this->getPotentialExchangeParameters()))
+            {
+                iterateSwellingLevelWithStressUpdate<DisplacementDim>(
+                    state_current, C_el, C_out, alpha,
+                    [&]()
+                    {
+                        auto& eps_m_struct = std::get<
+                            ProcessLib::ConstitutiveRelations::
+                                MechanicalStrainData<DisplacementDim>>(
+                            state_current);
+                        auto const& sigma_sw_corr = std::get<
+                            ProcessLib::ThermoRichardsMechanics::
+                                ConstitutiveStress_StrainTemperature::
+                                    SwellingDataStateful<DisplacementDim>>(
+                            state_current);
+                        eps_m_struct.eps_m.noalias() =
+                            eps + C_el.inverse() * sigma_sw_corr.sigma_sw;
+                        variables.mechanical_strain.template emplace<
+                            MathLib::KelvinVector::KelvinVectorType<
+                                DisplacementDim>>(eps_m_struct.eps_m);
+                        return ip_data_[ip].updateConstitutiveRelation(
+                            variables, t, x_position, dt, temperature,
+                            sigma_eff, sigma_eff_prev, eps_m_struct,
+                            eps_m_prev, this->solid_material_,
+                            this->material_states_[ip]
+                                .material_state_variables);
+                    });
+            }
         }
 
         auto const& b = this->process_data_.specific_body_force;
