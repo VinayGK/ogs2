@@ -344,3 +344,52 @@ TEST(SwellingStressLevelForm, StoredLevelPreventsLagAccumulation)
     EXPECT_NEAR(sum_recomputed - (L_of(p, accepted.back(), b) - L_start),
                 expected_accum, 1e-9 * std::abs(expected_accum));
 }
+
+// The factor on a frozen-sigma' partial dF (the live-K chain of the Jacobian):
+// the closed loop s = F(eps) - c m(eps, s), m = tr(sigma')/3,
+// sigma' = C_cons (eps + C_el^{-1} I s), has ds/d eps_k = (dF/d eps_k - c r_k) /
+// (1 + c g). Finite difference of the solved s(eps) against
+// swellingLevelImplicitFactor and swellingLevelDrainFeedbackDsDeps, with F
+// carrying a strain dependence (F = F0 + f1 eps_v, the way K(phi(eps_v)) enters).
+TEST(SwellingStressLevelForm, ImplicitFactorOnFrozenPartialMatchesFiniteDifference)
+{
+    SwKm C_el = SwKm::Zero();
+    C_el.diagonal() << 3.0e8, 2.5e8, 2.8e8, 1.1e8;
+    C_el(0, 1) = C_el(1, 0) = 0.9e8;
+    C_el(0, 2) = C_el(2, 0) = 0.8e8;
+    C_el(1, 2) = C_el(2, 1) = 0.7e8;
+    SwKm const C_cons = 0.6 * C_el;
+    auto const& I2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    double const c = 0.31;
+    double const F0 = -6.0e6;
+    double const f1 = -2.0e7;  // dF/d eps_v [Pa]
+    SwKv const eps0 = (SwKv() << 2.0e-3, -1.0e-3, 4.0e-4, 2.0e-4).finished();
+
+    auto solve_s = [&](SwKv const& eps)
+    {
+        double const F = F0 + f1 * I2.dot(eps);
+        SwKv const dsig_ds = C_cons * (C_el.inverse() * I2);
+        double const a = I2.dot(C_cons * eps) / 3.0;
+        double const g = I2.dot(dsig_ds) / 3.0;
+        return (F - c * a) / (1.0 + c * g);
+    };
+    double const f = swellingLevelImplicitFactor<2>(
+        C_cons, C_el.inverse().eval(), c);
+    SwKv const drain = swellingLevelDrainFeedbackDsDeps<2>(C_cons, C_el, c);
+    for (int k = 0; k < 4; ++k)
+    {
+        double const h = 1e-7;
+        SwKv ep = eps0, em = eps0;
+        ep[k] += h;
+        em[k] -= h;
+        double const fd = (solve_s(ep) - solve_s(em)) / (2.0 * h);
+        // coded: factor on the frozen partial (dF/d eps_k = f1 I2[k]) plus the
+        // drain-feedback vector.
+        double const coded = f * f1 * I2[k] + drain[k];
+        EXPECT_NEAR(fd, coded, 1e-6 * std::abs(coded) + 1e-3) << "component " << k;
+    }
+    // c = 0: the factor is exactly 1 (no drain, the frozen partial is the whole).
+    EXPECT_EQ(swellingLevelImplicitFactor<2>(C_cons, C_el.inverse().eval(), 0.0),
+              1.0);
+}

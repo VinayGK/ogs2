@@ -3715,6 +3715,23 @@ computeSwellingStressIncrement(
 //   => ds/d eps = -c r / (1 + c g)     [Pa per unit strain component].
 // Returned as a Kelvin vector (coefficient of d eps). Used ONLY in the
 // Jacobian of the level form; the residual does not call it.
+// The implicit-function factor 1/(1 + c g) of the same system, g as above:
+// ds = (dF - c r^T d eps)/(1 + c g) for ANY frozen-sigma' partial dF of
+// s = F - c m (the live-K chain, the n_l channel). C_el_inv = C_el^{-1}.
+template <int DisplacementDim>
+inline double swellingLevelImplicitFactor(
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_cons,
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el_inv,
+    double const c)
+{
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(
+            DisplacementDim)>::identity2;
+    double const g =
+        identity2.dot(C_cons * C_el_inv * identity2) / 3.0;  // [-]
+    return 1.0 / (1.0 + c * g);                              // [-]
+}
+
 template <int DisplacementDim>
 inline MathLib::KelvinVector::KelvinVectorType<DisplacementDim>
 swellingLevelDrainFeedbackDsDeps(
@@ -3725,12 +3742,11 @@ swellingLevelDrainFeedbackDsDeps(
     auto const& identity2 = MathLib::KelvinVector::Invariants<
         MathLib::KelvinVector::kelvin_vector_dimensions(
             DisplacementDim)>::identity2;
-    MathLib::KelvinVector::KelvinVectorType<DisplacementDim> const C_el_inv_I =
-        (C_el.inverse() * identity2).eval();
-    double const g = identity2.dot(C_cons * C_el_inv_I) / 3.0;  // [-]
+    double const f = swellingLevelImplicitFactor<DisplacementDim>(
+        C_cons, C_el.inverse().eval(), c);  // [-]
     MathLib::KelvinVector::KelvinVectorType<DisplacementDim> const r =
         (C_cons.transpose() * identity2 / 3.0).eval();  // Pa
-    return (-c / (1.0 + c * g)) * r;  // Pa
+    return (-c * f) * r;  // Pa
 }
 
 template <int DisplacementDim>
@@ -7337,6 +7353,25 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     *this->material_states_[ip]
                                          .material_state_variables);
                             auto const C_el_inv_sw = C_el_sw.inverse().eval();
+                            // DIAGNOSTIC fix (b), level form: the live-K chain
+                            // is the frozen-sigma' partial F of s = F - c m; the
+                            // implicit-function form of the SIMULTANEOUS system
+                            // is ds = (dF - c r^T d eps)/(1 + c g) (see the
+                            // drain-feedback block below), so dF carries the
+                            // same 1/(1 + c g). Off -> not executed (bitwise).
+                            if (isSwellingStressLevelForm(
+                                    potential_exchange_params_ptr))
+                            {
+                                double const c_lvk =
+                                    n_S_sw * n_l * alpha;  // [-]
+                                double const f_lvk =
+                                    swellingLevelImplicitFactor<
+                                        DisplacementDim>(C_consistent_sw,
+                                                         C_el_inv_sw,
+                                                         c_lvk);  // [-]
+                                dsig_sw_deps_v_scalar *= f_lvk;
+                                dsig_sw_dp_scalar *= f_lvk;
+                            }
                             MathLib::KelvinVector::KelvinVectorType<
                                 DisplacementDim> const dsig_sw_deps_v =
                                 dsig_sw_deps_v_scalar * identity2;  // Pa
@@ -7502,12 +7537,34 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     *this->material_states_[ip]
                                          .material_state_variables);
                             auto const C_el_inv_swk = C_el_swk.inverse().eval();
+                            // DIAGNOSTIC fix (b), level form: the KKT-active
+                            // partials are frozen-sigma' partials dF of
+                            // s = F - c m (the step rule's n_l partial already
+                            // carries -b p_conf, so it equals dL/dn_l), hence
+                            // the same 1/(1 + c g) as the live-K chain. Off ->
+                            // factor 1.0 is not applied (bitwise).
+                            double const f_swk =
+                                isSwellingStressLevelForm(
+                                    potential_exchange_params_ptr)
+                                    ? swellingLevelImplicitFactor<
+                                          DisplacementDim>(
+                                          C_consistent_swk, C_el_inv_swk,
+                                          n_S_swk * n_l * alpha)  // [-]
+                                    : 1.0;
                             MathLib::KelvinVector::KelvinVectorType<
                                 DisplacementDim> const dsig_deps_v_vec =
-                                dsig_sw_deps_v_swk * identity2;  // Pa
+                                (isSwellingStressLevelForm(
+                                     potential_exchange_params_ptr)
+                                     ? f_swk * dsig_sw_deps_v_swk
+                                     : dsig_sw_deps_v_swk) *
+                                identity2;  // Pa
                             MathLib::KelvinVector::KelvinVectorType<
                                 DisplacementDim> const dsig_dp_vec =
-                                dsig_sw_dp_swk * identity2;  // Pa
+                                (isSwellingStressLevelForm(
+                                     potential_exchange_params_ptr)
+                                     ? f_swk * dsig_sw_dp_swk
+                                     : dsig_sw_dp_swk) *
+                                identity2;  // Pa
                             local_Jac
                                 .template block<displacement_size,
                                                 displacement_size>(
