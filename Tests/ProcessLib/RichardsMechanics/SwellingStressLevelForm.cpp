@@ -172,6 +172,47 @@ TEST(SwellingStressLevelForm, KLevelUsesOwnKAtPreviousLevel)
               increment(p_off, prev, curr_same_phi, b));
 }
 
+// Fix (a), must-fix 2026-10-04: a step with UNCHANGED n_l and a changed K books
+// the path, -W n_l [Pi(n_l, K) - Pi(n_l, K_prev)] (ruled equation (2.1), the
+// loop of (1.5)). The early return at |dn_l| <= eps must not swallow it. The
+// 2a step rule (switch off) keeps the return and books nothing; with (a) on and
+// the same K at both levels (no change) the increment is exactly zero.
+TEST(SwellingStressLevelForm, KLevelBooksChangedKAtUnchangedNl)
+{
+    auto p = sampleParams();
+    double const b = 1.0;
+    Level const prev{0.25, 1100.0, 0.40, 0.55, 2.0e6};
+    Level const curr{0.25, 1100.0, 0.36, 0.55, 2.0e6};  // n_l same, phi -> K moves
+    ASSERT_EQ(prev.n_l, curr.n_l);
+    ASSERT_NE(effectiveAugmentationPrefactor(p, curr.phi),
+              effectiveAugmentationPrefactor(p, prev.phi));
+
+    // 2a (switch off): early return, nothing booked.
+    EXPECT_EQ(increment(p, prev, curr, b), 0.0);
+
+    // (a) on: -W n_l [Pi(n_l, K_curr) - Pi(n_l, K_prev)], W = curr.n_S.
+    p.swelling_stress_K_level = true;
+    double const expected =
+        -curr.n_S * curr.n_l *
+        (Pi_level(p, curr.n_l, curr.rho_lR, curr.phi) -
+         Pi_level(p, prev.n_l, prev.rho_lR, prev.phi));
+    double const got = increment(p, prev, curr, b);
+    ASSERT_NE(expected, 0.0);
+    EXPECT_NEAR(got, expected, 1e-12 * std::abs(expected));
+
+    // (a) on, same K at both levels and unchanged n_l: exactly zero.
+    Level const curr_same_phi{0.25, 1100.0, prev.phi, 0.55, 2.0e6};
+    EXPECT_EQ(increment(p, prev, curr_same_phi, b), 0.0);
+
+    // Telescoping: n_l unchanged over two steps with K moving 0.40 -> 0.38 ->
+    // 0.36 books the same sum as one step 0.40 -> 0.36 (each Pi level at its
+    // own K, the shared W and b p_conf terms cancel at constant n_l).
+    Level const mid{0.25, 1100.0, 0.38, 0.55, 2.0e6};
+    double const two_steps =
+        increment(p, prev, mid, b) + increment(p, mid, curr, b);
+    EXPECT_NEAR(two_steps, got, 1e-12 * std::abs(got));
+}
+
 // Fix (b), level form: increments telescope to L(end) - L(start) and are path
 // independent; the step rule is not (K, n_S, p_conf change along the path).
 TEST(SwellingStressLevelForm, LevelFormIsAStateFunction)
@@ -431,4 +472,219 @@ TEST(SwellingStressLevelForm, ClosedFormSatisfiesLevelEquationAtCurrentStress)
         0.0, 1.0e6, 0.0, 0.0, curr.phi, prev.phi, prev.n_S, prev.p_conf,
         L_of(p, prev, 0.0), &L0, m_hat, s_prev);
     EXPECT_NEAR(L0, L_of(p, curr, 0.0), 1e-12 * std::abs(L0));
+}
+
+namespace
+{
+// A one-integration-point state for updateSwellingState: previous accepted
+// state (n_l, phi, zero stress, no stored level) and a current state.
+struct SwState
+{
+    StatefulData<2> cur;
+    StatefulDataPrev<2> prev;
+};
+
+SwState makeInitialSwState(double const n_l_prev, double const n_l,
+                           double const phi_prev, double const phi)
+{
+    SwState s;
+    auto const& I2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    (void)I2;
+    std::get<ProcessLib::ConstitutiveRelations::EffectiveStressData<2>>(s.cur)
+        .sigma_eff.setZero();
+    std::get<ProcessLib::ThermoRichardsMechanics::
+                 ConstitutiveStress_StrainTemperature::SwellingDataStateful<2>>(
+        s.cur)
+        .sigma_sw.setZero();
+    std::get<ProcessLib::ConstitutiveRelations::MechanicalStrainData<2>>(s.cur)
+        .eps_m.setZero();
+    std::get<StrainData<2>>(s.cur).eps.setZero();
+    std::get<PrevState<ProcessLib::ConstitutiveRelations::
+                           EffectiveStressData<2>>>(s.prev)
+        ->sigma_eff.setZero();
+    std::get<PrevState<ProcessLib::ThermoRichardsMechanics::
+                           ConstitutiveStress_StrainTemperature::
+                               SwellingDataStateful<2>>>(s.prev)
+        ->sigma_sw.setZero();
+    **std::get<PrevState<MicroWaterContent>>(s.prev) = n_l_prev;
+    *std::get<MicroWaterContent>(s.cur) = n_l;
+    *std::get<MicroLiquidDensity>(s.cur) = 1100.0;
+    **std::get<PrevState<MicroLiquidDensity>>(s.prev) = 1100.0;
+    std::get<ProcessLib::ThermoRichardsMechanics::PorosityData>(s.cur).phi = phi;
+    std::get<PrevState<ProcessLib::ThermoRichardsMechanics::PorosityData>>(
+        s.prev)
+        ->phi = phi_prev;
+    // transport porosity phi_M = (phi - n_l)/(1 - n_l), the split of the code
+    std::get<ProcessLib::ThermoRichardsMechanics::TransportPorosityData>(s.cur)
+        .phi = (phi - n_l) / (1.0 - n_l);
+    std::get<PrevState<ProcessLib::ThermoRichardsMechanics::
+                           TransportPorosityData>>(s.prev)
+        ->phi = (phi_prev - n_l_prev) / (1.0 - n_l_prev);
+    *std::get<SwellingLevelUsed>(s.cur) = 0.0;
+    **std::get<PrevState<SwellingLevelUsed>>(s.prev) = 0.0;
+    *std::get<SwellingLagVolRatio>(s.cur) = 0.0;
+    *std::get<SwellingLagStress>(s.cur) = 0.0;
+    *std::get<SwellingLevelAssumedStress>(s.cur) = 0.0;
+    return s;
+}
+
+double meanOf(SwKv const& v)
+{
+    auto const& I2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    return v.dot(I2) / 3.0;
+}
+}  // namespace
+
+// Review must-fix 2026-10-04 (fix (b) tangent search, MEASURED on the Model I
+// live-K probe): updateSwellingState read the lagged swelling stress s_lag from
+// the state sigma_sw, which updateSwellingStressAndVolumetricStrain has reset to
+// the previous accepted value earlier in the same evaluation. m_hat then carried
+// the whole lagged s, and the closed form iterated a loop of gain -c/(1+c) at a
+// FIXED strain (residual ratio -0.155 to -0.30, Newton eps_v ratio -0.40).
+// Here a linear-elastic skeleton is emulated by hand (m = m0 + K_d eps_v + s,
+// the incremental form of the code) and the evaluation is repeated at ONE strain
+// with the reset of sigma_sw in between: from the second evaluation on the
+// swelling stress must not change (no lag loop), and it must satisfy the level
+// equation at the actual mean effective stress.
+TEST(SwellingStressLevelForm, RepeatedEvaluationAtFixedStrainHasNoLagLoop)
+{
+    auto p = sampleParams();
+    p.swelling_stress_form = SwellingStressForm::Level;
+    p.swelling_stress_K_level = true;
+    double const n_l_prev = 0.20, n_l = 0.27, phi_prev = 0.40, phi = 0.39;
+    SwState st = makeInitialSwState(n_l_prev, n_l, phi_prev, phi);
+    SwKm const C_el = SwKm::Identity() * 1.5e8;
+    double const K_d = drainedBulkModulusFromStiffness<2>(C_el);
+    auto const& I2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    double const eps_v = -2.0e-3, eps_v_prev = 0.0;
+    double const m_prev = -1.0e6;  // stress of the previous accepted state
+    std::get<PrevState<ProcessLib::ConstitutiveRelations::
+                           EffectiveStressData<2>>>(st.prev)
+        ->sigma_eff = m_prev * I2;
+    std::get<ProcessLib::ConstitutiveRelations::EffectiveStressData<2>>(st.cur)
+        .sigma_eff = m_prev * I2;
+    MaterialPropertyLib::Phase solid{
+        MaterialPropertyLib::PhaseName::Solid, {}, nullptr};
+    ParameterLib::SpatialPosition const x_position;
+    MPL::VariableArray variables, variables_prev;
+    variables.volumetric_strain = eps_v;
+    variables_prev.volumetric_strain = eps_v_prev;
+
+    auto const& sigma_sw_prev = *std::get<
+        PrevState<ProcessLib::ThermoRichardsMechanics::
+                      ConstitutiveStress_StrainTemperature::
+                          SwellingDataStateful<2>>>(st.prev);
+    auto& sigma_sw_cur =
+        std::get<ProcessLib::ThermoRichardsMechanics::
+                     ConstitutiveStress_StrainTemperature::
+                         SwellingDataStateful<2>>(st.cur);
+    std::vector<double> s_hist;
+    std::vector<double> L_hist;
+    for (int k = 0; k < 5; ++k)
+    {
+        // what updateSwellingStressAndVolumetricStrain does first
+        sigma_sw_cur.sigma_sw = sigma_sw_prev.sigma_sw;
+        updateSwellingState<2>(solid, 1000.0, C_el, st.cur, st.prev, variables,
+                               variables_prev, x_position, 0.0, 1.0, &p, 1.0);
+        double const s = meanOf(sigma_sw_cur.sigma_sw);
+        s_hist.push_back(s);
+        L_hist.push_back(*std::get<SwellingLevelUsed>(st.cur));
+        // linear-elastic stress update (incremental form of the code)
+        double const m = m_prev + K_d * (eps_v - eps_v_prev) + s - 0.0;
+        std::get<ProcessLib::ConstitutiveRelations::EffectiveStressData<2>>(
+            st.cur)
+            .sigma_eff = m * I2;
+    }
+    // evaluation 0 uses the lagged form (nothing stored yet); from evaluation 1
+    // on the closed form with the stored lag: the iterates must be identical.
+    for (int k = 2; k < 5; ++k)
+    {
+        EXPECT_NEAR(s_hist[k], s_hist[1], 1e-9 * std::abs(s_hist[1]))
+            << "evaluation " << k << " (a lag loop of gain -c/(1+c) would give "
+            << "a geometric sequence here)";
+    }
+    // level equation at the actual mean effective stress of the last evaluation
+    double const m_last = m_prev + K_d * (eps_v - eps_v_prev) + s_hist[4];
+    double const n_S = 1.0 - (phi - n_l) / (1.0 - n_l);
+    double const n_S_prev =
+        1.0 - (phi_prev - n_l_prev) / (1.0 - n_l_prev);
+    // L_prev recomputed at the previous state (no stored level), as the code
+    Level const prev_lv{n_l_prev, 1100.0, phi_prev, n_S_prev, -m_prev};
+    double const L_prev = L_of(p, prev_lv, 1.0);
+    Level const curr_lv{n_l, 1100.0, phi, n_S, -m_last};
+    double const L_curr = L_of(p, curr_lv, 1.0);
+    EXPECT_NEAR(s_hist[4], 0.0 + L_curr - L_prev, 1e-8 * std::abs(s_hist[4]));
+    EXPECT_NEAR(L_hist[4], L_curr, 1e-8 * std::abs(L_curr));
+}
+
+// Review must-fix 3: with a skeleton that is softer than the elastic prediction
+// (consistent tangent g < 1 on the swelling stress), the loop solves
+// phi(s) = (s - s_0) + c (m(s) - m_ev) = 0 by Newton and leaves the state on
+// the level equation; for the elastic skeleton (g = 1, m_ev = m) it does not
+// run. m(s) = m_a + g (s - s_0) is the emulated stress response.
+TEST(SwellingStressLevelForm, LevelCorrectionLoopSolvesTheEquationForASofterSkeleton)
+{
+    auto const& I2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    SwKm const C_el = SwKm::Identity() * 1.5e8;
+    for (double const g : {1.0, 0.6, 0.3})
+    {
+        SwState st = makeInitialSwState(0.20, 0.27, 0.40, 0.39);
+        auto& sigma_sw =
+            std::get<ProcessLib::ThermoRichardsMechanics::
+                         ConstitutiveStress_StrainTemperature::
+                             SwellingDataStateful<2>>(st.cur);
+        auto& sigma_eff =
+            std::get<ProcessLib::ConstitutiveRelations::EffectiveStressData<2>>(
+                st.cur);
+        double const s_0 = -5.0e6, m_ev = -3.0e6, L_0 = -6.0e6;
+        double const m_a = (g == 1.0) ? m_ev : -2.0e6;  // actual m at s_0
+        double const n_S = std::max(
+            1e-16,
+            1.0 - std::get<ProcessLib::ThermoRichardsMechanics::
+                               TransportPorosityData>(st.cur)
+                      .phi);
+        double const c = n_S * 0.27 * 1.0;
+        sigma_sw.sigma_sw = s_0 * I2;
+        sigma_eff.sigma_eff = m_a * I2;
+        *std::get<SwellingLevelAssumedStress>(st.cur) = m_ev;
+        *std::get<SwellingLevelUsed>(st.cur) = L_0;
+        *std::get<SwellingLagStress>(st.cur) = s_0;
+        SwKm C_cons = g * C_el;
+        int n_updates = 0;
+        int const passes = iterateSwellingLevelWithStressUpdate<2>(
+            st.cur, C_el, C_cons, 1.0,
+            [&]()
+            {
+                ++n_updates;
+                double const s = meanOf(sigma_sw.sigma_sw);
+                sigma_eff.sigma_eff = (m_a + g * (s - s_0)) * I2;  // emulated
+                return SwKm(g * C_el);
+            });
+        double const s = meanOf(sigma_sw.sigma_sw);
+        double const m = meanOf(sigma_eff.sigma_eff);
+        double const phi_end = (s - s_0) + c * (m - m_ev);
+        EXPECT_NEAR(phi_end, 0.0, 1e-3) << "g = " << g;  // Pa
+        EXPECT_EQ(passes, n_updates);
+        if (g == 1.0)
+        {
+            EXPECT_EQ(passes, 0);  // elastic: m_a = m_ev, nothing to correct
+        }
+        else
+        {
+            EXPECT_GE(passes, 1);
+            EXPECT_LE(passes, 3);  // the emulated response is linear in s
+            // closed solution of s = s_0 - c (m_a + g (s - s_0) - m_ev)
+            double const s_exact =
+                s_0 - c * (m_a - m_ev) / (1.0 + c * g);
+            EXPECT_NEAR(s, s_exact, 1e-6 * std::abs(s_exact));
+            // stored level and lag stress follow the corrected s
+            EXPECT_NEAR(*std::get<SwellingLevelUsed>(st.cur), L_0 + (s - s_0),
+                        1e-6);
+            EXPECT_NEAR(*std::get<SwellingLagStress>(st.cur), s, 1e-6);
+        }
+    }
 }

@@ -68,7 +68,14 @@ using StatefulData = std::tuple<
     // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): 1 + eps_v of the last
     // evaluation of the level form (0 = unset); elastic predictor of the lagged
     // mean effective stress.
-    SwellingLagVolRatio>;
+    SwellingLagVolRatio,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): mean swelling stress of
+    // the last evaluation of the level form [Pa]; valid where
+    // SwellingLagVolRatio != 0.
+    SwellingLagStress,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): mean effective stress
+    // assumed by the level of the last evaluation [Pa] (0 = unset).
+    SwellingLevelAssumedStress>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<

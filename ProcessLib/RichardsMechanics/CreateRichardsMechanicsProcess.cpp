@@ -1112,6 +1112,21 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 "swelling stress and require film_pressure_coupling = true.",
                 context);
         }
+        // Review 2026-10-04 (should-fix): the Jacobian of the strained-film
+        // modes (the w_eval chain of the live-K block of
+        // RichardsMechanicsFEM-impl.h) still feeds the current K to the
+        // previous level, which is not the derivative of the per-level-K
+        // residual; the level form carries no strain-coupled w_eval partial
+        // either. Untested with (a) or (b): refused.
+        if (film_strain_coupling != FilmStrainCouplingMode::Off)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} swelling_stress_K_level / "
+                "swelling_stress_form = level are implemented and tested for "
+                "film_strain_coupling = 'off' only (the strained-film "
+                "Jacobian feeds the current K to the previous level).",
+                context);
+        }
         INFO(
             "DIAGNOSTIC, NOT FOR PRODUCTION (swelling-stress fixes a/b, "
             "2026-10-04): swelling_stress_K_level = {}, swelling_stress_form "

@@ -197,4 +197,40 @@ constexpr std::string_view ioName(struct SwellingLagVolRatioTag*)
 {
     return "swelling_lag_vol_ratio";
 }
+
+// DIAGNOSTIC, NOT FOR PRODUCTION (swelling-stress fix (b), 2026-10-04): the
+// mean swelling stress s = tr(sigma_sw)/3 [Pa] that the LAST evaluation of the
+// level form produced; valid where SwellingLagVolRatio != 0. Needed because the
+// state sigma_sw itself is reset to the previous accepted value by
+// updateSwellingStressAndVolumetricStrain earlier in the same evaluation, so
+// reading it in updateSwellingState gives s_prev and not the swelling stress
+// that sigma_eff of the state contains. With the wrong s_lag the elastic
+// prediction m_hat = m_lag - s_lag + K_d (eps_v - eps_v_lag) carries the whole
+// lagged swelling stress, and the closed-form level equation iterates a
+// fixed-point loop of gain -c/(1+c) (c = n_S n_l b) inside the Newton loop
+// (MEASURED 2026-10-04: the repeated residual at fixed x converges at ratio
+// -0.155 to -0.30, the eps_v iterates of the Model I live-K probe at -0.40).
+// Not integration-point output: a restart loses it (then the lagged form is
+// used for one evaluation, as at the first step).
+using SwellingLagStress =
+    BaseLib::StrongType<double, struct SwellingLagStressTag>;
+constexpr std::string_view ioName(struct SwellingLagStressTag*)
+{
+    return "swelling_lag_stress";
+}
+
+// DIAGNOSTIC, NOT FOR PRODUCTION (swelling-stress fix (b), 2026-10-04): the mean
+// effective stress m [Pa] that the level of the LAST evaluation of the level
+// form assumed, m_ev = m_hat + s (closed form) or m_lag (lagged form). After the
+// stress update of the same evaluation the actual mean stress differs from m_ev
+// where the skeleton is not linear elastic (MCC); the difference drives the
+// correction loop of the level equation (iterateSwellingLevelWithStressUpdate).
+// NaN / 0 with the step form and at the initial-state evaluation. Not
+// integration-point output: a restart loses it.
+using SwellingLevelAssumedStress =
+    BaseLib::StrongType<double, struct SwellingLevelAssumedStressTag>;
+constexpr std::string_view ioName(struct SwellingLevelAssumedStressTag*)
+{
+    return "swelling_level_assumed_stress";
+}
 }  // namespace ProcessLib::RichardsMechanics
