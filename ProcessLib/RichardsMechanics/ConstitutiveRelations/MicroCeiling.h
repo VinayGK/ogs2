@@ -167,4 +167,19 @@ constexpr std::string_view ioName(struct MicroClosedMacroGateActedTag*)
 {
     return "micro_closed_macro_gate";
 }
+
+// DIAGNOSTIC, NOT FOR PRODUCTION (swelling-stress fix (b), 2026-10-04): the
+// level L = -n_S n_l [Pi + b sigma'_mean] [Pa] that the LAST evaluation of the
+// swelling stress used (level form only; identically 0 with the default step
+// form). Stateful: its previous-step copy is the L_prev of the next step, so
+// that sigma_sw = L - L_ref holds exactly, with L_ref the level of the initial
+// state, and the lag of sigma'_mean within a step does not accumulate over the
+// steps. 0 = not yet set (the level of the previous state is then recomputed
+// from the previous-step state variables).
+using SwellingLevelUsed =
+    BaseLib::StrongType<double, struct SwellingLevelUsedTag>;
+constexpr std::string_view ioName(struct SwellingLevelUsedTag*)
+{
+    return "swelling_level_used";
+}
 }  // namespace ProcessLib::RichardsMechanics

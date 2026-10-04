@@ -341,6 +341,38 @@ inline constexpr char const* toString(MicroCeilingClosedMacroGate const gate)
     return "unknown";
 }
 
+// ── Swelling-stress form (DIAGNOSTIC, NOT FOR PRODUCTION; fix (b) of
+// ~/ogs-models/scratch/2026-10-04_swelling_stress_fixes_abc/). ────────────────
+// step (default): the shipped telescoped step rule, bitwise 2a.
+//   d sigma_sw = n_S (n_l_prev p_film_prev - n_l p_film_curr) I,
+//   p_film = Pi - b p_conf with p_conf HELD FIXED (current iterate) in both
+//   terms, n_S current in both terms, K(rho_d) of the current porosity in both.
+// level: the same eigenstress as a function of the state,
+//   L(n_l, n_S, K, sigma') = -n_S n_l [Pi(n_l; K) + b sigma'_mean],
+//   d sigma_sw = L(curr) - L(prev) (I),
+//   with L(prev) at the previous accepted state (n_l_prev, n_S_prev,
+//   K(rho_d,prev), sigma'_mean_prev) and L(curr) at the current iterate with
+//   the drain sigma'_mean taken from the LAGGED effective stress of the
+//   previous Newton evaluation (state_current sigma_eff, as the step rule
+//   already does). Implies a per-level K(rho_d) (fix (a)).
+enum class SwellingStressForm
+{
+    Step,
+    Level
+};
+
+inline constexpr char const* toString(SwellingStressForm const form)
+{
+    switch (form)
+    {
+        case SwellingStressForm::Step:
+            return "step";
+        case SwellingStressForm::Level:
+            return "level";
+    }
+    return "unknown";
+}
+
 inline constexpr char const* toString(
     MicroPotentialConvention const convention)
 {
@@ -725,7 +757,33 @@ struct PotentialExchangeParameters
     // macro_storage_uses_macro_porosity = true; FATAL at runtime on a
     // non-zero beta_LR or a0 (constant liquid density only, DESIGN_V5.md Q-A).
     bool macro_storage_exact_time_levels = false;
+    // ── DIAGNOSTIC switches, swelling-stress fixes (a) and (b) (2026-10-04;
+    // Vinay: "do all three on my mbp and compare"; scope in
+    // ~/ogs-models/scratch/2026-10-04_swelling_stress_fixes_abc/STEP0.md).
+    // DIAGNOSTIC, NOT FOR PRODUCTION; nothing adopted. Both default off ->
+    // bit-identical to candidate 2a (fc14f19fb9). Appended LAST so the
+    // aggregate initialisation order of every earlier member is unchanged.
+    // (a) swelling_stress_K_level: in the step rule the Pi of the PREVIOUS level
+    //     is evaluated at its own K(rho_d,prev) (previous accepted porosity)
+    //     instead of the K of the current porosity. Acts only with the live
+    //     K(rho_d) table; with a frozen K it is a no-op.
+    bool swelling_stress_K_level = false;
+    // (b) swelling_stress_form: step | level, see SwellingStressForm.
+    SwellingStressForm swelling_stress_form = SwellingStressForm::Step;
 };
+
+// True when the previous level of the swelling stress is evaluated at its own
+// K(rho_d): switch (a), or implied by the level form (b).
+inline bool swellingStressPerLevelK(PotentialExchangeParameters const& p)
+{
+    return p.swelling_stress_K_level ||
+           p.swelling_stress_form == SwellingStressForm::Level;
+}
+
+inline bool isSwellingStressLevelForm(PotentialExchangeParameters const* p)
+{
+    return p != nullptr && p->swelling_stress_form == SwellingStressForm::Level;
+}
 
 // ── Latched saturation gate: pure logic (design part B.4) ──────────────────
 //

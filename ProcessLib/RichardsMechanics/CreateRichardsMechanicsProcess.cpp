@@ -177,6 +177,23 @@ DarcyRelativePermeabilityMobility parseDarcyRelativePermeabilityMobility(
         value);
 }
 
+SwellingStressForm parseSwellingStressForm(std::string const& value)
+{
+    if (value == "step")
+    {
+        return SwellingStressForm::Step;
+    }
+    if (value == "level")
+    {
+        return SwellingStressForm::Level;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "swelling_stress_form '{}'. Currently supported: 'step', 'level'.",
+        value);
+}
+
 MicroCeilingClosedMacroGate parseMicroCeilingClosedMacroGate(
     std::string const& value)
 {
@@ -1061,6 +1078,57 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             "(implementation, not ruled). Constant liquid density only "
             "(runtime FATAL on beta_LR != 0).");
     }
+    // DIAGNOSTIC swelling-stress fixes (a) and (b), 2026-10-04 (see
+    // PotentialExchangeParameters.h; scope STEP0.md of
+    // ~/ogs-models/scratch/2026-10-04_swelling_stress_fixes_abc/). Both default
+    // off = candidate 2a, bitwise; per-medium inheritance as the other tags.
+    // PRJ tag is lower-case: ConfigTree rejects upper-case letters in tag names
+    // (the member keeps the name swelling_stress_K_level).
+    auto const swelling_stress_K_level = config.getConfigParameter<bool>(
+        "swelling_stress_k_level",
+        defaults ? defaults->swelling_stress_K_level : false);
+    auto const swelling_stress_form = parseSwellingStressForm(
+        config.getConfigParameter<std::string>(
+            "swelling_stress_form",
+            defaults ? toString(defaults->swelling_stress_form) : "step"));
+    if (swelling_stress_K_level ||
+        swelling_stress_form == SwellingStressForm::Level)
+    {
+        if (film_energy_route == FilmEnergyRoute::Exact)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} swelling_stress_K_level / "
+                "swelling_stress_form = level are implemented for the "
+                "operational film route only; film_energy_route = exact "
+                "sources the eigenstress from the one-Psi pair and is not "
+                "touched by these diagnostic switches.",
+                context);
+        }
+        if (!film_pressure_coupling)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} swelling_stress_K_level / "
+                "swelling_stress_form = level act on the film-pressure "
+                "swelling stress and require film_pressure_coupling = true.",
+                context);
+        }
+        INFO(
+            "DIAGNOSTIC, NOT FOR PRODUCTION (swelling-stress fixes a/b, "
+            "2026-10-04): swelling_stress_K_level = {}, swelling_stress_form "
+            "= {}. {}{}",
+            swelling_stress_K_level, toString(swelling_stress_form),
+            (swelling_stress_K_level ||
+             swelling_stress_form == SwellingStressForm::Level)
+                ? "The Pi of the previous level is evaluated at its own "
+                  "K(rho_d,prev) (previous accepted total porosity). "
+                : "",
+            swelling_stress_form == SwellingStressForm::Level
+                ? "Level form: d sigma_sw = L(curr) - L(prev), L = -n_S n_l "
+                  "[Pi + b sigma'_mean], drain from the lagged effective "
+                  "stress; the residual carries no early return at "
+                  "dn_l = 0."
+                : "");
+    }
     std::string micro_ceiling_trace_elements_default;
     if (defaults)
     {
@@ -1395,7 +1463,9 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         darcy_relative_permeability_mobility,
         micro_ceiling_closed_macro_gate,
         darcy_kirchhoff_cells_per_decade,
-        macro_storage_exact_time_levels};
+        macro_storage_exact_time_levels,
+        swelling_stress_K_level,
+        swelling_stress_form};
 }
 
 template <int DisplacementDim>
