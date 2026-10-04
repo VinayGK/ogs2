@@ -64,7 +64,11 @@ using StatefulData = std::tuple<
     MicroClosedMacroGateActed,
     // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): the level the last
     // evaluation of the level form used; 0 with the default step form.
-    SwellingLevelUsed>;
+    SwellingLevelUsed,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): 1 + eps_v of the last
+    // evaluation of the level form (0 = unset); elastic predictor of the lagged
+    // mean effective stress.
+    SwellingLagVolRatio>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<

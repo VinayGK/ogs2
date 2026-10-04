@@ -182,4 +182,19 @@ constexpr std::string_view ioName(struct SwellingLevelUsedTag*)
 {
     return "swelling_level_used";
 }
+
+// DIAGNOSTIC, NOT FOR PRODUCTION (swelling-stress fix (b), 2026-10-04): the
+// volume ratio 1 + eps_v of the LAST evaluation of the level form (0 = not yet
+// set). The level form reads the mean effective stress m of the previous Newton
+// evaluation (sigma_eff of the state); with this value it predicts m at the
+// current strain by the ELASTIC response, m_hat = m_lag - s_lag + K_d (eps_v -
+// eps_v_lag), and solves s = F - c (m_hat + s) in closed form. At convergence
+// eps_v = eps_v_lag, so the fixed point is the level formula with the current
+// sigma'. Stored as 1 + eps_v so that the default 0 means "unset".
+using SwellingLagVolRatio =
+    BaseLib::StrongType<double, struct SwellingLagVolRatioTag>;
+constexpr std::string_view ioName(struct SwellingLagVolRatioTag*)
+{
+    return "swelling_lag_vol_ratio";
+}
 }  // namespace ProcessLib::RichardsMechanics

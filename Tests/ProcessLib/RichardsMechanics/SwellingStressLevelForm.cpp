@@ -393,3 +393,42 @@ TEST(SwellingStressLevelForm, ImplicitFactorOnFrozenPartialMatchesFiniteDifferen
     EXPECT_EQ(swellingLevelImplicitFactor<2>(C_cons, C_el.inverse().eval(), 0.0),
               1.0);
 }
+
+// Closed form of the level equation with the elastic prediction m_hat: the
+// returned increment satisfies s_new = s_prev + inc and
+// s_new = L(n_l, n_S, K, m = m_hat + s_new) - L_prev + s_prev, i.e. the level
+// formula evaluated at the CURRENT mean effective stress (no lag), for any m_hat.
+TEST(SwellingStressLevelForm, ClosedFormSatisfiesLevelEquationAtCurrentStress)
+{
+    auto p = sampleParams();
+    p.swelling_stress_form = SwellingStressForm::Level;
+    double const b = 1.0;
+    Level const prev{0.20, 1100.0, 0.40, 0.55, 2.0e6};
+    Level const curr{0.27, 1100.0, 0.39, 0.57, 0.0};  // p_conf unused here
+    double const L_prev_used = L_of(p, prev, b);
+    double const s_prev = -3.0e6;
+    double const m_hat = -4.0e6;  // [Pa], tension positive
+    SwKm const C_el = SwKm::Identity() * 1.5e8;
+    double L_curr = 0.0;
+    SwKv const inc = computeSwellingStressIncrement<2>(
+        prev.n_l, curr.n_l, curr.n_S, curr.rho_lR, prev.rho_lR, 1000.0, C_el, p,
+        b, /*p_conf lagged, unused*/ 1.0e6, 0.0, 0.0, curr.phi, prev.phi,
+        prev.n_S, prev.p_conf, L_prev_used, &L_curr, m_hat, s_prev);
+    auto const& I2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(2)>::identity2;
+    double const s_new = s_prev + inc.dot(I2) / I2.dot(I2);
+    // level formula at the current mean effective stress m = m_hat + s_new
+    Level at_new = curr;
+    at_new.p_conf = -(m_hat + s_new);  // p_conf = -m
+    double const L_formula = L_of(p, at_new, b);
+    EXPECT_NEAR(L_curr, L_formula, 1e-9 * std::abs(L_formula));
+    EXPECT_NEAR(s_new, L_formula - L_prev_used + s_prev,
+                1e-9 * std::abs(s_new));
+    // c = n_S n_l b -> 0 (b = 0): no drain, closed form = plain level.
+    double L0 = 0.0;
+    computeSwellingStressIncrement<2>(
+        prev.n_l, curr.n_l, curr.n_S, curr.rho_lR, prev.rho_lR, 1000.0, C_el, p,
+        0.0, 1.0e6, 0.0, 0.0, curr.phi, prev.phi, prev.n_S, prev.p_conf,
+        L_of(p, prev, 0.0), &L0, m_hat, s_prev);
+    EXPECT_NEAR(L0, L_of(p, curr, 0.0), 1e-12 * std::abs(L0));
+}

@@ -1124,9 +1124,10 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
                 : "",
             swelling_stress_form == SwellingStressForm::Level
                 ? "Level form: d sigma_sw = L(curr) - L(prev), L = -n_S n_l "
-                  "[Pi + b sigma'_mean], drain from the lagged effective "
-                  "stress; the residual carries no early return at "
-                  "dn_l = 0."
+                  "[Pi + b sigma'_mean], solved in closed form with the "
+                  "elastic prediction of sigma'_mean from the previous "
+                  "Newton evaluation; the residual carries no early return "
+                  "at dn_l = 0."
                 : "");
     }
     std::string micro_ceiling_trace_elements_default;

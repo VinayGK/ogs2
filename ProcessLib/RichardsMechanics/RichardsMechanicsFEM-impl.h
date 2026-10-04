@@ -3232,7 +3232,15 @@ computeReferenceMicroPorositySwellingStressIncrement(
     // (state SwellingLevelUsed; NaN = not set -> recomputed from the previous
     // state), and an out-pointer for the level L_curr of this evaluation.
     double const level_prev_used = std::numeric_limits<double>::quiet_NaN(),
-    double* const level_curr_out = nullptr)
+    double* const level_curr_out = nullptr,
+    // Level form only: elastic prediction of the mean effective stress at the
+    // current strain, WITHOUT the swelling stress of the lagged evaluation,
+    //   m_hat = m_lag - s_lag + K_d (eps_v - eps_v_lag)   [Pa],
+    // and the mean swelling stress of the previous accepted state s_prev [Pa].
+    // Both finite -> the level equation is solved in closed form (no lag of
+    // sigma'_mean beyond the elastic prediction); NaN -> lagged form.
+    double const level_m_hat = std::numeric_limits<double>::quiet_NaN(),
+    double const sigma_sw_prev_mean = std::numeric_limits<double>::quiet_NaN())
 {
     using KV = MathLib::KelvinVector::KelvinVectorType<DisplacementDim>;
     // Live K(rho_d): rho_d = rho_SR*(1-phi) [kg/m^3]; one K for BOTH the prev
@@ -3553,8 +3561,22 @@ computeReferenceMicroPorositySwellingStressIncrement(
                     ? level_prev_used
                     : -n_S_prev_level * n_l_prev *
                           (Pi_prev_film - b_film * p_conf_prev_film);  // Pa
-            double const L_curr =
+            double L_curr =
                 -n_S * n_l * (Pi_curr_film - b_film * p_conf_film);  // Pa
+            if (std::isfinite(level_m_hat) &&
+                std::isfinite(sigma_sw_prev_mean))
+            {
+                // Closed form of the implicit level equation. With c = n_S n_l b
+                // and p_conf = -m, L = -n_S n_l Pi - c m; the mean effective
+                // stress at the current strain and the new swelling stress s is
+                // m = m_hat + s (elastic volumetric response, g = 1), and
+                // s = s_prev + L - L_prev. Eliminating s:
+                //   L (1 + c) = -n_S n_l Pi - c (m_hat + s_prev - L_prev).
+                double const c_lv = n_S * n_l * b_film;  // [-]
+                L_curr = (-n_S * n_l * Pi_curr_film -
+                          c_lv * (level_m_hat + sigma_sw_prev_mean - L_prev)) /
+                         (1.0 + c_lv);  // Pa
+            }
             if (level_curr_out != nullptr)
             {
                 *level_curr_out = L_curr;
@@ -3698,13 +3720,16 @@ computeSwellingStressIncrement(
     double const n_S_prev = std::numeric_limits<double>::quiet_NaN(),
     double const p_conf_prev = std::numeric_limits<double>::quiet_NaN(),
     double const level_prev_used = std::numeric_limits<double>::quiet_NaN(),
-    double* const level_curr_out = nullptr)
+    double* const level_curr_out = nullptr,
+    double const level_m_hat = std::numeric_limits<double>::quiet_NaN(),
+    double const sigma_sw_prev_mean = std::numeric_limits<double>::quiet_NaN())
 {
     return computeReferenceMicroPorositySwellingStressIncrement<DisplacementDim>(
         n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
         potential_exchange_params, biot_coefficient, p_conf, eps_v,
         eps_v_prev, total_porosity, total_porosity_prev, n_S_prev,
-        p_conf_prev, level_prev_used, level_curr_out);
+        p_conf_prev, level_prev_used, level_curr_out, level_m_hat,
+        sigma_sw_prev_mean);
 }
 
 // ── DIAGNOSTIC fix (b), level form: drain-feedback derivative (2026-10-04) ───
@@ -3855,6 +3880,35 @@ inline void updateSwellingState(
             : nan_sw;  // Pa
     double level_curr_sw = nan_sw;  // Pa
 
+    // Level form: elastic prediction m_hat of the mean effective stress at the
+    // current strain without the swelling stress of the lagged evaluation.
+    // m_lag = -p_conf (sigma_eff of the state = previous Newton evaluation),
+    // s_lag = mean of sigma_sw of the state (same evaluation, read BEFORE it is
+    // overwritten below), eps_v_lag from SwellingLagVolRatio (0 = unset -> lagged
+    // form for this one evaluation). Isotropic skeleton: (1/3) I^T C_el d eps =
+    // K_d d eps_v.
+    double level_m_hat_sw = nan_sw;       // Pa
+    double sigma_sw_prev_mean_sw = nan_sw;  // Pa
+    if (level_form_state)
+    {
+        double const v_lag =
+            *std::get<SwellingLagVolRatio>(state_current);  // 1 + eps_v
+        if (v_lag != 0.0 && std::isfinite(p_conf_swelling))
+        {
+            double const s_lag =
+                sigma_sw.sigma_sw.dot(identity2) / 3.0;  // Pa
+            double const K_d_sw =
+                drainedBulkModulusFromStiffness<DisplacementDim>(C_el);  // Pa
+            level_m_hat_sw = -p_conf_swelling - s_lag +
+                             K_d_sw * (variables.volumetric_strain -
+                                       (v_lag - 1.0));  // Pa
+            sigma_sw_prev_mean_sw =
+                sigma_sw_prev->sigma_sw.dot(identity2) / 3.0;  // Pa
+        }
+        *std::get<SwellingLagVolRatio>(state_current) =
+            1.0 + variables.volumetric_strain;
+    }
+
     sigma_sw = *sigma_sw_prev;
     sigma_sw.sigma_sw +=
         computeSwellingStressIncrement<DisplacementDim>(
@@ -3866,7 +3920,8 @@ inline void updateSwellingState(
                 state_current)
                 .phi,
             total_porosity_prev_sw, n_S_prev_sw, p_conf_prev_sw,
-            level_prev_used_sw, level_form_state ? &level_curr_sw : nullptr);
+            level_prev_used_sw, level_form_state ? &level_curr_sw : nullptr,
+            level_m_hat_sw, sigma_sw_prev_mean_sw);
     if (level_form_state && std::isfinite(level_curr_sw))
     {
         *std::get<SwellingLevelUsed>(state_current) = level_curr_sw;
@@ -7366,8 +7421,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     n_S_sw * n_l * alpha;  // [-]
                                 double const f_lvk =
                                     swellingLevelImplicitFactor<
-                                        DisplacementDim>(C_consistent_sw,
-                                                         C_el_inv_sw,
+                                        DisplacementDim>(C_el_sw, C_el_inv_sw,
                                                          c_lvk);  // [-]
                                 dsig_sw_deps_v_scalar *= f_lvk;
                                 dsig_sw_dp_scalar *= f_lvk;
@@ -7399,25 +7453,24 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                     // ── DIAGNOSTIC fix (b), level form: drain-feedback tangent
                     // (2026-10-04, JACOBIAN-ONLY; NOT FOR PRODUCTION) ─────────
                     // The level form L = -n_S n_l [Pi - b p_conf] depends on the
-                    // mean effective stress through p_conf = -m, m = tr(sigma')/3.
-                    // The residual reads m LAGGED (previous Newton evaluation),
-                    // exactly as the step rule reads p_conf. This block adds the
-                    // tangent of the SIMULTANEOUS (non-lagged) system, so that the
-                    // Newton step anticipates the drain response:
-                    //   c = n_S n_l b,  s = sigma_sw (isotropic, s I),
-                    //   s = s0 - c m,
-                    //   d sigma' = C_cons (d eps + C_el^{-1} I ds)   (eps_m = eps
-                    //                                                + C_el^{-1} sigma_sw)
-                    //   dm = (1/3) I^T d sigma' = r^T d eps + g ds,
-                    //   r = (1/3) C_cons^T I,  g = (1/3) I^T C_cons C_el^{-1} I
-                    //   => ds/d eps = -c r^T / (1 + c g).
-                    // Mapped to R_u like the live-K chain above (C_cons C_el^{-1}
-                    // I ds): K[u,u] += B^T C_cons C_el^{-1} I (-c r^T/(1+c g)) B w.
-                    // For a linear-elastic skeleton (C_cons = C_el, isotropic) this
-                    // is the exact K -> K/(1+c) volumetric softening of the closed
-                    // form. NOT included (also omitted by the shipped tangent): the
-                    // n_l channel of sigma_sw (u-p, enable_dsm_swelling_up_
-                    // jacobian = false) and the dependence of sigma' on p through
+                    // mean effective stress m = -p_conf. The RESIDUAL solves the
+                    // level equation in closed form with the elastic prediction
+                    //   m = m_hat + s,  m_hat = m_lag - s_lag + K_d (eps_v -
+                    //   eps_v_lag)   (updateSwellingState; g = 1, r = K_d I),
+                    // so that, for c = n_S n_l b and s = sigma_sw (isotropic),
+                    //   s = (F - c m_hat)/(1 + c)  =>  ds/d eps = (dF - c r)/(1 + c),
+                    //   r = (1/3) C_el^T I = K_d I   (isotropic skeleton).
+                    // This block is the -c r/(1 + c) part (the dF part carries
+                    // the 1/(1 + c) in the live-K chain and the KKT block); it is
+                    // the derivative of the residual as coded (C_el, NOT C_cons:
+                    // the prediction is elastic, which is exact for a linear-
+                    // elastic skeleton and a lag-error of the plastic stiffness
+                    // difference otherwise, vanishing at convergence).
+                    // Mapped to R_u like the live-K chain: K[u,u] += B^T C_cons
+                    // C_el^{-1} I (ds/d eps)^T B w. NOT included (also omitted by
+                    // the shipped tangent): the n_l channel of sigma_sw (u-p,
+                    // enable_dsm_swelling_up_jacobian = false), the dependence of
+                    // L on n_S = 1 - phi_M through eps_v (dL/dn_S dn_S/deps_v), and
                     // a suction-dependent skeleton. Off -> not executed (bitwise).
                     if (isSwellingStressLevelForm(potential_exchange_params_ptr) &&
                         film_pressure_coupling &&
@@ -7445,7 +7498,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                         MathLib::KelvinVector::KelvinVectorType<DisplacementDim>
                             const ds_deps_lv =
                                 swellingLevelDrainFeedbackDsDeps<
-                                    DisplacementDim>(C_cons_lv, C_el_lv,
+                                    DisplacementDim>(C_el_lv, C_el_lv,
                                                      c_lv);  // Pa
                         local_Jac
                             .template block<displacement_size,
@@ -7548,7 +7601,7 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     potential_exchange_params_ptr)
                                     ? swellingLevelImplicitFactor<
                                           DisplacementDim>(
-                                          C_consistent_swk, C_el_inv_swk,
+                                          C_el_swk, C_el_inv_swk,
                                           n_S_swk * n_l * alpha)  // [-]
                                     : 1.0;
                             MathLib::KelvinVector::KelvinVectorType<

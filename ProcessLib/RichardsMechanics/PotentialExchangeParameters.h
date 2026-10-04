@@ -351,10 +351,14 @@ inline constexpr char const* toString(MicroCeilingClosedMacroGate const gate)
 //   L(n_l, n_S, K, sigma') = -n_S n_l [Pi(n_l; K) + b sigma'_mean],
 //   d sigma_sw = L(curr) - L(prev) (I),
 //   with L(prev) at the previous accepted state (n_l_prev, n_S_prev,
-//   K(rho_d,prev), sigma'_mean_prev) and L(curr) at the current iterate with
-//   the drain sigma'_mean taken from the LAGGED effective stress of the
-//   previous Newton evaluation (state_current sigma_eff, as the step rule
-//   already does). Implies a per-level K(rho_d) (fix (a)).
+//   K(rho_d,prev), sigma'_mean_prev) and L(curr) at the current iterate. The
+//   drain sigma'_mean is the effective stress of the previous Newton evaluation
+//   (state_current sigma_eff) carried to the current strain by the ELASTIC
+//   response, m_hat = m_lag - s_lag + K_d (eps_v - eps_v_lag), and the level
+//   equation s = F - c (m_hat + s), c = n_S n_l b, is solved in closed form
+//   (exact for a linear-elastic skeleton; at convergence m_hat + s = m, the
+//   current sigma'_mean, for any skeleton). Implies a per-level K(rho_d) (fix
+//   (a)).
 enum class SwellingStressForm
 {
     Step,
