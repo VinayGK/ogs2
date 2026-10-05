@@ -61,7 +61,21 @@ using StatefulData = std::tuple<
     // 1b closed-macro gate marker (v4 branch, DESIGN_V4.md 2.1), appended
     // last. With micro_ceiling_closed_macro_gate != off, PermeabilityData::
     // k_rel is k_rel(S = 1) where it is 1 (and, at bishop_relperm, chi too).
-    MicroClosedMacroGateActed>;
+    MicroClosedMacroGateActed,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): the level the last
+    // evaluation of the level form used; 0 with the default step form.
+    SwellingLevelUsed,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): 1 + eps_v of the last
+    // evaluation of the level form (0 = unset); elastic predictor of the lagged
+    // mean effective stress.
+    SwellingLagVolRatio,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): mean swelling stress of
+    // the last evaluation of the level form [Pa]; valid where
+    // SwellingLagVolRatio != 0.
+    SwellingLagStress,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): mean effective stress
+    // assumed by the level of the last evaluation [Pa] (0 = unset).
+    SwellingLevelAssumedStress>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<

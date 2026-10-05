@@ -7,6 +7,7 @@
 #include <cmath>
 #include <Eigen/LU>
 #include <cassert>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -3216,7 +3217,31 @@ computeReferenceMicroPorositySwellingStressIncrement(
     double const eps_v_prev = std::numeric_limits<double>::quiet_NaN(),
     // TOTAL porosity phi for live K(rho_d) (K_OF_RHO_D_LIVE.md); NaN sentinel
     // (callers without porosity in scope) -> parse-time scalar K.
-    double const total_porosity = std::numeric_limits<double>::quiet_NaN())
+    double const total_porosity = std::numeric_limits<double>::quiet_NaN(),
+    // DIAGNOSTIC swelling-stress fixes (a)/(b), 2026-10-04: previous-level
+    // inputs. Read ONLY when swelling_stress_K_level or swelling_stress_form =
+    // level is on (default off: the defaults below are never touched and the
+    // function is bit-identical to 2a). NaN sentinel = "not supplied".
+    //   total_porosity_prev [-]: previous accepted TOTAL porosity -> K(rho_d,prev)
+    //   n_S_prev [-]          : previous REV solid fraction 1 - phi_M,prev (level)
+    //   p_conf_prev [Pa]      : previous accepted confining pressure
+    //                           -tr(sigma'_prev)/3 (level)
+    double const total_porosity_prev = std::numeric_limits<double>::quiet_NaN(),
+    double const n_S_prev = std::numeric_limits<double>::quiet_NaN(),
+    double const p_conf_prev = std::numeric_limits<double>::quiet_NaN(),
+    // Level form only: the level L_prev that the previous accepted step USED
+    // (state SwellingLevelUsed; NaN = not set -> recomputed from the previous
+    // state), and an out-pointer for the level L_curr of this evaluation.
+    double const level_prev_used = std::numeric_limits<double>::quiet_NaN(),
+    double* const level_curr_out = nullptr,
+    // Level form only: elastic prediction of the mean effective stress at the
+    // current strain, WITHOUT the swelling stress of the lagged evaluation,
+    //   m_hat = m_lag - s_lag + K_d (eps_v - eps_v_lag)   [Pa],
+    // and the mean swelling stress of the previous accepted state s_prev [Pa].
+    // Both finite -> the level equation is solved in closed form (no lag of
+    // sigma'_mean beyond the elastic prediction); NaN -> lagged form.
+    double const level_m_hat = std::numeric_limits<double>::quiet_NaN(),
+    double const sigma_sw_prev_mean = std::numeric_limits<double>::quiet_NaN())
 {
     using KV = MathLib::KelvinVector::KelvinVectorType<DisplacementDim>;
     // Live K(rho_d): rho_d = rho_SR*(1-phi) [kg/m^3]; one K for BOTH the prev
@@ -3225,6 +3250,16 @@ computeReferenceMicroPorositySwellingStressIncrement(
     double const K_aug_sw = effectiveAugmentationPrefactor(
         potential_exchange_params, total_porosity);  // K [J/kg]
     auto const& params = potential_exchange_params;
+    // DIAGNOSTIC fixes (a)/(b): the previous level at its own K(rho_d,prev).
+    // Off (default) -> K_aug_sw_prev == K_aug_sw, the same double: bitwise 2a.
+    bool const level_form_sw =
+        params.swelling_stress_form == SwellingStressForm::Level;
+    bool const per_level_K_sw = swellingStressPerLevelK(params);
+    double const K_aug_sw_prev =
+        (per_level_K_sw && std::isfinite(total_porosity_prev))
+            ? effectiveAugmentationPrefactor(params,
+                                             total_porosity_prev)  // K [J/kg]
+            : K_aug_sw;
 
     // C_el is unused on the OFF and operational film branches (transmitted-
     // pressure form, no drained K needed); the EXACT route (H1) DOES use it for
@@ -3233,7 +3268,16 @@ computeReferenceMicroPorositySwellingStressIncrement(
 
     KV delta_sigma_sw = KV::Zero();
     double const delta_n_l = n_l - n_l_prev;
-    if (!(std::isfinite(delta_n_l) &&
+    // The level form (b) changes with sigma' and n_S at constant n_l: no early
+    // return there. Fix (a), per-level K: a step with unchanged n_l and a
+    // changed K books -W n_l [Pi(n_l,K) - Pi(n_l,K_prev)] (ruled equation
+    // (2.1), the loop of (1.5)), so the return is skipped when the two levels
+    // sit at different K. Default off: per_level_K_sw is false, K_changed_sw is
+    // false and the return is the 2a one, bitwise.
+    bool const K_changed_sw = per_level_K_sw && std::isfinite(delta_n_l) &&
+                              (K_aug_sw_prev != K_aug_sw);
+    if (!level_form_sw && !K_changed_sw &&
+        !(std::isfinite(delta_n_l) &&
           std::abs(delta_n_l) > std::numeric_limits<double>::epsilon()))
     {
         return delta_sigma_sw;
@@ -3397,6 +3441,13 @@ computeReferenceMicroPorositySwellingStressIncrement(
         // w_eval = n_l, bit-for-bit the frozen-geometry path. p_conf is HELD
         // FIXED across the step for BOTH states (mirrors the telescoping
         // convention for the -b*p_conf drain).
+        // DIAGNOSTIC fix (b): the previous level of the level form carries the
+        // PREVIOUS accepted confining pressure p_conf_prev (the step rule holds
+        // the current p_conf in both terms). Level form with p_conf_prev not
+        // supplied (NaN sentinel) falls back to the held-fixed convention.
+        double const p_conf_for_prev =
+            (level_form_sw && std::isfinite(p_conf_prev)) ? p_conf_prev
+                                                           : p_conf;  // Pa
         double w_eval_prev = n_l_prev;
         double w_eval_curr = n_l;
         if (params.film_strain_coupling != FilmStrainCouplingMode::Off &&
@@ -3413,10 +3464,12 @@ computeReferenceMicroPorositySwellingStressIncrement(
             w_eval_prev =
                 computeStrainedFilmState(
                     params.film_strain_coupling, params.film_strain_kappa,
-                    n_l_prev, active_nS_prev_film, eps_v_prev_used, p_conf,
-                    rho_lR_prev, params.micro_solid_density_reference,
+                    n_l_prev, active_nS_prev_film, eps_v_prev_used,
+                    p_conf_for_prev, rho_lR_prev,
+                    params.micro_solid_density_reference,
                     params.hamaker_constant, params.specific_surface,
-                    sign_factor_film, K_aug_sw /*live K(rho_d), J/kg*/,
+                    sign_factor_film,
+                    K_aug_sw_prev /*K(rho_d,prev) with (a)/(b), else K_aug_sw*/,
                     params.potential_augmentation_exponent,
                     params.micro_water_content_floor, rho_pi_prev)
                     .w_eff;
@@ -3436,7 +3489,7 @@ computeReferenceMicroPorositySwellingStressIncrement(
                 w_eval_prev, rho_lR_prev, active_nS_prev_film,
                 params.micro_solid_density_reference, params.hamaker_constant,
                 params.specific_surface, sign_factor_film,
-                K_aug_sw /*live K(rho_d), J/kg*/,
+                K_aug_sw_prev /*K(rho_d,prev) with (a)/(b), else K_aug_sw*/,
                 params.potential_augmentation_exponent, 0.0 /*dnS_dnl*/,
                 params.micro_water_content_floor)
                 .mu_lR;
@@ -3490,6 +3543,55 @@ computeReferenceMicroPorositySwellingStressIncrement(
         // increment reduces to the pure-Pi micro-weighted form (finite).
         double const b_film = biot_coefficient;
         double const p_conf_film = std::isfinite(p_conf) ? p_conf : 0.0;
+
+        if (level_form_sw)
+        {
+            // ── DIAGNOSTIC fix (b), level form (2026-10-04) ───────────────
+            //   L(n_l, n_S, K, p_conf) = -n_S n_l [Pi(n_l; K) - b p_conf],
+            //   d sigma_sw = L(curr) - L(prev)   (isotropic),
+            // L(prev) at the previous accepted state (n_l_prev, n_S_prev,
+            // K(rho_d,prev), p_conf_prev), L(curr) at the current iterate with
+            // p_conf from the LAGGED effective stress (as the step rule
+            // reads it). Where the step rule holds p_conf and n_S fixed over
+            // the step, the level form lets both move with the state; the two
+            // coincide when p_conf, n_S and K are the same at both levels.
+            double const p_conf_prev_film =
+                std::isfinite(p_conf_prev) ? p_conf_prev : p_conf_film;  // Pa
+            double const n_S_prev_level =
+                std::isfinite(n_S_prev) ? n_S_prev : n_S;  // [-]
+            // L_prev: the level the previous accepted step USED when it formed
+            // sigma_sw (so that sigma_sw = L - L_ref exactly and the lag of
+            // sigma'_mean does not accumulate); recomputed from the previous
+            // state where that is not available (first step, restart).
+            double const L_prev =
+                std::isfinite(level_prev_used)
+                    ? level_prev_used
+                    : -n_S_prev_level * n_l_prev *
+                          (Pi_prev_film - b_film * p_conf_prev_film);  // Pa
+            double L_curr =
+                -n_S * n_l * (Pi_curr_film - b_film * p_conf_film);  // Pa
+            if (std::isfinite(level_m_hat) &&
+                std::isfinite(sigma_sw_prev_mean))
+            {
+                // Closed form of the implicit level equation. With c = n_S n_l b
+                // and p_conf = -m, L = -n_S n_l Pi - c m; the mean effective
+                // stress at the current strain and the new swelling stress s is
+                // m = m_hat + s (elastic volumetric response, g = 1), and
+                // s = s_prev + L - L_prev. Eliminating s:
+                //   L (1 + c) = -n_S n_l Pi - c (m_hat + s_prev - L_prev).
+                double const c_lv = n_S * n_l * b_film;  // [-]
+                L_curr = (-n_S * n_l * Pi_curr_film -
+                          c_lv * (level_m_hat + sigma_sw_prev_mean - L_prev)) /
+                         (1.0 + c_lv);  // Pa
+            }
+            if (level_curr_out != nullptr)
+            {
+                *level_curr_out = L_curr;
+            }
+            delta_sigma_sw.noalias() += (L_curr - L_prev) * identity2_film;
+            return delta_sigma_sw;
+        }
+
         double const p_film_prev = Pi_prev_film - b_film * p_conf_film;
         double const p_film_curr = Pi_curr_film - b_film * p_conf_film;
 
@@ -3619,12 +3721,161 @@ computeSwellingStressIncrement(
     double const eps_v_prev = std::numeric_limits<double>::quiet_NaN(),
     // TOTAL porosity phi for live K(rho_d) (K_OF_RHO_D_LIVE.md); NaN sentinel
     // -> parse-time scalar K.
-    double const total_porosity = std::numeric_limits<double>::quiet_NaN())
+    double const total_porosity = std::numeric_limits<double>::quiet_NaN(),
+    // DIAGNOSTIC fixes (a)/(b) (2026-10-04), see the Reference function.
+    double const total_porosity_prev = std::numeric_limits<double>::quiet_NaN(),
+    double const n_S_prev = std::numeric_limits<double>::quiet_NaN(),
+    double const p_conf_prev = std::numeric_limits<double>::quiet_NaN(),
+    double const level_prev_used = std::numeric_limits<double>::quiet_NaN(),
+    double* const level_curr_out = nullptr,
+    double const level_m_hat = std::numeric_limits<double>::quiet_NaN(),
+    double const sigma_sw_prev_mean = std::numeric_limits<double>::quiet_NaN())
 {
     return computeReferenceMicroPorositySwellingStressIncrement<DisplacementDim>(
         n_l_prev, n_l, n_S, rho_lR, rho_lR_prev, rho_LR, C_el,
         potential_exchange_params, biot_coefficient, p_conf, eps_v,
-        eps_v_prev, total_porosity);
+        eps_v_prev, total_porosity, total_porosity_prev, n_S_prev,
+        p_conf_prev, level_prev_used, level_curr_out, level_m_hat,
+        sigma_sw_prev_mean);
+}
+
+// ── DIAGNOSTIC fix (b), level form: drain-feedback derivative (2026-10-04) ───
+// sigma_sw = s I with s = s0 - c m, m = tr(sigma')/3 (lagged in the residual),
+// c = n_S n_l b. With sigma' = C_cons (eps + C_el^{-1} I s) the SIMULTANEOUS
+// (non-lagged) system gives
+//   dm = r^T d eps + g ds,   r = (1/3) C_cons^T I,  g = (1/3) I^T C_cons C_el^{-1} I
+//   => ds/d eps = -c r / (1 + c g)     [Pa per unit strain component].
+// Returned as a Kelvin vector (coefficient of d eps). Used ONLY in the
+// Jacobian of the level form; the residual does not call it.
+// The implicit-function factor 1/(1 + c g) of the same system, g as above:
+// ds = (dF - c r^T d eps)/(1 + c g) for ANY frozen-sigma' partial dF of
+// s = F - c m (the live-K chain, the n_l channel). C_el_inv = C_el^{-1}.
+template <int DisplacementDim>
+inline double swellingLevelImplicitFactor(
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_cons,
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el_inv,
+    double const c)
+{
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(
+            DisplacementDim)>::identity2;
+    double const g =
+        identity2.dot(C_cons * C_el_inv * identity2) / 3.0;  // [-]
+    return 1.0 / (1.0 + c * g);                              // [-]
+}
+
+template <int DisplacementDim>
+inline MathLib::KelvinVector::KelvinVectorType<DisplacementDim>
+swellingLevelDrainFeedbackDsDeps(
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_cons,
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el,
+    double const c)
+{
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(
+            DisplacementDim)>::identity2;
+    double const f = swellingLevelImplicitFactor<DisplacementDim>(
+        C_cons, C_el.inverse().eval(), c);  // [-]
+    MathLib::KelvinVector::KelvinVectorType<DisplacementDim> const r =
+        (C_cons.transpose() * identity2 / 3.0).eval();  // Pa
+    return (-c * f) * r;  // Pa
+}
+
+// ── DIAGNOSTIC fix (b), level form with a history-dependent skeleton ─────────
+// (2026-10-04, review must-fix 3; NOT FOR PRODUCTION). The closed form of the
+// level equation predicts the mean effective stress ELASTICALLY, m_ev = m_hat +
+// s. After the stress update the actual m differs by (1 - g) (s - s_lag)-type
+// terms wherever the skeleton yields (MCC, g = (1/3) I^T C_cons C_el^-1 I <
+// 1), and an accepted state with 2 Newton iterations (all displacements
+// prescribed) then misses the level equation (MEASURED: up to 0.86 MPa, 4.4 %,
+// on the plastic frames of the EPFL P2 leg). This loop finishes the job inside
+// the evaluation: with the level at the assumed stress L_ev (state), s_0 and
+// c = n_S n_l b held,
+//   phi(s) = (s - s_0) + c (m(s) - m_ev) = 0,   m(s) the actual mean stress,
+// is solved by Newton, s <- s - phi/(1 + c g), g from the consistent tangent
+// of the last stress update; every pass is one stress update at
+// eps_m = eps + C_el^-1 s. For a linear-elastic skeleton phi(s_0) = 0 at the
+// lag fixed point (m_ev = m exactly) and the loop does not run. n_l, n_S, Pi,
+// K are those of the evaluation (the micro solve is not repeated). The stored
+// level and lag stress are updated to the corrected values, so the next
+// previous-level and the next lag are the ones of the corrected state.
+// update_stress(): recompute eps_m from sigma_sw, call the stress update, return
+// the new consistent tangent. Returns the number of correction passes.
+template <int DisplacementDim, typename UpdateStress>
+inline int iterateSwellingLevelWithStressUpdate(
+    StatefulData<DisplacementDim>& state_current,
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim> const& C_el,
+    MathLib::KelvinVector::KelvinMatrixType<DisplacementDim>& C_cons,
+    double const biot_coefficient, UpdateStress&& update_stress)
+{
+    auto const& identity2 = MathLib::KelvinVector::Invariants<
+        MathLib::KelvinVector::kelvin_vector_dimensions(
+            DisplacementDim)>::identity2;
+    double const m_ev = *std::get<SwellingLevelAssumedStress>(state_current);
+    if (m_ev == 0.0 || !std::isfinite(m_ev))
+    {
+        return 0;
+    }
+    auto& sigma_sw =
+        std::get<ProcessLib::ThermoRichardsMechanics::
+                     ConstitutiveStress_StrainTemperature::
+                         SwellingDataStateful<DisplacementDim>>(state_current)
+            .sigma_sw;
+    auto const& sigma_eff =
+        std::get<ProcessLib::ConstitutiveRelations::EffectiveStressData<
+            DisplacementDim>>(state_current)
+            .sigma_eff;
+    double const n_S = std::max(
+        1e-16,
+        1.0 - std::get<ProcessLib::ThermoRichardsMechanics::
+                           TransportPorosityData>(state_current)
+                  .phi);  // [-]
+    double const n_l = *std::get<MicroWaterContent>(state_current);  // [-]
+    double const c = n_S * n_l * biot_coefficient;                   // [-]
+    double const s_0 = sigma_sw.dot(identity2) / 3.0;                // Pa
+    double const L_0 = *std::get<SwellingLevelUsed>(state_current);  // Pa
+    auto const C_el_inv = C_el.inverse().eval();
+    constexpr int max_passes = 20;
+    double s_j = s_0;  // Pa
+    int passes = 0;
+    for (; passes < max_passes; ++passes)
+    {
+        double const m_j = sigma_eff.dot(identity2) / 3.0;  // Pa
+        double const phi_j = (s_j - s_0) + c * (m_j - m_ev);  // Pa
+        // tolerance from the scale of the level and of the stress (1e-9
+        // relative, 1e-6 Pa floor: far below the 1 Pa abstol of the deck's
+        // pressure criterion and the 1e-6 relative criterion).
+        double const tol =
+            1e-9 * (std::abs(L_0) + std::abs(m_j)) + 1e-6;  // Pa
+        if (std::abs(phi_j) <= tol)
+        {
+            break;
+        }
+        double const g =
+            identity2.dot(C_cons * C_el_inv * identity2) / 3.0;  // [-]
+        double const ds = -phi_j / (1.0 + c * g);                // Pa
+        s_j += ds;
+        sigma_sw += ds * identity2;
+        C_cons = update_stress();
+    }
+    {
+        static bool const sw_trace_loop = std::getenv("OGS_SW_TRACE") != nullptr;
+        if (sw_trace_loop)
+        {
+            double const m_end = sigma_eff.dot(identity2) / 3.0;  // Pa
+            INFO(
+                "SW-CORR passes={} s0={:.8e} s_end={:.8e} m_ev={:.8e} "
+                "m_end={:.8e} c={:.6f} phi_end={:.4e}",
+                passes, s_0, s_j, m_ev, m_end, c,
+                (s_j - s_0) + c * (m_end - m_ev));
+        }
+    }
+    if (passes > 0)
+    {
+        *std::get<SwellingLevelUsed>(state_current) = L_0 + (s_j - s_0);  // Pa
+        *std::get<SwellingLagStress>(state_current) = s_j;                // Pa
+    }
+    return passes;
 }
 
 template <int DisplacementDim>
@@ -3638,7 +3889,10 @@ inline void updateSwellingState(
     ParameterLib::SpatialPosition const& x_position, double const t,
     double const dt,
     PotentialExchangeParameters const* const potential_exchange_parameters,
-    double const biot_coefficient = 1.0)
+    double const biot_coefficient = 1.0,
+    // DIAGNOSTIC fix (b): true only for the output evaluation of the initial
+    // state (computeSecondaryVariableConcrete, no previous level stored yet).
+    bool const initial_reference = false)
 {
     if (!isPotentialExchangeEnabled(potential_exchange_parameters))
     {
@@ -3688,6 +3942,87 @@ inline void updateSwellingState(
                   3.0
             : std::numeric_limits<double>::quiet_NaN();
 
+    // DIAGNOSTIC fixes (a)/(b) (2026-10-04): previous-level inputs. Evaluated
+    // ONLY when a switch is on; with both off the three NaN sentinels reach the
+    // function and nothing reads them (bitwise 2a).
+    constexpr double nan_sw = std::numeric_limits<double>::quiet_NaN();
+    bool const sw_prev_level_inputs =
+        swellingStressPerLevelK(potential_exchange_params);
+    double const total_porosity_prev_sw =
+        sw_prev_level_inputs
+            ? std::get<PrevState<
+                  ProcessLib::ThermoRichardsMechanics::PorosityData>>(
+                  state_previous)
+                  ->phi
+            : nan_sw;  // [-]
+    double const n_S_prev_sw =
+        sw_prev_level_inputs
+            ? std::max(
+                  1e-16,
+                  1.0 - std::get<PrevState<ProcessLib::ThermoRichardsMechanics::
+                                               TransportPorosityData>>(
+                            state_previous)
+                            ->phi)
+            : nan_sw;  // [-]
+    double const p_conf_prev_sw =
+        (isSwellingStressLevelForm(potential_exchange_parameters) &&
+         isFilmPressureCouplingEnabled(potential_exchange_parameters))
+            ? -std::get<PrevState<ProcessLib::ConstitutiveRelations::
+                                      EffectiveStressData<DisplacementDim>>>(
+                   state_previous)
+                   ->sigma_eff.dot(identity2) /
+                  3.0
+            : nan_sw;  // Pa
+
+    // Level form: the level the previous accepted step used (0 = not set ->
+    // NaN -> recomputed from the previous state), and where this evaluation
+    // writes its own level (becomes the next step's L_prev on acceptance).
+    bool const level_form_state =
+        isSwellingStressLevelForm(potential_exchange_parameters) &&
+        isFilmPressureCouplingEnabled(potential_exchange_parameters);
+    double const level_prev_used_sw =
+        (level_form_state &&
+         **std::get<PrevState<SwellingLevelUsed>>(state_previous) != 0.0)
+            ? **std::get<PrevState<SwellingLevelUsed>>(state_previous)
+            : nan_sw;  // Pa
+    double level_curr_sw = nan_sw;  // Pa
+
+    // Level form: elastic prediction m_hat of the mean effective stress at the
+    // current strain without the swelling stress of the lagged evaluation.
+    // m_lag = -p_conf (sigma_eff of the state = previous Newton evaluation),
+    // s_lag = mean of sigma_sw of the state (same evaluation, read BEFORE it is
+    // overwritten below), eps_v_lag from SwellingLagVolRatio (0 = unset -> lagged
+    // form for this one evaluation). Isotropic skeleton: (1/3) I^T C_el d eps =
+    // K_d d eps_v.
+    double level_m_hat_sw = nan_sw;       // Pa
+    double sigma_sw_prev_mean_sw = nan_sw;  // Pa
+    if (level_form_state)
+    {
+        double const v_lag =
+            *std::get<SwellingLagVolRatio>(state_current);  // 1 + eps_v
+        if (v_lag != 0.0 && std::isfinite(p_conf_swelling))
+        {
+            // The swelling stress that sigma_eff of the state contains is the
+            // one of the LAST level-form evaluation (SwellingLagStress). The
+            // state sigma_sw cannot be read for it: it has been reset to the
+            // previous accepted value by updateSwellingStressAndVolumetric-
+            // Strain earlier in this evaluation (reading it here put the whole
+            // lagged s into m_hat and made the closed form a lag loop of gain
+            // -c/(1+c), the cause of the slow alternating Newton convergence).
+            double const s_lag =
+                *std::get<SwellingLagStress>(state_current);  // Pa
+            double const K_d_sw =
+                drainedBulkModulusFromStiffness<DisplacementDim>(C_el);  // Pa
+            level_m_hat_sw = -p_conf_swelling - s_lag +
+                             K_d_sw * (variables.volumetric_strain -
+                                       (v_lag - 1.0));  // Pa
+            sigma_sw_prev_mean_sw =
+                sigma_sw_prev->sigma_sw.dot(identity2) / 3.0;  // Pa
+        }
+        *std::get<SwellingLagVolRatio>(state_current) =
+            1.0 + variables.volumetric_strain;
+    }
+
     sigma_sw = *sigma_sw_prev;
     sigma_sw.sigma_sw +=
         computeSwellingStressIncrement<DisplacementDim>(
@@ -3697,7 +4032,62 @@ inline void updateSwellingState(
             // TOTAL porosity (live K(rho_d); rho_d = rho_SR*(1-phi)).
             std::get<ProcessLib::ThermoRichardsMechanics::PorosityData>(
                 state_current)
-                .phi);
+                .phi,
+            total_porosity_prev_sw, n_S_prev_sw, p_conf_prev_sw,
+            level_prev_used_sw, level_form_state ? &level_curr_sw : nullptr,
+            level_m_hat_sw, sigma_sw_prev_mean_sw);
+    if (level_form_state && initial_reference)
+    {
+        // Initial-state evaluation (the output at t0, before any step): nothing
+        // is booked. The level of this first evaluation is
+        // the reference L_ref of the level form (sigma_sw = L - L_ref, zero at
+        // t0; before 2026-10-04 the micro solve at t0, which moves n_l from the
+        // deck's rounded n_l0 to its self-consistent value, booked -505.5 Pa on
+        // Model I and +2332 Pa on EPFL P2). The caller stores the level as the
+        // previous level of the first step (computeSecondaryVariableConcrete).
+        sigma_sw = *sigma_sw_prev;
+    }
+    if (level_form_state && std::isfinite(level_curr_sw))
+    {
+        *std::get<SwellingLevelUsed>(state_current) = level_curr_sw;
+    }
+    if (level_form_state)
+    {
+        double const s_new_mean = sigma_sw.sigma_sw.dot(identity2) / 3.0;  // Pa
+        *std::get<SwellingLagStress>(state_current) = s_new_mean;
+        // m assumed by the level of this evaluation: m_hat + s (closed form),
+        // m_lag (lagged form). 0 = no correction (initial-state evaluation).
+        *std::get<SwellingLevelAssumedStress>(state_current) =
+            initial_reference
+                ? 0.0
+                : (std::isfinite(level_m_hat_sw)
+                       ? level_m_hat_sw + s_new_mean
+                       : (std::isfinite(p_conf_swelling) ? -p_conf_swelling
+                                                         : 0.0));  // Pa
+    }
+    {
+        // DIAGNOSTIC trace (2026-10-04, fix (b) tangent search), off unless
+        // OGS_SW_TRACE is set: one line per evaluation and integration point.
+        static bool const sw_trace = std::getenv("OGS_SW_TRACE") != nullptr;
+        if (sw_trace)
+        {
+            INFO(
+                "SW-TRACE t={:.10g} dt={:.6g} n_l={:.12e} n_S={:.12e} "
+                "eps_v={:.12e} m_lag={:.8e} s_lag_mean={:.8e} m_hat={:.8e} "
+                "L_prev={:.8e} L_curr={:.8e} s_new={:.8e} K_d={:.6e} "
+                "phi={:.12e}",
+                t, dt, n_l, n_S, variables.volumetric_strain, -p_conf_swelling,
+                (sigma_sw_prev_mean_sw == sigma_sw_prev_mean_sw)
+                    ? sigma_sw_prev_mean_sw
+                    : 0.0,
+                level_m_hat_sw, level_prev_used_sw, level_curr_sw,
+                sigma_sw.sigma_sw.dot(identity2) / 3.0,
+                drainedBulkModulusFromStiffness<DisplacementDim>(C_el),
+                std::get<ProcessLib::ThermoRichardsMechanics::PorosityData>(
+                    state_current)
+                    .phi);
+        }
+    }
 
     auto const C_el_inverse = C_el.inverse().eval();
 
@@ -5479,6 +5869,42 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             sigma_eff_prev, eps_m, eps_m_prev, solid_material,
             material_state_data.material_state_variables);
 
+        // DIAGNOSTIC fix (b): level equation with the actual stress response
+        // of a history-dependent skeleton (see the helper above). Off with the
+        // step form (bitwise 2a) and inert for a linear-elastic skeleton.
+        if (isSwellingStressLevelForm(potential_exchange_parameters) &&
+            isFilmPressureCouplingEnabled(potential_exchange_parameters))
+        {
+            iterateSwellingLevelWithStressUpdate<DisplacementDim>(
+                state_current, C_el, C, alpha,
+                [&]()
+                {
+                    auto& eps_m_struct =
+                        std::get<ProcessLib::ConstitutiveRelations::
+                                     MechanicalStrainData<DisplacementDim>>(
+                            state_current);
+                    auto const& sigma_sw_corr = std::get<
+                        ProcessLib::ThermoRichardsMechanics::
+                            ConstitutiveStress_StrainTemperature::
+                                SwellingDataStateful<DisplacementDim>>(
+                        state_current);
+                    eps_m_struct.eps_m.noalias() =
+                        eps.eps + C_el.inverse() * sigma_sw_corr.sigma_sw;
+                    variables.mechanical_strain.template emplace<
+                        MathLib::KelvinVector::KelvinVectorType<
+                            DisplacementDim>>(eps_m_struct.eps_m);
+                    variables.volumetric_mechanical_strain =
+                        variables.volumetric_strain +
+                        identity2.transpose() * C_el.inverse() *
+                            sigma_sw_corr.sigma_sw;
+                    return ip_data.updateConstitutiveRelation(
+                        variables, t, x_position, dt, temperature, sigma_eff,
+                        sigma_eff_prev, eps_m_struct, eps_m_prev,
+                        solid_material,
+                        material_state_data.material_state_variables);
+                });
+        }
+
         *std::get<StiffnessTensor<DisplacementDim>>(constitutive_data) = std::move(C);
     }
 
@@ -6999,10 +7425,19 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             // d(delta_sigma_sw)/dK scalar (on identity2):
                             // -n_S*( n_l_prev*rho_prev*dmu_prev/dK
                             //        - n_l*rho_curr*dmu_curr/dK ).  [Pa per J/kg]
+                            // DIAGNOSTIC fixes (a)/(b), 2026-10-04: with the
+                            // previous level at its own K(rho_d,prev) the prev
+                            // term does not depend on the current K, so only
+                            // the curr term is differentiated (off -> the
+                            // expression below is the shipped one, bitwise).
+                            double const dK_prev_term_sw =
+                                swellingStressPerLevelK(pep_sw)
+                                    ? 0.0
+                                    : n_l_prev_sw * rho_pi_prev_sw *
+                                          dmu_lR_prev_dK_sw;  // [Pa per J/kg]
                             double const d_delta_sigma_sw_dK_scalar =
                                 -n_S_sw *
-                                (n_l_prev_sw * rho_pi_prev_sw *
-                                     dmu_lR_prev_dK_sw -
+                                (dK_prev_term_sw -
                                  n_l * rho_pi_curr_sw * dmu_lR_curr_dK_sw);
                             // dphi/deps_v and dphi/dp_eff (PorosityFromMassBalance).
                             double const w_phi_sw =
@@ -7130,12 +7565,39 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     -rho_pi_curr_sw * vdw_curr_sw.mu_lR;  // Pa
                                 // d(delta_sigma_sw)/dn_l at fixed K, prev
                                 // (argument chain dw_eval/dn_l included):
+                                // Level form (b): the partial of
+                                // L = -n_S n_l [Pi - b p_conf] carries the
+                                // drain term (p_conf lagged, a constant here);
+                                // the step rule's partial omits it (shipped,
+                                // kept bitwise when the level form is off).
+                                double const drain_level_sw =
+                                    (isSwellingStressLevelForm(
+                                         potential_exchange_params_ptr) &&
+                                     std::isfinite(p_conf_assembly))
+                                        ? alpha * p_conf_assembly
+                                        : 0.0;  // Pa
+                                // Level form: n_S = (1 - phi)/(1 - n_l)
+                                // moves with n_l at fixed phi (interior of the
+                                // phi_M clamp): dn_S/dn_l = n_S/(1 - n_l), and
+                                // dL/dn_S = L/n_S, so the total n_l partial of
+                                // the level gains L/(1 - n_l) (review should-fix
+                                // 6). Zero with the step rule (bitwise 2a).
+                                double const dnS_dnl_level_sw =
+                                    (isSwellingStressLevelForm(
+                                         potential_exchange_params_ptr) &&
+                                     film_pressure_coupling &&
+                                     phi_M_sw > 0.0 && n_l < 1.0 - 1e-12)
+                                        ? *std::get<SwellingLevelUsed>(
+                                              this->current_states_[ip]) /
+                                              (1.0 - n_l)
+                                        : 0.0;  // Pa per n_l
                                 double const d_delta_sigma_sw_dnl_sw =
                                     -n_S_sw *
-                                    (Pi_curr_sw -
-                                     n_l * rho_pi_curr_sw *
-                                         vdw_curr_sw.dmu_lR_dnl *
-                                         dw_eval_curr_dnl_sw);  // Pa per n_l
+                                        ((Pi_curr_sw - drain_level_sw) -
+                                         n_l * rho_pi_curr_sw *
+                                             vdw_curr_sw.dmu_lR_dnl *
+                                             dw_eval_curr_dnl_sw) +
+                                    dnS_dnl_level_sw;  // Pa per n_l
                                 // [Pa per n_l]*[n_l/(J/kg)]*[(J/kg)/phi] = Pa/phi.
                                 double const d_delta_sigma_sw_dphi_implicit_sw =
                                     d_delta_sigma_sw_dnl_sw * dn_l_dK_sw *
@@ -7160,6 +7622,24 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     *this->material_states_[ip]
                                          .material_state_variables);
                             auto const C_el_inv_sw = C_el_sw.inverse().eval();
+                            // DIAGNOSTIC fix (b), level form: the live-K chain
+                            // is the frozen-sigma' partial F of s = F - c m; the
+                            // implicit-function form of the SIMULTANEOUS system
+                            // is ds = (dF - c r^T d eps)/(1 + c g) (see the
+                            // drain-feedback block below), so dF carries the
+                            // same 1/(1 + c g). Off -> not executed (bitwise).
+                            if (isSwellingStressLevelForm(
+                                    potential_exchange_params_ptr))
+                            {
+                                double const c_lvk =
+                                    n_S_sw * n_l * alpha;  // [-]
+                                double const f_lvk =
+                                    swellingLevelImplicitFactor<
+                                        DisplacementDim>(C_el_sw, C_el_inv_sw,
+                                                         c_lvk);  // [-]
+                                dsig_sw_deps_v_scalar *= f_lvk;
+                                dsig_sw_dp_scalar *= f_lvk;
+                            }
                             MathLib::KelvinVector::KelvinVectorType<
                                 DisplacementDim> const dsig_sw_deps_v =
                                 dsig_sw_deps_v_scalar * identity2;  // Pa
@@ -7181,6 +7661,131 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     displacement_index, pressure_index)
                                 .noalias() += B.transpose() * C_consistent_sw *
                                               C_el_inv_sw * dsig_sw_dp * N_p * w;
+                        }
+                    }
+
+                    // ── DIAGNOSTIC fix (b), level form: drain-feedback tangent
+                    // (2026-10-04, JACOBIAN-ONLY; NOT FOR PRODUCTION) ─────────
+                    // The level form L = -n_S n_l [Pi - b p_conf] depends on the
+                    // mean effective stress m = -p_conf. The RESIDUAL solves the
+                    // level equation in closed form with the elastic prediction
+                    //   m = m_hat + s,  m_hat = m_lag - s_lag + K_d (eps_v -
+                    //   eps_v_lag)   (updateSwellingState; g = 1, r = K_d I),
+                    // so that, for c = n_S n_l b and s = sigma_sw (isotropic),
+                    //   s = (F - c m_hat)/(1 + c)  =>  ds/d eps = (dF - c r)/(1 + c),
+                    //   r = (1/3) C_el^T I = K_d I   (isotropic skeleton).
+                    // This block is the -c r/(1 + c) part (the dF part carries
+                    // the 1/(1 + c) in the live-K chain and the KKT block); it is
+                    // the derivative of the residual as coded (C_el, NOT C_cons:
+                    // the prediction is elastic, which is exact for a linear-
+                    // elastic skeleton and a lag-error of the plastic stiffness
+                    // difference otherwise, vanishing at convergence).
+                    // Mapped to R_u like the live-K chain: K[u,u] += B^T C_cons
+                    // C_el^{-1} I (ds/d eps)^T B w. NOT included (also omitted by
+                    // the shipped tangent): the n_l channel of sigma_sw (u-p,
+                    // enable_dsm_swelling_up_jacobian = false), the dependence of
+                    // L on n_S = 1 - phi_M through eps_v (dL/dn_S dn_S/deps_v), and
+                    // a suction-dependent skeleton. Off -> not executed (bitwise).
+                    if (isSwellingStressLevelForm(potential_exchange_params_ptr) &&
+                        film_pressure_coupling &&
+                        std::isfinite(p_conf_assembly))
+                    {
+                        double const phi_M_lv =
+                            std::get<ProcessLib::ThermoRichardsMechanics::
+                                         TransportPorosityData>(
+                                this->current_states_[ip])
+                                .phi;
+                        double const c_lv =
+                            std::max(1e-16, 1.0 - phi_M_lv) * n_l * alpha;  // [-]
+                        auto const& C_cons_lv =
+                            *std::get<StiffnessTensor<DisplacementDim>>(
+                                constitutive_data);
+                        auto const C_el_lv =
+                            ip_data_[ip].computeElasticTangentStiffness(
+                                variables, t, x_position, dt,
+                                this->solid_material_,
+                                *this->material_states_[ip]
+                                     .material_state_variables);
+                        MathLib::KelvinVector::KelvinVectorType<DisplacementDim>
+                            const C_el_inv_I_lv =
+                                (C_el_lv.inverse() * identity2).eval();
+                        MathLib::KelvinVector::KelvinVectorType<DisplacementDim>
+                            const ds_deps_lv =
+                                swellingLevelDrainFeedbackDsDeps<
+                                    DisplacementDim>(C_el_lv, C_el_lv,
+                                                     c_lv);  // Pa
+                        local_Jac
+                            .template block<displacement_size,
+                                            displacement_size>(
+                                displacement_index, displacement_index)
+                            .noalias() += B.transpose() * C_cons_lv *
+                                          C_el_inv_I_lv *
+                                          ds_deps_lv.transpose() * B * w;
+
+                        // ── n_S channel (2026-10-04, review should-fix 6,
+                        // JACOBIAN-ONLY) ───────────────────────────────────
+                        // The level carries the macro-solid fraction
+                        // n_S = 1 - phi_M on the full level, L = -n_S n_l
+                        // [Pi + b m], and n_S moves with the strain through the
+                        // porosity split (computeTransportPorosityUpdate):
+                        //   phi_M = (phi - n_l)/(1 - n_l)  =>
+                        //   n_S = (1 - phi)/(1 - n_l),
+                        //   dn_S/dphi = -1/(1 - n_l),  dn_S/dn_l = n_S/(1 - n_l),
+                        // (zero where phi_M is clamped at 0: n_S = 1, the
+                        // KKT-active points). The frozen-m partial of s is
+                        //   dL/dn_S = L/n_S = -n_l [Pi + b m]
+                        // (the closed form gives L = -c (Pi + b m) exactly), and
+                        // the implicit-function factor of the simultaneous
+                        // system multiplies it like every frozen-sigma' partial:
+                        //   ds/deps_v += (L/n_S)/(1 + c) * dn_S/deps_v.
+                        // dn_S/deps_v here carries the dphi chain only
+                        // (dphi/deps_v of PorosityFromMassBalance); the n_l(K)
+                        // part of dn_S/dn_l is added in the implicit-n_l block
+                        // above (live K only). PREDICTED to remove about
+                        // 5 % of the Newton mismatch of the Model I live-K probe.
+                        // The u-p entry (dphi/dp = beta_SR dphi/deps_v, beta_SR =
+                        // 0 under kkt) is not added.
+                        auto const* const pfmb_lv =
+                            dynamic_cast<MPL::PorosityFromMassBalance const*>(
+                                &medium->property(
+                                    MPL::PropertyType::porosity));
+                        double const L_lv =
+                            *std::get<SwellingLevelUsed>(
+                                this->current_states_[ip]);  // Pa
+                        double const n_l_lv = n_l;  // [-]
+                        if (pfmb_lv != nullptr && phi_M_lv > 0.0 &&
+                            n_l_lv < 1.0 - 1e-12 && n_l_lv > 0.0)
+                        {
+                            double const w_phi_lv =
+                                (variables.volumetric_strain -
+                                 variables_prev.volumetric_strain) +
+                                (variables.effective_pore_pressure -
+                                 variables_prev.effective_pore_pressure) *
+                                    beta_SR;  // [-]
+                            double const phi_unclamped_lv =
+                                (variables_prev.porosity + alpha * w_phi_lv) /
+                                (1.0 + w_phi_lv);  // [-]
+                            bool const clamp_active_lv =
+                                std::abs(phi_unclamped_lv - phi) >
+                                1e-12 * std::max(1.0, std::abs(phi));
+                            double const dphi_deps_v_lv =
+                                clamp_active_lv
+                                    ? 0.0
+                                    : (alpha - phi) / (1.0 + w_phi_lv);  // [-]
+                            double const n_S_lv = 1.0 - phi_M_lv;  // [-]
+                            double const dnS_dphi_lv =
+                                -1.0 / (1.0 - n_l_lv);  // [-]
+                            double const ds_deps_nS =
+                                (L_lv / std::max(1e-16, n_S_lv)) /
+                                (1.0 + c_lv) * dnS_dphi_lv *
+                                dphi_deps_v_lv;  // Pa per unit strain
+                            local_Jac
+                                .template block<displacement_size,
+                                                displacement_size>(
+                                    displacement_index, displacement_index)
+                                .noalias() += B.transpose() * C_cons_lv *
+                                              C_el_inv_I_lv * ds_deps_nS *
+                                              identity2.transpose() * B * w;
                         }
                     }
 
@@ -7265,12 +7870,34 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                     *this->material_states_[ip]
                                          .material_state_variables);
                             auto const C_el_inv_swk = C_el_swk.inverse().eval();
+                            // DIAGNOSTIC fix (b), level form: the KKT-active
+                            // partials are frozen-sigma' partials dF of
+                            // s = F - c m (the step rule's n_l partial already
+                            // carries -b p_conf, so it equals dL/dn_l), hence
+                            // the same 1/(1 + c g) as the live-K chain. Off ->
+                            // factor 1.0 is not applied (bitwise).
+                            double const f_swk =
+                                isSwellingStressLevelForm(
+                                    potential_exchange_params_ptr)
+                                    ? swellingLevelImplicitFactor<
+                                          DisplacementDim>(
+                                          C_el_swk, C_el_inv_swk,
+                                          n_S_swk * n_l * alpha)  // [-]
+                                    : 1.0;
                             MathLib::KelvinVector::KelvinVectorType<
                                 DisplacementDim> const dsig_deps_v_vec =
-                                dsig_sw_deps_v_swk * identity2;  // Pa
+                                (isSwellingStressLevelForm(
+                                     potential_exchange_params_ptr)
+                                     ? f_swk * dsig_sw_deps_v_swk
+                                     : dsig_sw_deps_v_swk) *
+                                identity2;  // Pa
                             MathLib::KelvinVector::KelvinVectorType<
                                 DisplacementDim> const dsig_dp_vec =
-                                dsig_sw_dp_swk * identity2;  // Pa
+                                (isSwellingStressLevelForm(
+                                     potential_exchange_params_ptr)
+                                     ? f_swk * dsig_sw_dp_swk
+                                     : dsig_sw_dp_swk) *
+                                identity2;  // Pa
                             local_Jac
                                 .template block<displacement_size,
                                                 displacement_size>(
@@ -7919,6 +8546,30 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
             };
             auto const base_masks = p_c_masks(local_x);
 
+            // DIAGNOSTIC (2026-10-04): OGS_FD_REPEAT=n evaluates the residual n
+            // times at the UNPERTURBED point (states restored afterwards) and
+            // prints the uy residual of the top nodes: the sequence shows the
+            // gain of the lagged loop at fixed x.
+            if (char const* const e_rep = std::getenv("OGS_FD_REPEAT"))
+            {
+                int const n_rep = std::atoi(e_rep);
+                std::vector<double> rhs_rep;
+                std::vector<double> jac_rep;
+                std::string line;
+                for (int r = 0; r < n_rep; ++r)
+                {
+                    rhs_rep.clear();
+                    jac_rep.clear();
+                    this->assembleWithJacobian(t, dt, local_x, local_x_prev,
+                                               rhs_rep, jac_rep);
+                    line += fmt::format(" {:.12e}",
+                                        rhs_rep[pressure_size + displacement_size - 1]);
+                }
+                INFO("FD-REPEAT t={:.10g} dt={:.6g} rhs_last_u:{}", t, dt, line);
+                this->current_states_ = states_backup;
+                this->output_data_ = output_backup;
+            }
+
             Eigen::MatrixXd J_fd = Eigen::MatrixXd::Zero(n_dof, n_dof);
             for (int j = 0; j < n_dof; ++j)
             {
@@ -7935,11 +8586,43 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                 std::vector<double> rhs_plus;
                 std::vector<double> rhs_minus;
                 std::vector<double> jac_scratch;
+                // DIAGNOSTIC (2026-10-04, fix (b) tangent search): with
+                // OGS_FD_RELAG=n the residual is evaluated n extra times at the
+                // perturbed point before the one that is read, so that every
+                // lagged state value (sigma', sigma_sw, volume ratio, n_l
+                // initial guess) is the one of the perturbed point itself: the
+                // FD is then of the converged-lag residual R*(x) and not of
+                // R(x; lag of the base evaluation). Default 0 = as before.
+                static int const fd_relag = []()
+                {
+                    char const* const e = std::getenv("OGS_FD_RELAG");
+                    return e != nullptr ? std::atoi(e) : 0;
+                }();
+                // The local assembler accumulates into the vectors it is
+                // given: clear them before every evaluation.
+                for (int r = 0; r < fd_relag; ++r)
+                {
+                    rhs_plus.clear();
+                    jac_scratch.clear();
+                    this->assembleWithJacobian(t, dt, x_plus, local_x_prev,
+                                               rhs_plus, jac_scratch);
+                }
+                rhs_plus.clear();
+                jac_scratch.clear();
                 this->assembleWithJacobian(t, dt, x_plus, local_x_prev,
                                            rhs_plus, jac_scratch);
                 fd_state_flips += count_state_flips();
                 this->current_states_ = states_backup;
                 this->output_data_ = output_backup;
+                for (int r = 0; r < fd_relag; ++r)
+                {
+                    rhs_minus.clear();
+                    jac_scratch.clear();
+                    this->assembleWithJacobian(t, dt, x_minus, local_x_prev,
+                                               rhs_minus, jac_scratch);
+                }
+                rhs_minus.clear();
+                jac_scratch.clear();
                 this->assembleWithJacobian(t, dt, x_minus, local_x_prev,
                                            rhs_minus, jac_scratch);
                 fd_state_flips += count_state_flips();
@@ -8430,11 +9113,25 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
         updateTotalPorosityState<DisplacementDim>(
             this->current_states_[ip], this->prev_states_[ip], phi, variables,
             variables_prev, this->getPotentialExchangeParameters());
+        bool const initial_level_reference =
+            isSwellingStressLevelForm(this->getPotentialExchangeParameters()) &&
+            isFilmPressureCouplingEnabled(
+                this->getPotentialExchangeParameters()) &&
+            **std::get<PrevState<SwellingLevelUsed>>(this->prev_states_[ip]) ==
+                0.0;  // no step completed yet: the output of the initial state
         updateSwellingState<DisplacementDim>(
             solid_phase, rho_LR, C_el, this->current_states_[ip],
             this->prev_states_[ip], variables, variables_prev, x_position, t,
             dt, this->getPotentialExchangeParameters(),
-            /*biot_coefficient=*/alpha);
+            /*biot_coefficient=*/alpha, initial_level_reference);
+        // DIAGNOSTIC fix (b): the level of the initial-state evaluation becomes
+        // the previous level of the first step (the previous states are not
+        // pushed back after the initial output).
+        if (initial_level_reference)
+        {
+            **std::get<PrevState<SwellingLevelUsed>>(this->prev_states_[ip]) =
+                *std::get<SwellingLevelUsed>(this->current_states_[ip]);  // Pa
+        }
 
         // Gate 1/2 fix for DSM micro-porosity mode: enforce phi_m <= phi_total
         // and phi_M = phi_total - phi_m >= 0. When the
@@ -8606,10 +9303,48 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                                        MechanicalStrainData<DisplacementDim>>>(
                     state_previous);
 
-            ip_data_[ip].updateConstitutiveRelation(
+            auto C_out = ip_data_[ip].updateConstitutiveRelation(
                 variables, t, x_position, dt, temperature, sigma_eff,
                 sigma_eff_prev, eps_m, eps_m_prev, this->solid_material_,
                 this->material_states_[ip].material_state_variables);
+
+            // DIAGNOSTIC fix (b): the output pass re-evaluates the elastic
+            // tangent at the final stress (history-dependent skeleton: a
+            // different C_el than the assembly's lagged one), so its stress
+            // update is a pass of its own; iterate the level equation here too,
+            // so that the OUTPUT (sigma_sw, sigma') pair is on the level
+            // equation as well (see iterateSwellingLevelWithStressUpdate).
+            if (isSwellingStressLevelForm(
+                    this->getPotentialExchangeParameters()) &&
+                isFilmPressureCouplingEnabled(
+                    this->getPotentialExchangeParameters()))
+            {
+                iterateSwellingLevelWithStressUpdate<DisplacementDim>(
+                    state_current, C_el, C_out, alpha,
+                    [&]()
+                    {
+                        auto& eps_m_struct = std::get<
+                            ProcessLib::ConstitutiveRelations::
+                                MechanicalStrainData<DisplacementDim>>(
+                            state_current);
+                        auto const& sigma_sw_corr = std::get<
+                            ProcessLib::ThermoRichardsMechanics::
+                                ConstitutiveStress_StrainTemperature::
+                                    SwellingDataStateful<DisplacementDim>>(
+                            state_current);
+                        eps_m_struct.eps_m.noalias() =
+                            eps + C_el.inverse() * sigma_sw_corr.sigma_sw;
+                        variables.mechanical_strain.template emplace<
+                            MathLib::KelvinVector::KelvinVectorType<
+                                DisplacementDim>>(eps_m_struct.eps_m);
+                        return ip_data_[ip].updateConstitutiveRelation(
+                            variables, t, x_position, dt, temperature,
+                            sigma_eff, sigma_eff_prev, eps_m_struct,
+                            eps_m_prev, this->solid_material_,
+                            this->material_states_[ip]
+                                .material_state_variables);
+                    });
+            }
         }
 
         auto const& b = this->process_data_.specific_body_force;
