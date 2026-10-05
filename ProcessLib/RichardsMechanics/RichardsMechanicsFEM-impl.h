@@ -7457,14 +7457,24 @@ void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,
                             // compacting active IP; the clamp test then fired and
                             // dphi/deps_v was 0. Under sw_tangent_active the
                             // derivative uses the phi_prev of the porosity law.
+                            // RULED 2026-10-05 (Vinay Kumar, verbatim:
+                            // "Submission: re-run the K-fix suite with the
+                            // corrected guard. always on."): the clamp test
+                            // reads the phi_prev of the porosity law at EVERY
+                            // integration point, unconditionally, not only under
+                            // sw_tangent_active. Reason: variables_prev.porosity
+                            // has already been overwritten by the micro update,
+                            // so the test fired at every compacting point off the
+                            // micro ceiling and set dphi/deps_v to 0 (two K-term
+                            // entries of K[u,u]). Diagnosis record:
+                            // ~/ogs-models/scratch/2026-10-05_modelIX_kfix_diag/
+                            // RESULTS.md and PREDICTIONS.md. JACOBIAN-ONLY:
+                            // residual untouched.
                             double const phi_prev_read_sw =
-                                sw_tangent_active
-                                    ? std::get<PrevState<
-                                          ProcessLib::ThermoRichardsMechanics::
-                                              PorosityData>>(
-                                          this->prev_states_[ip])
-                                          ->phi
-                                    : variables_prev.porosity;  // [-]
+                                std::get<PrevState<
+                                    ProcessLib::ThermoRichardsMechanics::
+                                        PorosityData>>(this->prev_states_[ip])
+                                    ->phi;  // [-]
                             double const phi_unclamped_sw =
                                 (phi_prev_read_sw + alpha * w_phi_sw) /
                                 (1.0 + w_phi_sw);  // [-]
