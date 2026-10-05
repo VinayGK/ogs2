@@ -4,6 +4,21 @@ EURAD-2 MS33 Theoretical Benchmarking - REFERENCE CONFIGURATION (confined rho_d 
 NO gap, rigid frictionless walls, bottom hydration 100 -> 0 MPa in 20 d, 200 d).
 BGR / DSM native hierarchical vdW-augmented model.
 
+K-FIX SET (E = 52 MPa), SUBMISSION CANDIDATE, 2026-10-05: Mass-conserving A (2a) + the K-fix + the always-on corrected clamp guard.
+  Branch gen5_masscons_1a_kfix_guard_E52_conformant_2026-10-05, cut from dsm_kfix_guard_production_2026-10-05 (the K-fix and the guard
+  as two production commits on fc14f19fb9). Added in this deck, inside <potential_exchange>, one line:
+    swelling_stress_k_level = true (lower-case k, the spelling the input parser reads): the Pi of the previous level is evaluated at its own
+    K_aug(rho_d,prev), so the change of K with dry density is booked in the swelling-stress step.
+  The clamp guard of the live-K swelling tangent is code, not a deck switch; it is always on. Every other switch line and every material and
+  numerical value of this deck (the elastic constants included) are unchanged from the 2a block below; this is the E = 52 MPa set.
+  Rulings (Vinay Kumar): 2026-10-04 "ok, then i agree to the K-fix" and "run model IV under the K-fix, k-fix is submission";
+  2026-10-05 "Submission: re-run the K-fix suite with the corrected guard. always on."
+  RUN WITH THIS DECK: record run 1a/suite/Ref, MacBook Pro, 2026-10-05, OMP 1, bin/ogs md5 ad1d8b16b52fba77874a0166391f109d, libRichardsMechanics md5 7452094c2200330fb63724a238fc01f9
+  (built from 3739b7ec03 + guard_always_on.diff; its source tree equals the tree of the code commit of this branch, git rev-parse checked).
+  The run deck equals this deck with XML comments, test_definition and blank lines removed. 591 accepted / 0 rejected steps, last step ends at t = 1.728e+07 s,
+  wall 10 s. Record CANONICAL_RESULTS_2026-10-05_gen5_masscons_1a_kfix_guard_v0.json, md5 ee36f00a77ffd89df0e1467fb4b1b047.
+  The MASS-CONSERVATION STATUS and the R_L/I value of the 2a block below were measured for 2a; they are NOT re-measured for this
+  configuration here and are not claimed for it.
 MASS-CONSERVING DSM, SUBMISSION CANDIDATE 2a, 2026-10-02 (Vinay 2026-10-02 "do both": candidate 2 is cut twice,
   2a = variant 1a, 2b = variant 1b, each end to end like candidate 1). Branch gen5_masscons_1a_conformant_2026-10-02,
   cut from 3101058538 (v5 probe tip); MS33 test tree from gen5_icfix_conformant_2026-09-30 (d64c47cb30).
@@ -186,6 +201,7 @@ GAP=0.002 m is spec geometry. EXPERIMENTAL VARIANT - not a registered ctest.
                 <macro_balance_drops_micro_biot_term>true</macro_balance_drops_micro_biot_term>
                 <darcy_relative_permeability_mobility>kirchhoff_element_mean</darcy_relative_permeability_mobility>
                 <macro_storage_exact_time_levels>true</macro_storage_exact_time_levels>
+                <swelling_stress_k_level>true</swelling_stress_k_level>
             </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>
