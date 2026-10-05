@@ -86,6 +86,22 @@ if (NOT OGS_USE_MPI)
     # Model I: the rule gives 4 s; RUNTIME 120 is KEPT, because a value <= large_runtime = 60 renames the three
     # ctests (drops -LARGE) and moves them from label large to small (Model I note above); open for Vinay. No other test
     # changes name, label or TIMEOUT (every new value stays on its side of 60 and <= 750).
+    # K-FIX SET (E = 52 MPa), 2026-10-05 (branch gen5_masscons_1a_kfix_guard_E52_conformant_2026-10-05, cut from the code branch
+    # dsm_kfix_guard_production_2026-10-05 = fc14f19fb9 (Mass-conserving A, candidate 2a) + two code commits: the K-fix
+    # (swelling_stress_k_level) and the always-on corrected clamp guard of the live-K swelling tangent. Vinay Kumar 2026-10-04 "k-fix is
+    # submission", 2026-10-05 "re-run the K-fix suite with the corrected guard. always on."). The nine committed MS33 decks carry, in
+    # addition to the switch lines of the 2a paragraph above, swelling_stress_k_level = true (lower-case k, the spelling the parser reads).
+    # References (2026-10-05): Reference, III, IV and both VII re-registered to the t_end frames of the record runs of this set (MacBook Pro,
+    # bin/ogs md5 ad1d8b16b52fba77874a0166391f109d, libRichardsMechanics md5 7452094c2200330fb63724a238fc01f9, built from 3739b7ec03 +
+    # guard_always_on.diff, source tree equal to the tree of the code commits here; record CANONICAL_RESULTS_2026-10-05_gen5_masscons_1a_kfix_guard_v0.json,
+    # md5 ee36f00a77ffd89df0e1467fb4b1b047); the Mass-conserving A frames are in superseded_references_2026-10-05_kfix_guard/ next to each, with a
+    # README. Final step counts (2a -> K-fix set): Reference 698 -> 591 (0 rejected), III 822 -> 778 (0 rejected), IV 681 -> 709 (0 rejected), VII 240 d 887 -> 881 (0 rejected), VII ladder550 1147 -> 1150 (0 rejected).
+    # vtkdiff replay with each deck's own tolerances (MEASURED on the MacBook Pro): new reference vs its source frame 11/11, 11/11, 11/11, 11/11, 11/11;
+    # old vs new reference 3/11, 3/11, 3/11, 3/11, 3/11. Model I dd1400/1600/1800: references UNCHANGED (shipped-K frames); the record-run frames of this set pass
+    # all 11 checks of each deck against them (11/11, 11/11, 11/11), step counts 308/311/308 unchanged. Measured walls (one run per core, OMP 1, nice 10,
+    # MacBook Pro with other jobs running): Reference 10 s, III 177 s, IV 177 s, VII 217 s / 263 s. RUNTIME values are UNCHANGED (the values of the
+    # RUNTIME paragraph above stay; they are larger than these walls). ctest of this set: run in the E52 package after this commit,
+    # recorded outside the repository (~/ogs-models/scratch/2026-10-05_kfix_guard_E52_package/ogs/CTEST.md).
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1400.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1600.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj RUNTIME 120)
