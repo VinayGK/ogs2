@@ -58,6 +58,50 @@ if (NOT OGS_USE_MPI)
     # measured wall times of the readiness runs (Shilpa's M1 Max, loaded, single-threaded assembly): Reference 20.3 s, III 349 s,
     # VII 369 s / 466 s, IV 16112.7 s (above RUNTIME 10736; the MBP run took 8957.6 s). NOT run through ctest (the builds used
     # for the fx runs have OGS_BUILD_TESTING=OFF): the ctest run on the MBP is the first open item of the V0 manifest.
+    # MASS-CONSERVING DSM, CANDIDATE 2a, 2026-10-02 (branch gen5_masscons_1a_conformant_2026-10-02, cut from the v5 tip
+    # 3101058538; Vinay 2026-10-02 "do both": candidate 2 cut twice, 2a = 1a, 2b = 1b; PLAN P2): the MS33 test tree (decks,
+    # meshes, references, K_fix) is the one of gen5_icfix_conformant_2026-09-30 (d64c47cb30), and the nine committed decks
+    # carry, inside <potential_exchange>, the KKT micro ceiling, F3, the ruled tangents and latched gate, the T_m drop,
+    # variant 1a (darcy_relative_permeability_mobility = kirchhoff_element_mean) and macro_storage_exact_time_levels = true
+    # (no every-step output, no diagnostic _ip variables). The other candidate-2 branch differs only in that variant line.
+    # References (P7a, 2026-10-02): Reference, III, IV and both VII re-registered to the t_end frames of the candidate-2a record
+    # runs (Shilpa's MBP, bin/ogs md5 fd2e4e76e51d490e45c15b3861c7471d, libRichardsMechanics 31b02f0b7e28b25b9590c767d3f6b8aa,
+    # built from e03c32a1a3, the code of this branch); the replaced IC-fix frames are in superseded_references_2026-10-02_masscons_1a/
+    # next to each, with a README. Final step counts: Reference 895 -> 698 (0 rejected), III 970 -> 822 (0 rejected), IV 16494 -> 681 (0 rejected), VII 240 d 1006 -> 887 (0 rejected), VII ladder550 1287 -> 1147 (0 rejected).
+    # vtkdiff replay with each deck's own tolerances (MEASURED on the mini): new reference vs its source frame 11/11, 11/11, 11/11, 11/11, 11/11;
+    # old vs new reference 1/11, 3/11, 0/11, 3/11, 3/11. Model I dd1400/1600/1800 (D22): references UNCHANGED (shipped-K frames); the candidate-2a
+    # record-run frames pass all 11 checks of each deck against them, step counts 308/311/308 unchanged. Measured walls (one run per
+    # core, OMP 1, nice 10): Reference 18 s, III 312 s, IV 296 s (298 s for IV_nf = the same deck + NodalForces output), VII 395 s / 486 s. RUNTIME: only Model IV
+    # changes (D21: the slowest measured wall), 10736 -> 299 = ceil(298 s + 0.5 s rounding of the wall); it stays above
+    # large_runtime = 60 (same -LARGE test name) and is not above 750, so no explicit TIMEOUT is emitted and ctest's default
+    # (1500 s) applies. Model III/VII RUNTIME 300 left as they are (no ruling on them; candidate 1 kept them too). ctest (P7c):
+    # run after this commit on the mac mini, RichardsMechanics-only testing build; the result is recorded outside the repository.
+    # RUNTIME, OGS fixes stage 2026-10-02 (main-loop decision: RUNTIME = the slowest measured wall of the committed-deck
+    # configuration, rounded up, for every MS33 test, from the Shilpa record runs and the mini ctests: P7c and the rerun of this
+    # stage, which ran beside other jobs on the mini and is the slower of the two). This supersedes the
+    # sentence 'Model III/VII RUNTIME 300 left as they are' above. Walls [s] Shilpa (queue wall, rounded to 1 s, so ceil(w + 0.5)) /
+    # mini ctest (ceil) -> RUNTIME: Reference 18 / 16.96 -> 19 (was 60), III 312 / 353.79 -> 354,
+    # VII 240 d 395 / 415.02 -> 416, VII ladder550 486 / 491.49 -> 492 (all three were 300).
+    # IV 296 / 329.22 -> 330 (was the D21 value 299, from the IV_nf wall; the rerun of this stage was slower).
+    # Model I: the rule gives 4 s; RUNTIME 120 is KEPT, because a value <= large_runtime = 60 renames the three
+    # ctests (drops -LARGE) and moves them from label large to small (Model I note above); open for Vinay. No other test
+    # changes name, label or TIMEOUT (every new value stays on its side of 60 and <= 750).
+    # K-FIX SET (E = 52 MPa), 2026-10-05 (branch gen5_masscons_1a_kfix_guard_E52_conformant_2026-10-05, cut from the code branch
+    # dsm_kfix_guard_production_2026-10-05 = fc14f19fb9 (Mass-conserving A, candidate 2a) + two code commits: the K-fix
+    # (swelling_stress_k_level) and the always-on corrected clamp guard of the live-K swelling tangent. Vinay Kumar 2026-10-04 "k-fix is
+    # submission", 2026-10-05 "re-run the K-fix suite with the corrected guard. always on."). The nine committed MS33 decks carry, in
+    # addition to the switch lines of the 2a paragraph above, swelling_stress_k_level = true (lower-case k, the spelling the parser reads).
+    # References (2026-10-05): Reference, III, IV and both VII re-registered to the t_end frames of the record runs of this set (MacBook Pro,
+    # bin/ogs md5 ad1d8b16b52fba77874a0166391f109d, libRichardsMechanics md5 7452094c2200330fb63724a238fc01f9, built from 3739b7ec03 +
+    # guard_always_on.diff, source tree equal to the tree of the code commits here; record CANONICAL_RESULTS_2026-10-05_gen5_masscons_1a_kfix_guard_v0.json,
+    # md5 ee36f00a77ffd89df0e1467fb4b1b047); the Mass-conserving A frames are in superseded_references_2026-10-05_kfix_guard/ next to each, with a
+    # README. Final step counts (2a -> K-fix set): Reference 698 -> 591 (0 rejected), III 822 -> 778 (0 rejected), IV 681 -> 709 (0 rejected), VII 240 d 887 -> 881 (0 rejected), VII ladder550 1147 -> 1150 (0 rejected).
+    # vtkdiff replay with each deck's own tolerances (MEASURED on the MacBook Pro): new reference vs its source frame 11/11, 11/11, 11/11, 11/11, 11/11;
+    # old vs new reference 3/11, 3/11, 3/11, 3/11, 3/11. Model I dd1400/1600/1800: references UNCHANGED (shipped-K frames); the record-run frames of this set pass
+    # all 11 checks of each deck against them (11/11, 11/11, 11/11), step counts 308/311/308 unchanged. Measured walls (one run per core, OMP 1, nice 10,
+    # MacBook Pro with other jobs running): Reference 10 s, III 177 s, IV 177 s, VII 217 s / 263 s. RUNTIME values are UNCHANGED (the values of the
+    # RUNTIME paragraph above stay; they are larger than these walls). ctest of this set: run in the E52 package after this commit,
+    # recorded outside the repository (~/ogs-models/scratch/2026-10-05_kfix_guard_E52_package/ogs/CTEST.md).
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1400.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1600.prj RUNTIME 120)
     OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj RUNTIME 120)
@@ -68,12 +112,14 @@ if (NOT OGS_USE_MPI)
     # campaign"): the deck now runs the clay r = 23 mm mesh ms33_clay_r23_h70
     # (920 quads) with the wall latching at r = 25 mm; measured 211.7 s / 943 steps
     # (OMP 2) and 2xx s at OMP 1 on 2026-09-08 -> RUNTIME 120 -> 300.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIII/ms33_modelIII_gapswitch.prj RUNTIME 300)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 300 -> 354, the slowest measured wall (Shilpa 312 s, mini ctest up to 353.79 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIII/ms33_modelIII_gapswitch.prj RUNTIME 354)
     # Reference Configuration (confined dd1600 column, no gap), TRACKED and registered
     # 2026-09-08 (spec-conformance fix 4): 160x KC-base permeability + the live K(rho_d)
     # table of III/IV/VII, so the reference curve is on the models' hydraulics.
     # Measured 9.6 s / 771 steps (OMP 1) on 2026-09-08.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_Reference/ms33_reference_dd1600.prj RUNTIME 60)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 60 -> 19, the slowest measured wall (Shilpa 18 s, mini ctest up to 16.96 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_Reference/ms33_reference_dd1600.prj RUNTIME 19)
     # DEPRECATED 2026-08-17 — soft 2-medium gap annulus surrogate: no contact
     # mechanics, over-closes to ~67% with a residual aperture. Superseded by the
     # gap-switch deck above. Deck and reference retained (CLAUDE.md §6.2/§6.3);
@@ -114,7 +160,10 @@ if (NOT OGS_USE_MPI)
     # 5-day rows (41 fixed output times); physics/BCs/knot unchanged; reference re-registered ts_16008 -> ts_16527
     # (old one in superseded_references_2026-09-08_v2/). Measured 7957.37 s / 16527 steps at OMP 6 on 2026-09-08
     # (campaign v2 runs/IV/run.log) -> RUNTIME 10736 kept.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 10736)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (P7a, D21): RUNTIME 10736 -> 299, the slowest measured wall of this deck under
+    # this branch's configuration (see the candidate-2a paragraph above); the 10736 history above is kept.
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 299 -> 330, the slowest measured wall (Shilpa 296 s, mini ctest up to 329.22 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 330)
     # K(rho_d) equivalence pair (each material's k0 x20 spec, for speed): the
     # table-K variant resolves K = K(dry_density) at parse time and must
     # reproduce, bit-for-bit, the per-material scalar-K reference. Verified
@@ -126,7 +175,8 @@ if (NOT OGS_USE_MPI)
     # OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets_kofdd.prj RUNTIME 240)
     # 2026-09-08 (spec-conformance fix 3): step-and-hold traction ladder + 7 half-interval
     # output frames; measured 217.8 s / 973 steps (OMP 2) on 2026-09-08 -> RUNTIME 300 kept.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling.prj RUNTIME 300)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 300 -> 416, the slowest measured wall (Shilpa 395 s, mini ctest up to 415.02 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling.prj RUNTIME 416)
     # 2026-09-08 campaign v2 (spec-audit 3x, LANE1 F1 / LANE2 #1): LADDER-550 variant of Model VII on
     # the CURRENT spec ladder (theoretical_benchmarking.tex Table Loading_unloading_path: 50-d stages
     # 0.2/0.4/1/2.5/5/2.5/1/0.4 MPa, 10-d ramps, t_end 550 d; see the deck header for the citation).
@@ -135,12 +185,44 @@ if (NOT OGS_USE_MPI)
     # ms33_modelVII_freeswelling_ladder550, so the two VII ctests never share an output file name.
     # Same two-tier tolerances as the parent deck. Measured 278.75 s / 1304 steps (OMP 2) on
     # 2026-09-08 (campaign v2 runs/VII_550/run.log) -> RUNTIME 300, as the parent.
-    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling_ladder550.prj RUNTIME 300)
+    # MASS-CONSERVING CANDIDATE 2a, 2026-10-02 (OGS fixes stage): RUNTIME 300 -> 492, the slowest measured wall (Shilpa 486 s, mini ctest up to 491.49 s), see the RUNTIME paragraph of the candidate-2a block.
+    OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling_ladder550.prj RUNTIME 492)
     # K(rho_d) feature on a 2nd model (single-material Model VII -> table resolves
     # to the rho_d=1600 node, a physical no-op; k0 x50 spec for speed). Run to
     # t_end 2026-06-08. Exercises the table-resolution path on the free-swelling cell.
     # DE-REGISTERED 2026-08-12 (Vinay): cannot pass as registered (no <test_definition>; OGS hard-fails at parse under the ctest wrapper). The two ModelIV variants additionally DIVERGE on the merged code (die ts #825 FD / #2333 analytic). Decks kept per never-delete; re-register only with ratified references.
     # OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling_kofdd.prj RUNTIME 300)
+    # HISTORICAL (MS33 registrations of the cut point 3101058538 = v4 tip ca3c9faf00, superseded on this branch by the
+    # gen-5 block above, 2026-10-02; kept, never deleted):
+    #| # ANCHORS EURAD-2 MS33 theoretical benchmarking — DSM native hierarchical runs
+    #| OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1400.prj RUNTIME 120)
+    #| OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1600.prj RUNTIME 120)
+    #| OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelI/ms33_modelI_dd1800.prj RUNTIME 120)
+    #| # Model III ships the GAP-SWITCH deck (Vinay 2026-08-17). The outer radial
+    #| # boundary swells free until u_r reaches the 2 mm technological gap, then
+    #| # switches to a rigid Dirichlet wall — true container contact.
+    #| OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIII/ms33_modelIII_gapswitch.prj RUNTIME 120)
+    #| # DEPRECATED 2026-08-17 — soft 2-medium gap annulus surrogate: no contact
+    #| # mechanics, over-closes to ~67% with a residual aperture. Superseded by the
+    #| # gap-switch deck above. Deck and reference retained (CLAUDE.md §6.2/§6.3);
+    #| # registration commented out, not deleted.
+    #| # OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIII/ms33_modelIII_gap2mm.prj RUNTIME 240)
+    #| OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets.prj RUNTIME 240)
+    #| # K(rho_d) equivalence pair (each material's k0 x20 spec, for speed): the
+    #| # table-K variant resolves K = K(dry_density) at parse time and must
+    #| # reproduce, bit-for-bit, the per-material scalar-K reference. Verified
+    #| # 2026-06-08 (abs max diff = 0 on all 14 output fields at t=200 d). Both
+    #| # registered run-only here.
+    #| # DE-REGISTERED 2026-08-12 (Vinay): cannot pass as registered (no <test_definition>; OGS hard-fails at parse under the ctest wrapper). The two ModelIV variants additionally DIVERGE on the merged code (die ts #825 FD / #2333 analytic). Decks kept per never-delete; re-register only with ratified references.
+    #| # OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets_kref20x.prj RUNTIME 240)
+    #| # DE-REGISTERED 2026-08-12 (Vinay): cannot pass as registered (no <test_definition>; OGS hard-fails at parse under the ctest wrapper). The two ModelIV variants additionally DIVERGE on the merged code (die ts #825 FD / #2333 analytic). Decks kept per never-delete; re-register only with ratified references.
+    #| # OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelIV/ms33_modelIV_pellets_kofdd.prj RUNTIME 240)
+    #| OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling.prj RUNTIME 300)
+    #| # K(rho_d) feature on a 2nd model (single-material Model VII -> table resolves
+    #| # to the rho_d=1600 node, a physical no-op; k0 x50 spec for speed). Run to
+    #| # t_end 2026-06-08. Exercises the table-resolution path on the free-swelling cell.
+    #| # DE-REGISTERED 2026-08-12 (Vinay): cannot pass as registered (no <test_definition>; OGS hard-fails at parse under the ctest wrapper). The two ModelIV variants additionally DIVERGE on the merged code (die ts #825 FD / #2333 analytic). Decks kept per never-delete; re-register only with ratified references.
+    #| # OgsTest(PROJECTFILE RichardsMechanics/ANCHORS_MS33_ModelVII/ms33_modelVII_freeswelling_kofdd.prj RUNTIME 300)
 endif()
 
 if (NOT OGS_USE_MPI AND OGS_USE_MFRONT)

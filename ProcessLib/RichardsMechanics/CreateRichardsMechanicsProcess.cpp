@@ -6,13 +6,18 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <exception>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "MathLib/InterpolationAlgorithms/PiecewiseLinearInterpolation.h"
 #include "MaterialLib/MPL/CreateMaterialSpatialDistributionMap.h"
 #include "MaterialLib/MPL/MaterialSpatialDistributionMap.h"
 #include "MaterialLib/MPL/Medium.h"
+#include "MaterialLib/MPL/Properties/CapillaryPressureSaturation/SaturationTuller.h"
+#include "MaterialLib/MPL/Properties/RelativePermeability/RelPermGeneralizedPower.h"
 #include "MaterialLib/SolidModels/CreateConstitutiveRelation.h"
 #include "MaterialLib/SolidModels/MechanicsBase.h"
 #include "NumLib/CreateNewtonRaphsonSolverParameters.h"
@@ -21,6 +26,7 @@
 #include "ProcessLib/Output/CreateSecondaryVariables.h"
 #include "ProcessLib/Utils/ProcessUtils.h"
 #include "RichardsMechanicsProcess.h"
+#include "KirchhoffMobility.h"
 #include "RichardsMechanicsProcessData.h"
 
 namespace ProcessLib
@@ -70,6 +76,179 @@ LocalNonlinearSolveMode parseLocalNonlinearSolveMode(
         "'scalar_exchange', 'scalar_microstate_storage_mode', "
         "'scalar_micro_macro_mass_storage_mode'.",
         mode);
+}
+
+MicroCeilingTreatment parseMicroCeilingTreatment(std::string const& value)
+{
+    if (value == "clamp")
+    {
+        return MicroCeilingTreatment::Clamp;
+    }
+    if (value == "kkt")
+    {
+        return MicroCeilingTreatment::Kkt;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_treatment '{}'. Currently supported: 'clamp', 'kkt'.",
+        value);
+}
+
+MicroCeilingPuTangent parseMicroCeilingPuTangent(std::string const& value)
+{
+    if (value == "overwritten")
+    {
+        return MicroCeilingPuTangent::Overwritten;
+    }
+    if (value == "kkt_active")
+    {
+        return MicroCeilingPuTangent::KktActive;
+    }
+    if (value == "all_exchange")
+    {
+        return MicroCeilingPuTangent::AllExchange;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_pu_tangent '{}'. Currently supported: 'overwritten', "
+        "'kkt_active', 'all_exchange'.",
+        value);
+}
+
+MicroCeilingSwTangent parseMicroCeilingSwTangent(std::string const& value)
+{
+    if (value == "overwritten")
+    {
+        return MicroCeilingSwTangent::Overwritten;
+    }
+    if (value == "kkt_active")
+    {
+        return MicroCeilingSwTangent::KktActive;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_sw_tangent '{}'. Currently supported: 'overwritten', "
+        "'kkt_active'.",
+        value);
+}
+
+MicroCeilingSaturationGate parseMicroCeilingSaturationGate(
+    std::string const& value)
+{
+    if (value == "off")
+    {
+        return MicroCeilingSaturationGate::Off;
+    }
+    if (value == "bishop_relperm")
+    {
+        return MicroCeilingSaturationGate::BishopRelperm;
+    }
+    if (value == "bishop")
+    {
+        return MicroCeilingSaturationGate::Bishop;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_saturation_gate '{}'. Currently supported: 'off', "
+        "'bishop_relperm', 'bishop'.",
+        value);
+}
+
+// v4 switches (DESIGN_V4.md 2.1; Vinay's ruling 2026-10-02).
+DarcyRelativePermeabilityMobility parseDarcyRelativePermeabilityMobility(
+    std::string const& value)
+{
+    if (value == "gauss_point")
+    {
+        return DarcyRelativePermeabilityMobility::GaussPoint;
+    }
+    if (value == "kirchhoff_element_mean")
+    {
+        return DarcyRelativePermeabilityMobility::KirchhoffElementMean;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "darcy_relative_permeability_mobility '{}'. Currently supported: "
+        "'gauss_point', 'kirchhoff_element_mean'.",
+        value);
+}
+
+SwellingStressForm parseSwellingStressForm(std::string const& value)
+{
+    if (value == "step")
+    {
+        return SwellingStressForm::Step;
+    }
+    if (value == "level")
+    {
+        return SwellingStressForm::Level;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "swelling_stress_form '{}'. Currently supported: 'step', 'level'.",
+        value);
+}
+
+MicroCeilingClosedMacroGate parseMicroCeilingClosedMacroGate(
+    std::string const& value)
+{
+    if (value == "off")
+    {
+        return MicroCeilingClosedMacroGate::Off;
+    }
+    if (value == "relperm")
+    {
+        return MicroCeilingClosedMacroGate::Relperm;
+    }
+    if (value == "bishop_relperm")
+    {
+        return MicroCeilingClosedMacroGate::BishopRelperm;
+    }
+
+    OGS_FATAL(
+        "RichardsMechanics: unsupported potential_exchange "
+        "micro_ceiling_closed_macro_gate '{}'. Currently supported: 'off', "
+        "'relperm', 'bishop_relperm'.",
+        value);
+}
+
+// Element ids of micro_ceiling_trace_elements: whitespace separated unsigned
+// integers; empty string = no element.
+std::vector<std::size_t> parseMicroCeilingTraceElements(
+    std::string const& value)
+{
+    std::vector<std::size_t> ids;
+    std::istringstream stream(value);
+    std::string token;
+    while (stream >> token)
+    {
+        std::size_t consumed = 0;
+        unsigned long long id = 0;
+        try
+        {
+            id = std::stoull(token, &consumed);
+        }
+        catch (std::exception const&)
+        {
+            consumed = 0;
+        }
+        if (consumed != token.size())
+        {
+            OGS_FATAL(
+                "RichardsMechanics: potential_exchange "
+                "micro_ceiling_trace_elements: '{}' is not an element id "
+                "(whitespace separated non-negative integers expected).",
+                token);
+        }
+        ids.push_back(static_cast<std::size_t>(id));
+    }
+    return ids;
 }
 
 FilmStrainCouplingMode parseFilmStrainCouplingMode(std::string const& mode)
@@ -581,6 +760,74 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             defaults
                 ? defaults->potential_augmentation_prefactor_live_dry_density
                 : false);
+    // DIAGNOSTIC (mass-strip A/B, 2026-09-30, Vinay R-03): both default false,
+    // false -> bit-identical to variant A (bed3e395). See PotentialExchangeParameters.h.
+    auto const ceiling_micro_storage_exchange = config.getConfigParameter<bool>(
+        "ceiling_micro_storage_exchange",
+        defaults ? defaults->ceiling_micro_storage_exchange : false);
+    auto const macro_storage_uses_macro_porosity =
+        config.getConfigParameter<bool>(
+            "macro_storage_uses_macro_porosity",
+            defaults ? defaults->macro_storage_uses_macro_porosity : false);
+    // V2 (2026-09-30): F3 sign of the micro mass residual; Q1 strain term in
+    // the booked rate. Both default false (bit-identical to V1).
+    auto const micro_mass_strain_term_eulerian =
+        config.getConfigParameter<bool>(
+            "micro_mass_strain_term_eulerian",
+            defaults ? defaults->micro_mass_strain_term_eulerian : false);
+    auto const ceiling_micro_storage_includes_strain =
+        config.getConfigParameter<bool>(
+            "ceiling_micro_storage_includes_strain",
+            defaults ? defaults->ceiling_micro_storage_includes_strain : false);
+    if ((micro_mass_strain_term_eulerian ||
+         ceiling_micro_storage_includes_strain) &&
+        local_nonlinear_solve_mode !=
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} micro_mass_strain_term_eulerian / "
+            "ceiling_micro_storage_includes_strain require "
+            "local_nonlinear_solve_mode = scalar_micro_macro_mass_storage_mode.",
+            context);
+    }
+    if (ceiling_micro_storage_includes_strain &&
+        !ceiling_micro_storage_exchange)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} ceiling_micro_storage_includes_strain "
+            "requires ceiling_micro_storage_exchange = true.",
+            context);
+    }
+    if (ceiling_micro_storage_exchange &&
+        local_nonlinear_solve_mode !=
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} ceiling_micro_storage_exchange requires "
+            "local_nonlinear_solve_mode = scalar_micro_macro_mass_storage_mode.",
+            context);
+    }
+    // Variant label (code review 2026-09-30): printed into every run log that
+    // uses a mass-fix switch, so a log states which variant it is. Log text only.
+    if (ceiling_micro_storage_exchange || macro_storage_uses_macro_porosity ||
+        micro_mass_strain_term_eulerian ||
+        ceiling_micro_storage_includes_strain)
+    {
+        INFO(
+            "MASSFIX variant label (V2 tree): ceiling_micro_storage_exchange = "
+            "{}, macro_storage_uses_macro_porosity = {}, "
+            "micro_mass_strain_term_eulerian = {}, "
+            "ceiling_micro_storage_includes_strain = {}. "
+            "macro_storage_uses_macro_porosity = 'phi_M in a_p/a_S ONLY': the "
+            "Biot volume-change term Kpu = S_L*rho_LR*alpha*div(u_dot) still "
+            "covers the whole pore-volume change, including the micro part "
+            "S_L*rho_LR*(dphi_m + phi_m*dEps)/dt (open, Vinay's ruling). "
+            "NOT adopted.",
+            ceiling_micro_storage_exchange,
+            macro_storage_uses_macro_porosity,
+            micro_mass_strain_term_eulerian,
+            ceiling_micro_storage_includes_strain);
+    }
     if (potential_augmentation_prefactor_live_dry_density &&
         !potential_augmentation_prefactor_vs_dry_density)
     {
@@ -736,6 +983,445 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
             context, toString(film_strain_coupling));
     }
 
+    // ── KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
+    // 2026-09-30; DESIGN.md 2.1, 2.2 of the record folder
+    // ~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/). All defaults = the
+    // shipped behaviour, bitwise. Kkt carried forward (F3 ruling 2026-10-01).
+    auto const micro_ceiling_treatment = parseMicroCeilingTreatment(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_treatment",
+            defaults ? toString(defaults->micro_ceiling_treatment) : "clamp"));
+    auto const micro_ceiling_pu_tangent = parseMicroCeilingPuTangent(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_pu_tangent",
+            defaults ? toString(defaults->micro_ceiling_pu_tangent)
+                     : "overwritten"));
+    auto const micro_ceiling_sw_tangent = parseMicroCeilingSwTangent(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_sw_tangent",
+            defaults ? toString(defaults->micro_ceiling_sw_tangent)
+                     : "overwritten"));
+    auto const micro_ceiling_fd_check = config.getConfigParameter<bool>(
+        "micro_ceiling_fd_check",
+        defaults ? defaults->micro_ceiling_fd_check : false);
+    auto const micro_ceiling_scan_nodes_per_decade =
+        config.getConfigParameter<int>(
+            "micro_ceiling_scan_nodes_per_decade",
+            defaults ? defaults->micro_ceiling_scan_nodes_per_decade : 8);
+    // Latched saturation gate of chi and k_rel (branch
+    // dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01, design part B.4;
+    // Vinay 2026-10-01 ~15:15 CEST). Default off = the shipped rules, bitwise.
+    auto const micro_ceiling_saturation_gate = parseMicroCeilingSaturationGate(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_saturation_gate",
+            defaults ? toString(defaults->micro_ceiling_saturation_gate)
+                     : "off"));
+    // v4 switches (branch dsm_mass_conservation_v4_tm_krel_2026-10-02,
+    // DESIGN_V4.md 2.1; Vinay's ruling 2026-10-02 "(go with L + drop T_m) x
+    // (1a, 1b separate)"). Defaults = the AB code, bitwise.
+    auto const macro_balance_drops_micro_biot_term =
+        config.getConfigParameter<bool>(
+            "macro_balance_drops_micro_biot_term",
+            defaults ? defaults->macro_balance_drops_micro_biot_term : false);
+    auto const darcy_relative_permeability_mobility =
+        parseDarcyRelativePermeabilityMobility(
+            config.getConfigParameter<std::string>(
+                "darcy_relative_permeability_mobility",
+                defaults ? toString(
+                               defaults->darcy_relative_permeability_mobility)
+                         : "gauss_point"));
+    auto const micro_ceiling_closed_macro_gate =
+        parseMicroCeilingClosedMacroGate(config.getConfigParameter<std::string>(
+            "micro_ceiling_closed_macro_gate",
+            defaults ? toString(defaults->micro_ceiling_closed_macro_gate)
+                     : "off"));
+    // Numerical choice of the 1a table (DESIGN_V4.md 2.3.2 item 4, Q5): 2048
+    // cells per decade, k interpolation error 5.1e-6 on the AB deck pair
+    // (MEASURED, REC/design_facts/out_table_resolution.txt). Not physics.
+    auto const darcy_kirchhoff_cells_per_decade = config.getConfigParameter<int>(
+        "darcy_kirchhoff_cells_per_decade",
+        defaults ? defaults->darcy_kirchhoff_cells_per_decade : 2048);
+    bool const kirchhoff_on =
+        darcy_relative_permeability_mobility ==
+        DarcyRelativePermeabilityMobility::KirchhoffElementMean;
+    if (kirchhoff_on && darcy_kirchhoff_cells_per_decade < 2)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} darcy_kirchhoff_cells_per_decade must be "
+            ">= 2, got {}.",
+            context, darcy_kirchhoff_cells_per_decade);
+    }
+    if (!kirchhoff_on && darcy_kirchhoff_cells_per_decade != 2048 &&
+        !(defaults && defaults->darcy_kirchhoff_cells_per_decade ==
+                          darcy_kirchhoff_cells_per_decade))
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} darcy_kirchhoff_cells_per_decade is set "
+            "({}) but darcy_relative_permeability_mobility = {}; it is read "
+            "only with kirchhoff_element_mean.",
+            context, darcy_kirchhoff_cells_per_decade,
+            toString(darcy_relative_permeability_mobility));
+    }
+    // The ruling keeps 1a and 1b separate (DESIGN_V4.md 2.1): the combination
+    // is neither designed nor tested.
+    if (kirchhoff_on &&
+        micro_ceiling_closed_macro_gate != MicroCeilingClosedMacroGate::Off)
+    {
+        OGS_FATAL(
+            "RichardsMechanics: {} darcy_relative_permeability_mobility = "
+            "kirchhoff_element_mean together with "
+            "micro_ceiling_closed_macro_gate = {} is refused: the ruling of "
+            "2026-10-02 keeps 1a and 1b separate and the combination is not "
+            "designed (DESIGN_V4.md 2.1).",
+            context, toString(micro_ceiling_closed_macro_gate));
+    }
+    // v5 probe switch (branch dsm_mass_conservation_v5_P_exact_2026-10-02,
+    // DESIGN_V5.md 2.2-2.5). On in MS33 cand. 2a/2b (main-loop reading, open). Default false = the v4 code,
+    // bitwise; per-medium inheritance as the drop.
+    auto const macro_storage_exact_time_levels =
+        config.getConfigParameter<bool>(
+            "macro_storage_exact_time_levels",
+            defaults ? defaults->macro_storage_exact_time_levels : false);
+    if (macro_storage_exact_time_levels)
+    {
+        // DESIGN_V5.md 2.4: the exact-difference statement of 2.1 is about
+        // the macro part of the Biot term, i.e. after the T_m drop, and about
+        // phi_M in a_S (Q2). The drop's own guards (KKT, F3, reference n_S,
+        // analytic exchange Jacobian, no explicit HM coupling) then hold
+        // transitively.
+        if (!macro_balance_drops_micro_biot_term)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} macro_storage_exact_time_levels = true "
+                "requires macro_balance_drops_micro_biot_term = true: without "
+                "the drop the Biot term still carries T_m and the macro "
+                "accumulation is not the exact difference of the macro water "
+                "(DESIGN_V5.md 2.4).",
+                context);
+        }
+        if (!macro_storage_uses_macro_porosity)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} macro_storage_exact_time_levels = true "
+                "requires macro_storage_uses_macro_porosity = true: without "
+                "Q2 a_S counts the total porosity, not phi_M "
+                "(DESIGN_V5.md 2.4).",
+                context);
+        }
+        INFO(
+            "KKT v5 label: macro_storage_exact_time_levels = true (probe, NOT "
+            "adopted): a_S uses phi_M of the previous step, so the macro "
+            "accumulation is the exact difference Delta(rho_LR S_L phi_M) "
+            "plus the Biot strain term; product term P removed "
+            "(DESIGN_V5.md 2.1). Conditional on v4's S_L-new Biot/T_m form "
+            "(implementation, not ruled). Constant liquid density only "
+            "(runtime FATAL on beta_LR != 0).");
+    }
+    // DIAGNOSTIC swelling-stress fixes (a) and (b), 2026-10-04 (see
+    // PotentialExchangeParameters.h; scope STEP0.md of
+    // ~/ogs-models/scratch/2026-10-04_swelling_stress_fixes_abc/). Both default
+    // off = candidate 2a, bitwise; per-medium inheritance as the other tags.
+    // PRJ tag is lower-case: ConfigTree rejects upper-case letters in tag names
+    // (the member keeps the name swelling_stress_K_level).
+    auto const swelling_stress_K_level = config.getConfigParameter<bool>(
+        "swelling_stress_k_level",
+        defaults ? defaults->swelling_stress_K_level : false);
+    auto const swelling_stress_form = parseSwellingStressForm(
+        config.getConfigParameter<std::string>(
+            "swelling_stress_form",
+            defaults ? toString(defaults->swelling_stress_form) : "step"));
+    if (swelling_stress_K_level ||
+        swelling_stress_form == SwellingStressForm::Level)
+    {
+        if (film_energy_route == FilmEnergyRoute::Exact)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} swelling_stress_K_level / "
+                "swelling_stress_form = level are implemented for the "
+                "operational film route only; film_energy_route = exact "
+                "sources the eigenstress from the one-Psi pair and is not "
+                "touched by these diagnostic switches.",
+                context);
+        }
+        if (!film_pressure_coupling)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} swelling_stress_K_level / "
+                "swelling_stress_form = level act on the film-pressure "
+                "swelling stress and require film_pressure_coupling = true.",
+                context);
+        }
+        // Review 2026-10-04 (should-fix): the Jacobian of the strained-film
+        // modes (the w_eval chain of the live-K block of
+        // RichardsMechanicsFEM-impl.h) still feeds the current K to the
+        // previous level, which is not the derivative of the per-level-K
+        // residual; the level form carries no strain-coupled w_eval partial
+        // either. Untested with (a) or (b): refused.
+        if (film_strain_coupling != FilmStrainCouplingMode::Off)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} swelling_stress_K_level / "
+                "swelling_stress_form = level are implemented and tested for "
+                "film_strain_coupling = 'off' only (the strained-film "
+                "Jacobian feeds the current K to the previous level).",
+                context);
+        }
+        INFO(
+            "DIAGNOSTIC, NOT FOR PRODUCTION (swelling-stress fixes a/b, "
+            "2026-10-04): swelling_stress_K_level = {}, swelling_stress_form "
+            "= {}. {}{}",
+            swelling_stress_K_level, toString(swelling_stress_form),
+            (swelling_stress_K_level ||
+             swelling_stress_form == SwellingStressForm::Level)
+                ? "The Pi of the previous level is evaluated at its own "
+                  "K(rho_d,prev) (previous accepted total porosity). "
+                : "",
+            swelling_stress_form == SwellingStressForm::Level
+                ? "Level form: d sigma_sw = L(curr) - L(prev), L = -n_S n_l "
+                  "[Pi + b sigma'_mean], solved in closed form with the "
+                  "elastic prediction of sigma'_mean from the previous "
+                  "Newton evaluation; the residual carries no early return "
+                  "at dn_l = 0."
+                : "");
+    }
+    std::string micro_ceiling_trace_elements_default;
+    if (defaults)
+    {
+        for (auto const id : defaults->micro_ceiling_trace_elements)
+        {
+            micro_ceiling_trace_elements_default +=
+                std::to_string(id) + " ";
+        }
+    }
+    auto const micro_ceiling_trace_elements = parseMicroCeilingTraceElements(
+        config.getConfigParameter<std::string>(
+            "micro_ceiling_trace_elements",
+            micro_ceiling_trace_elements_default));
+    if (micro_ceiling_treatment == MicroCeilingTreatment::Kkt)
+    {
+        // 2.2 item 1
+        if (local_nonlinear_solve_mode !=
+            LocalNonlinearSolveMode::ScalarReferenceMassStorage)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_treatment = kkt requires "
+                "local_nonlinear_solve_mode = "
+                "scalar_micro_macro_mass_storage_mode.",
+                context);
+        }
+        // 2.2 item 2
+        if (ceiling_micro_storage_exchange ||
+            ceiling_micro_storage_includes_strain)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_treatment = kkt is "
+                "exclusive with ceiling_micro_storage_exchange and with "
+                "ceiling_micro_storage_includes_strain (the latter requires "
+                "the former): variant B books its own rate; in the KKT form "
+                "the booking follows from the micro residual (DERIVATION.md "
+                "2.4).",
+                context);
+        }
+        // 2.2 item 4: the strained-film modes change mu_{lR,n} and mu_{lR,eps}
+        // through w_eff(eps_v) and are not derived (DERIVATION.md 1.8).
+        if (film_strain_coupling != FilmStrainCouplingMode::Off)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_treatment = kkt requires "
+                "film_strain_coupling = off (got '{}'): the strained-film "
+                "modes change mu_lR,n and mu_lR,eps through w_eff(eps_v) and "
+                "are not derived for the KKT local problem (DERIVATION.md "
+                "1.8).",
+                context, toString(film_strain_coupling));
+        }
+        // Model IV tangent term (DESIGN_FIXES.md A.6): the derivative of the
+        // swelling eigenstress on the active branch is derived for the reference
+        // micro solid fraction (dn_S/dn_l = 0 in the vdW law and in n_S), with
+        // the strained-film modes off (already required above).
+        if (micro_ceiling_sw_tangent != MicroCeilingSwTangent::Overwritten &&
+            micro_solid_volume_fraction_mode !=
+                MicroSolidVolumeFractionMode::Reference)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_sw_tangent = {} requires "
+                "micro_solid_volume_fraction_mode = reference (got '{}'): "
+                "with a live n_S the vdW law and n_S add chains that are not "
+                "derived for the active-branch swelling tangent.",
+                context, toString(micro_ceiling_sw_tangent),
+                toString(micro_solid_volume_fraction_mode));
+        }
+        if (micro_ceiling_scan_nodes_per_decade < 2)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_scan_nodes_per_decade "
+                "must be >= 2, got {}.",
+                context, micro_ceiling_scan_nodes_per_decade);
+        }
+        if (micro_ceiling_saturation_gate != MicroCeilingSaturationGate::Off)
+        {
+            INFO(
+                "KKT VII gate label: micro_ceiling_saturation_gate = {} "
+                "(weight-1 reading, ruled by Vinay 2026-10-01: at a latched "
+                "KKT-active point p_L keeps the full Bishop weight chi = "
+                "chi_deck(S = 1){}). Latch L = Active AND (L_old OR "
+                "chi_deck(S_L) == 1), saved with the other history. S_L, the "
+                "retention, storage, exchange, the Biot term and the output "
+                "saturation are unchanged. NOT adopted.",
+                toString(micro_ceiling_saturation_gate),
+                micro_ceiling_saturation_gate ==
+                        MicroCeilingSaturationGate::BishopRelperm
+                    ? ", and k_rel = k_rel(S = 1)"
+                    : " (PROBE: k_rel not gated)");
+            // Restart persistence. The process is created before the output
+            // section is parsed and cannot see its variable list, so this
+            // cannot be a check; it is a notice that stays visible in every
+            // log with the gate on. The restart read itself is checked when the
+            // integration-point data are set (RichardsMechanicsProcess.cpp).
+            WARN(
+                "micro_ceiling_saturation_gate = {}: the latch is saved only if "
+                "the integration-point field micro_saturated_latch_ip is "
+                "written, i.e. if it is listed among the output variables "
+                "whenever <output> lists variables explicitly (an empty list "
+                "writes all arrays). A restart from a file without it starts "
+                "with no latch (gate not acting until chi_deck(S_L) = 1 "
+                "re-latches a point; points that are unsaturated at the "
+                "restart stay ungated).",
+                toString(micro_ceiling_saturation_gate));
+        }
+        // Drop T_m guards (DESIGN_V4.md 2.2.5). The explicit-coupling guard is
+        // in createRichardsMechanicsProcess (that switch is parsed there).
+        if (macro_balance_drops_micro_biot_term)
+        {
+            if (!micro_mass_strain_term_eulerian)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires micro_mass_strain_term_eulerian = true "
+                    "(F3 on): definition L of the micro book is the s = -1 "
+                    "balance (DESIGN_V4.md 2.2.5).",
+                    context);
+            }
+            if (!macro_storage_uses_macro_porosity)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires macro_storage_uses_macro_porosity = true "
+                    "(Q2): the drop extends Q2; without it a_S still counts "
+                    "the micro pores (DESIGN_V4.md 2.2.5).",
+                    context);
+            }
+            if (micro_solid_volume_fraction_mode !=
+                MicroSolidVolumeFractionMode::Reference)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires micro_solid_volume_fraction_mode = "
+                    "reference (got '{}'): the interior dn_l/deps_v tangent "
+                    "is derived with a frozen n_S (DESIGN_V4.md 2.2.5).",
+                    context, toString(micro_solid_volume_fraction_mode));
+            }
+            if (use_fd_jacobian_for_exchange)
+            {
+                // Added in the IMPLEMENT stage (not in DESIGN_V4.md): the
+                // interior dn_l/dp_L and dn_l/deps_v of the drop's tangent are
+                // evaluated in the analytic exchange-Jacobian block, which
+                // this switch skips.
+                OGS_FATAL(
+                    "RichardsMechanics: {} macro_balance_drops_micro_biot_term "
+                    "= true requires use_fd_jacobian_for_exchange = false.",
+                    context);
+            }
+            INFO(
+                "KKT v4 label: macro_balance_drops_micro_biot_term = true "
+                "(ruling 2026-10-02, '(go with L + drop T_m)'): T_m = S_L "
+                "rho_LR [(phi_m - phi_m,prev) + phi_m Delta eps_v]/dt is "
+                "subtracted from the macro mass balance at every integration "
+                "point; the Biot term Kpu itself is unchanged. NOT adopted.");
+        }
+        if (micro_ceiling_closed_macro_gate != MicroCeilingClosedMacroGate::Off)
+        {
+            INFO(
+                "KKT v4 label: micro_ceiling_closed_macro_gate = {} (1b, "
+                "ruling 2026-10-02: closed macro pores read as gas-free for "
+                "k_rel): k_rel = k_rel(S = 1), dk_rel/dS = 0 where the "
+                "previous step was KKT-active with phi_M == 0 and the iterate "
+                "is Active; {}. Independent of micro_ceiling_saturation_gate. "
+                "NOT adopted.",
+                toString(micro_ceiling_closed_macro_gate),
+                micro_ceiling_closed_macro_gate ==
+                        MicroCeilingClosedMacroGate::Relperm
+                    ? "chi not gated at relperm"
+                    : "BUILT, NOT RUN level: chi = chi_deck(S = 1) too");
+            if (micro_ceiling_closed_macro_gate ==
+                MicroCeilingClosedMacroGate::BishopRelperm)
+            {
+                WARN(
+                    "micro_ceiling_closed_macro_gate = bishop_relperm: the "
+                    "chi_prev rule reads the integration-point field "
+                    "micro_closed_macro_gate_ip of the previous step; a "
+                    "restart keeps it only if micro_closed_macro_gate_ip is "
+                    "written (listed among the output variables whenever "
+                    "<output> lists variables explicitly).");
+            }
+        }
+        // 2.2 item 5: label line (style of the variant label above).
+        INFO(
+            "MASSFIX V3 label: micro_ceiling_treatment = kkt, F3 sign s = {} "
+            "(micro_mass_strain_term_eulerian = {}), "
+            "micro_ceiling_pu_tangent = {}, micro_ceiling_sw_tangent = {}, "
+            "micro_ceiling_scan_nodes_per_decade = {}, "
+            "macro_storage_uses_macro_porosity = {}, "
+            "micro_ceiling_fd_check = {}, trace elements = {}. "
+            "T_m (micro part of the Biot term): {}; "
+            "multiplier hydraulic only (option A). "
+            "micro_exchange_source = rhohat_pot (NOT the booked sink of "
+            "V1/V2); micro_exchange_received = what the macro sink uses. "
+            "assemble() (Picard) reads the state of the last Newton-type "
+            "evaluation and is not claimed consistent. NOT adopted.",
+            micro_mass_strain_term_eulerian ? "-1" : "+1",
+            micro_mass_strain_term_eulerian, toString(micro_ceiling_pu_tangent),
+            toString(micro_ceiling_sw_tangent),
+            micro_ceiling_scan_nodes_per_decade,
+            macro_storage_uses_macro_porosity, micro_ceiling_fd_check,
+            micro_ceiling_trace_elements.size(),
+            macro_balance_drops_micro_biot_term
+                ? "dropped from the macro balance "
+                  "(macro_balance_drops_micro_biot_term = true, ruling "
+                  "2026-10-02)"
+                : "kept in the macro balance "
+                  "(macro_balance_drops_micro_biot_term = false; the ruling "
+                  "of 2026-10-02 drops it)");
+    }
+    else
+    {
+        // 2.2 item 3: the other tags require kkt.
+        if (micro_ceiling_pu_tangent != MicroCeilingPuTangent::Overwritten ||
+            micro_ceiling_sw_tangent != MicroCeilingSwTangent::Overwritten ||
+            micro_ceiling_fd_check ||
+            !micro_ceiling_trace_elements.empty() ||
+            micro_ceiling_saturation_gate != MicroCeilingSaturationGate::Off ||
+            macro_balance_drops_micro_biot_term ||
+            micro_ceiling_closed_macro_gate !=
+                MicroCeilingClosedMacroGate::Off ||
+            (micro_ceiling_scan_nodes_per_decade != 8 &&
+             !(defaults &&
+               defaults->micro_ceiling_scan_nodes_per_decade ==
+                   micro_ceiling_scan_nodes_per_decade)))
+        {
+            OGS_FATAL(
+                "RichardsMechanics: {} micro_ceiling_pu_tangent and "
+                "micro_ceiling_sw_tangent (other than "
+                "overwritten), micro_ceiling_fd_check, "
+                "micro_ceiling_saturation_gate (other than off), "
+                "macro_balance_drops_micro_biot_term (true), "
+                "micro_ceiling_closed_macro_gate (other than off), "
+                "micro_ceiling_scan_nodes_per_decade and "
+                "micro_ceiling_trace_elements require "
+                "micro_ceiling_treatment = kkt.",
+                context);
+        }
+    }
+
     // Macro-porosity floor phi_M,min: keeps the macro pore from collapsing into
     // the interlayer (n_l capped at (phi-floor)/(1-floor)); 0 -> no floor.
     // MANDATORY (Vinay 2026-06-17): like micro_water_content_floor, the top-level
@@ -816,7 +1502,25 @@ PotentialExchangeParameters parsePotentialExchangeParameters(
         film_energy_route,
         potential_augmentation_prefactor_vs_dry_density,
         dry_density,
-        potential_augmentation_prefactor_live_dry_density};
+        potential_augmentation_prefactor_live_dry_density,
+        ceiling_micro_storage_exchange,
+        macro_storage_uses_macro_porosity,
+        micro_mass_strain_term_eulerian,
+        ceiling_micro_storage_includes_strain,
+        micro_ceiling_treatment,
+        micro_ceiling_pu_tangent,
+        micro_ceiling_fd_check,
+        micro_ceiling_scan_nodes_per_decade,
+        micro_ceiling_trace_elements,
+        micro_ceiling_sw_tangent,
+        micro_ceiling_saturation_gate,
+        macro_balance_drops_micro_biot_term,
+        darcy_relative_permeability_mobility,
+        micro_ceiling_closed_macro_gate,
+        darcy_kirchhoff_cells_per_decade,
+        macro_storage_exact_time_levels,
+        swelling_stress_K_level,
+        swelling_stress_form};
 }
 
 template <int DisplacementDim>
@@ -996,6 +1700,158 @@ std::unique_ptr<Process> createRichardsMechanicsProcess(
         config.getConfigParameter<bool>(
             "explicit_hm_coupling_in_unsaturated_zone", false);
 
+    // Latched saturation gate: not combinable with the explicit HM coupling
+    // (review of part B, INTEGRATE step). That branch builds the p-u coupling
+    // from chi_S_L_prev of the previous-state Bishop data and drops the dS_L/dp
+    // Jacobian entry; the gate rewrites chi, chi_prev, dchi/dS and k_rel at
+    // latched points and was designed and tested without it.
+    {
+        auto const gate_on = [](PotentialExchangeParameters const& pep)
+        {
+            return pep.micro_ceiling_saturation_gate !=
+                   MicroCeilingSaturationGate::Off;
+        };
+        bool any_gate = potential_exchange_parameters &&
+                        gate_on(*potential_exchange_parameters);
+        for (auto const& [material_id, pep] :
+             potential_exchange_parameters_by_material)
+        {
+            any_gate = any_gate || gate_on(pep);
+        }
+        if (any_gate && explicit_hm_coupling_in_unsaturated_zone)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: micro_ceiling_saturation_gate other than "
+                "off is not combinable with "
+                "explicit_hm_coupling_in_unsaturated_zone = true (that "
+                "branch reads chi_S_L_prev of the previous-state Bishop data "
+                "and omits the dS_L/dp_cap coupling entry; the gate was "
+                "neither derived nor tested with it).");
+        }
+    }
+
+    // v4 switches (DESIGN_V4.md 2.2.5, 2.4.6): the drop and 1b are refused
+    // with the explicit HM coupling (Kpu then uses chi_prev, not S_L, so T_m
+    // is not its micro part; the 1b chi level mirrors Fix B's guard above).
+    // 1a: one Kirchhoff table per medium whose effective potential_exchange
+    // block has kirchhoff_element_mean, built once here (DESIGN_V4.md 2.3.2).
+    std::map<MaterialPropertyLib::Medium const*,
+             std::shared_ptr<KirchhoffMobilityTable const>>
+        kirchhoff_tables;
+    {
+        auto const effective_pep =
+            [&](int const material_id) -> PotentialExchangeParameters const*
+        {
+            if (auto const it =
+                    potential_exchange_parameters_by_material.find(material_id);
+                it != potential_exchange_parameters_by_material.end())
+            {
+                return &it->second;
+            }
+            return potential_exchange_parameters ? &*potential_exchange_parameters
+                                                 : nullptr;
+        };
+        bool any_drop_or_1b =
+            potential_exchange_parameters &&
+            (potential_exchange_parameters->macro_balance_drops_micro_biot_term ||
+             potential_exchange_parameters->micro_ceiling_closed_macro_gate !=
+                 MicroCeilingClosedMacroGate::Off);
+        for (auto const& [material_id, pep] :
+             potential_exchange_parameters_by_material)
+        {
+            any_drop_or_1b =
+                any_drop_or_1b || pep.macro_balance_drops_micro_biot_term ||
+                pep.micro_ceiling_closed_macro_gate !=
+                    MicroCeilingClosedMacroGate::Off;
+        }
+        if (any_drop_or_1b && explicit_hm_coupling_in_unsaturated_zone)
+        {
+            OGS_FATAL(
+                "RichardsMechanics: macro_balance_drops_micro_biot_term = true "
+                "and micro_ceiling_closed_macro_gate other than off are not "
+                "combinable with explicit_hm_coupling_in_unsaturated_zone = "
+                "true (the Biot term then uses chi_S_L_prev, so T_m is not "
+                "its micro part; DESIGN_V4.md 2.2.5).");
+        }
+        for (auto const& [material_id, medium] : media)
+        {
+            auto const* const pep = effective_pep(material_id);
+            if (!isKirchhoffElementMeanMobility(pep))
+            {
+                continue;
+            }
+            auto const& saturation =
+                medium->property(MaterialPropertyLib::PropertyType::saturation);
+            auto const& relperm = medium->property(
+                MaterialPropertyLib::PropertyType::relative_permeability);
+            if (dynamic_cast<MaterialPropertyLib::SaturationTuller const*>(
+                    &saturation) == nullptr ||
+                dynamic_cast<MaterialPropertyLib::RelPermGeneralizedPower const*>(
+                    &relperm) == nullptr)
+            {
+                OGS_FATAL(
+                    "RichardsMechanics: darcy_relative_permeability_mobility = "
+                    "kirchhoff_element_mean requires the medium of material id "
+                    "{} to have saturation = SaturationTuller and "
+                    "relative_permeability = RelativePermeabilityGeneralizedPower "
+                    "(the pair whose values read p_c and S_L only and have "
+                    "exactly constant branches; DESIGN_V4.md 2.3.2 item 1).",
+                    material_id);
+            }
+            // Both properties read only capillary_pressure resp.
+            // liquid_saturation (SaturationTuller.cpp value(),
+            // RelPermGeneralizedPower.cpp value()); position and time are
+            // unused, so a default position and t = dt = 0 are exact here.
+            ParameterLib::SpatialPosition const pos;
+            auto const k_of_pc = [&](double const p_c)
+            {
+                MaterialPropertyLib::VariableArray v;
+                v.capillary_pressure = p_c;
+                v.liquid_saturation =
+                    saturation.template value<double>(v, pos, 0.0, 0.0);
+                return relperm.template value<double>(v, pos, 0.0, 0.0);
+            };
+            auto table = std::make_shared<KirchhoffMobilityTable const>(
+                KirchhoffMobilityTable::build(
+                    k_of_pc, pep->darcy_kirchhoff_cells_per_decade));
+            // Creation log (DESIGN_V4.md 2.3.2 item 5): the largest relative
+            // deviation of the cumulative table integral at the nodes from a
+            // cell-wise Simpson integral of the deck law (a measurement of the
+            // table, not a check with a threshold).
+            double max_rel_dev_simpson = 0.0;
+            {
+                auto const& g = table->nodes();
+                auto const& kv = table->nodeValues();
+                double q_table = 0.0;
+                double q_simpson = 0.0;
+                for (std::size_t j = 0; j + 1 < g.size(); ++j)
+                {
+                    double const h = g[j + 1] - g[j];
+                    q_table += 0.5 * (kv[j] + kv[j + 1]) * h;
+                    q_simpson += h / 6.0 *
+                                 (kv[j] + 4.0 * k_of_pc(0.5 * (g[j] + g[j + 1])) +
+                                  kv[j + 1]);
+                    max_rel_dev_simpson =
+                        std::max(max_rel_dev_simpson,
+                                 std::abs(q_table - q_simpson) / q_simpson);
+                }
+            }
+            INFO(
+                "KKT v4 label (1a): darcy_relative_permeability_mobility = "
+                "kirchhoff_element_mean, material id {}: Kirchhoff table p_sat "
+                "= {:.12g} Pa (k_sat = {:.17g}), p_k = {:.12g} Pa (k_flat = "
+                "{:.17g}), {} cells ({} per decade, a numerical choice), max "
+                "relative deviation of the table integral from a cell-wise "
+                "Simpson integral of the deck law at the nodes {:.3e}. "
+                "relative_permeability output = the element mobility. NOT "
+                "adopted.",
+                material_id, table->pSat(), table->kSat(), table->pK(),
+                table->kFlat(), table->numberOfCells(),
+                pep->darcy_kirchhoff_cells_per_decade, max_rel_dev_simpson);
+            kirchhoff_tables.emplace(medium.get(), std::move(table));
+        }
+    }
+
     auto const is_linear =
         //! \ogs_file_param{prj__processes__process__linear}
         config.getConfigParameter("linear", false);
@@ -1015,6 +1871,7 @@ std::unique_ptr<Process> createRichardsMechanicsProcess(
         mass_lumping,
         explicit_hm_coupling_in_unsaturated_zone,
         use_numerical_jacobian};
+    process_data.kirchhoff_tables = std::move(kirchhoff_tables);
 
     SecondaryVariableCollection secondary_variables;
 

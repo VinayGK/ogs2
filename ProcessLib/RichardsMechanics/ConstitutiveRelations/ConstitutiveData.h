@@ -8,6 +8,7 @@
 #include "LiquidDensity.h"
 #include "MicroPressure.h"
 #include "MicroSaturation.h"
+#include "MicroCeiling.h"
 #include "MicroLiquidDensity.h"
 #include "MicroPorosity.h"
 #include "MicroWaterContent.h"
@@ -41,7 +42,40 @@ using StatefulData = std::tuple<
     ProcessLib::ThermoRichardsMechanics::PorosityData,
     ProcessLib::ThermoRichardsMechanics::TransportPorosityData, MicroPressure,
     MicroSaturation, MicroWaterContent, MicroLiquidDensity, MicroPorosity,
-    MicroExchangeSource>;
+    MicroExchangeSource,
+    // KKT micro-water ceiling (branch dsm_mass_conservation_v3_kkt_ceiling_
+    // 2026-09-30, DESIGN.md 3.3): twelve output / diagnostic fields, written
+    // only with micro_ceiling_treatment = kkt.
+    MicroCeilingStatus, MicroCeilingMultiplier, MicroExchangeReceived,
+    MicroCeilingRejectedExchange, MicroCeilingFlips, MicroCeilingNonMonotone,
+    MicroCeilingPremise, MicroCeilingEpsSeen, MicroCeilingIncLast,
+    MicroCeilingAttemptT, MicroCeilingIncAlt, MicroCeilingIncSame,
+    // latched saturation gate (kkt_vii_gate branch, design part B.4). With
+    // micro_ceiling_saturation_gate != off, at a latched KKT-active point the
+    // data written from this point carry the GATED values, not the deck's
+    // function of S_L: BishopsData::chi_S_L (and its previous-state copy,
+    // dchi_dS_L = 0) is chi_deck(S = 1), and with bishop_relperm the output
+    // PermeabilityData::k_rel (secondary variable relative_permeability) is
+    // k_rel(S = 1). S_L (SaturationData) is NOT gated. See DSM/AGENTS.md.
+    MicroSaturatedLatch,
+    // 1b closed-macro gate marker (v4 branch, DESIGN_V4.md 2.1), appended
+    // last. With micro_ceiling_closed_macro_gate != off, PermeabilityData::
+    // k_rel is k_rel(S = 1) where it is 1 (and, at bishop_relperm, chi too).
+    MicroClosedMacroGateActed,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): the level the last
+    // evaluation of the level form used; 0 with the default step form.
+    SwellingLevelUsed,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): 1 + eps_v of the last
+    // evaluation of the level form (0 = unset); elastic predictor of the lagged
+    // mean effective stress.
+    SwellingLagVolRatio,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): mean swelling stress of
+    // the last evaluation of the level form [Pa]; valid where
+    // SwellingLagVolRatio != 0.
+    SwellingLagStress,
+    // DIAGNOSTIC swelling-stress fix (b) (2026-10-04): mean effective stress
+    // assumed by the level of the last evaluation [Pa] (0 = unset).
+    SwellingLevelAssumedStress>;
 
 template <int DisplacementDim>
 using StatefulDataPrev = ProcessLib::ConstitutiveRelations::PrevStateOf<

@@ -3876,3 +3876,124 @@ Implements Vinay's ruling of 2026-09-30 (~22:00 CEST, "elevate the consistent IC
 - NOT verified: the new references were not run through ctest (mini has none; the fx binaries were built with OGS_BUILD_TESTING=OFF). The vtkdiff
   replay with the decks' own tolerances passes 11/11 for each new reference against its source output. ctest on the MBP is OPEN.
 - NOT tested: the floor-0.0 K_fix 900 knot on the Model IV concentric mesh with the fixed binary (IV keeps the gen-4 point per Vinay 2026-09-13).
+## 2026-09-30 — DIAGNOSTIC branch diag/mass_ceiling_AB_2026-09-30: mass-strip A/B switches (NOT adopted)
+
+Requested by Vinay (R-03, 2026-09-30: "disclose and run the test in parallel"); test text: `mass_audit` README l.52-57
+(`~/ogs-models/scratch/2026-09-25_0926_mass_audit_successful/README.md`, findings F1/F2). Branch cut at bed3e395da (the
+binary of the submitted campaign); nothing merged, no deck of the campaign changed. Record and results:
+`~/ogs-models/scratch/2026-09-30_mass_strip_AB/` (README.md, RESULTS.md).
+
+Two PRJ switches in `<potential_exchange>`, both default false, in which case the assembly is meant to be bit-identical to
+bed3e395 (variant A; this is a CONTROL in the record, MEASURED there, not claimed here):
+- `ceiling_micro_storage_exchange` (variant B). At IPs with n_l on the micro ceiling (n_l = phi, tolerance 1e3 machine eps,
+  `microWaterContentIsAtCeiling`), the micro state update stores in `MicroExchangeSource` the ACTUAL micro storage rate
+  (phi_m*rho_lR - phi_m_prev*rho_lR_prev)/dt, and the macro pressure residual reads it (sign flipped) instead of
+  alpha_M(mu_LR - mu_lR), in both directions. Jacobian at clamped IPs: p-p through rho_LR(p_L) (zero for a constant-density
+  deck), p-u through dphi/deps_v of PorosityFromMassBalance (clamp -> 0); the mu_lR-driven p-u film tangent is skipped there.
+  Requires `scalar_micro_macro_mass_storage_mode`; beta_SR != 0 is refused (dphi/dp_eff chain not implemented).
+  Consequence for output: in B runs the VTU field `micro_exchange_source` is the BOOKED sink at clamped IPs.
+- `macro_storage_uses_macro_porosity` (with B: variant B'). phi_M replaces the total porosity phi in the pore-fluid
+  storage coefficients a_p and a_S of the macro water storage (assemble and assembleWithJacobian); a0 (alpha - phi) and the
+  Kpu coupling are unchanged; dphi_M/dt*S_L*rho_LR is not added.
+The micro state update itself is untouched (F3, the +dt*rho_l*eps_dot sign, is not addressed). Whether either switch is
+physically right is Vinay's call; what they change is MEASURED only in the record above.
+
+## 2026-09-30 — branch massfix/V2-bprime-strain-2026-09-30: strain term in the booked rate + F3 sign (NOT adopted, flagged for Vinay's ruling)
+
+Requested by Vinay (2026-09-30 ~11:00: "macro storage is only macropores, yes" (Q2); "do both on mini and shilpa's mbp. in two
+different trees. and see what is quicker" (Q1)). Tree V2 = IC fix 686fcd6ef8 (branch fix/dsm_initial_micro_state_2026-09-30) + the B'
+diagnostic e103a8906e (cherry-picked, no conflict) + two further PRJ switches in `<potential_exchange>`, both default false
+(then the assembly is meant to be bit-identical to the tree without them; the V1 tree, massfix/V1-bprime-2026-09-30, is exactly IC fix + B'):
+- `micro_mass_strain_term_eulerian` (F3). The micro mass residual of `scalar_micro_macro_mass_storage_mode` carries `- dt*rho_l*eps_dot`;
+  the Eulerian micro balance per current bulk volume, d(rho_l)/dt + rho_l*eps_dot = rho_hat, gives `+ dt*rho_l*eps_dot`. The switch
+  selects the sign `s` (`microMassStrainTermSign`, residual `- s*dt*rho_l*eps_dot`, tangents `1 - s*dt*eps_dot`) in the predictor
+  and the coupled 2x2 solve (residual, `J11`, `J12`), in `computeImplicitNlDpL` / `computeImplicitNlDK` (tangent-only) and in the
+  unreachable mass-storage branch of `solveImplicitMicroWaterContent`. It acts wherever eps_dot != 0, also before the maximum.
+  The n_l-normalised scalar modes are untouched.
+- `ceiling_micro_storage_includes_strain` (Q1). At the points booked by `ceiling_micro_storage_exchange` the booked rate is
+  `(rho_l - rho_l_prev)/dt + rho_l*(eps_v - eps_v_prev)/dt` instead of the bare storage rate; p-p and p-u tangents of the booked
+  rate extended accordingly (p-u is overwritten after the IP loop, `= Kpu / dt`, as before). Requires `ceiling_micro_storage_exchange`;
+  both switches require the mass-storage mode (OGS_FATAL otherwise).
+Derivation, premises and what else changes: `~/ogs-models/scratch/2026-09-30_massfix_V2/DERIVATION.md`. FORMULATION CHANGE: whether it is
+physically right, and whether K_fix survives it, is Vinay's call; what it changes is to be MEASURED only in the record folders
+(`2026-09-30_massfix_V1/`, `2026-09-30_massfix_V2/`), none claimed here.
+
+## 2026-09-30 (later) — code review of the mass-fix trees: what the variants are, and what they are not (NOT adopted)
+
+Review finding (must_fix 1), recorded here so the source states it: the Biot volume-change storage Kpu = S_L*rho_LR*alpha*div(u_dot)
+(`assembleWithJacobianForPressureEquations`, both trees) counts the whole pore space. With alpha = 1 and beta_SR = 0 the porosity law
+PorosityFromMassBalance, phi = (phi_prev + dEps)/(1 + dEps), gives alpha*dEps = dphi + phi*dEps, and phi = phi_M + phi_m, so Kpu contains the
+micro part S_L*rho_LR*(dphi_m + phi_m*dEps)/dt (READ + DERIVED, not yet MEASURED on a deforming deck). `macro_storage_uses_macro_porosity` moves only
+a_p and a_S to phi_M. The variant is therefore 'phi_M in a_p/a_S only', not 'macro storage is only macropores' for the volume-change
+part. Nothing was changed in the physics: removing the micro part from Kpu (option (a) of the review: subtract
+S_L*rho_LR*[(phi_m - phi_m_prev) + phi_m*dEps_v]/dt from the macro residual, with its p-p tangent) is a formulation decision and waits for
+Vinay's ruling. This commit adds only (i) a comment at the Kpu site, (ii) a one-line variant label printed to the log at parse time
+when any switch is on, (iii) this note. Switches off: no log line, numerics untouched.
+
+## 2026-09-30 (night) - branch dsm_mass_conservation_v3_kkt_ceiling_2026-09-30: KKT treatment of the micro-water ceiling (NOT adopted, switchable)
+
+Implement the KKT / active-set treatment of the micro-water ceiling as specified by Vinay (2026-09-30 ~21:40 and 21:45, "derivation, report,
+beamer, design docs, implementation, weak forms, unit tests and then the ms33 suite"). Parent: `dsm_mass_conservation_v2_strain_term_2026-09-30`
+(9cd3d00a4d). New PRJ tags inside `<potential_exchange>`, all default to the shipped behaviour (bitwise): `micro_ceiling_treatment` (`clamp` | `kkt`),
+`micro_ceiling_pu_tangent` (`overwritten` | `kkt_active` | `all_exchange`, Q9), `micro_ceiling_fd_check`, `micro_ceiling_scan_nodes_per_decade`,
+`micro_ceiling_trace_elements`. What the code does, the file map and the deviations from the design: `MICRO_CEILING_KKT_IMPLEMENTATION.md` in this directory.
+Derivation, weak forms, design and test plan: `~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/` (DERIVATION.md, WEAK_FORMS.md, DESIGN.md, THEORY_FIXES.md).
+Open rulings NOT decided by this change (Vinay's calls): T_m (the micro part of the Biot term stays as in the base code), the F3 sign (both configurations are
+selectable through `micro_mass_strain_term_eulerian`), which water balance (E or L), Q9 (which `micro_ceiling_pu_tangent` level), `N_dec`, whether lambda should also act
+on the skeleton (option B). Consequences of the change on any deck are PREDICTED until a run measures them; `micro_exchange_source` means `rhohat_pot` in KKT runs
+(the booked sink of V1/V2 is a different quantity), the books must read `micro_exchange_received`.
+
+### 2026-10-01 - KKT ceiling: C5 (value-evaluation fix) and C6 (unit tests), same branch, NOT adopted
+
+C5: the KKT local solver now evaluates the VALUE of mu_lR with the nS chain frozen (`dnS_dnl = 0`) exactly as the base residual does; the live-nS chain feeds only the 2x2 tangent entries
+(unit test finding: the integrable Maxwell partner carries `Pi' = -rho_lR*dmu_lR_dnl`, so the chain does change the value). No effect with `micro_ceiling_treatment = clamp`.
+C6: five unit tests, `Tests/ProcessLib/RichardsMechanics/MicroCeilingKkt.cpp` (supplements; no existing test edited). Implemented as specified by Vinay (2026-09-30 21:45, "unit tests and then the ms33 suite").
+Details: `MICRO_CEILING_KKT_IMPLEMENTATION.md` (sections C5, C6) and `~/ogs-models/scratch/2026-09-30_kkt_ceiling_impl/TESTS.md`.
+
+### 2026-10-01 (afternoon) - KKT ceiling: A1 to A3, the strain derivative of the swelling eigenstress on the KKT-active branch (Model IV tangent term), same branch, NOT adopted
+
+Requested by Vinay (2026-10-01 ~13:30: "add the missing tangent term for Model IV"). New optional tag `micro_ceiling_sw_tangent` (`overwritten` default | `kkt_active`) in `<potential_exchange>`; only with `micro_ceiling_treatment = kkt` and `micro_solid_volume_fraction_mode = reference`. Design, derivation and the three defects: `~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/DESIGN_FIXES.md` part A; run record: `.../IMPLEMENT_A.md`; code description: `MICRO_CEILING_KKT_IMPLEMENTATION.md` section A1 to A3.
+What changed (tangent only, the residual is untouched): at a KKT-active IP the K_uu swelling block now carries d(delta_sigma_sw)/d eps_v = [dK-chain + ds/dn + (ds/drho) drho/dn] dphi/d eps_v. The implicit n_l channel was missing (the L3 chain is off at active points), the existing live-K chain read `variables_prev.porosity` (overwritten by the KKT micro update, = phi at a compacting IP, so dphi/d eps_v came out 0; the same defect as F-1), and the partial that the code already computes in that block is the film-OFF one (bare Pi) while the residual is film-ON (p_film = Pi - b p_conf).
+Switch absent or `overwritten`: bitwise identical to C8 (Model I dd1600, Reference, Model IV up to 27.8 d: every array of every frame, max abs diff 0). Switch on: the converged states agree only up to the discretisation of a changed dt history, not bitwise.
+MEASURED (record folder, details there): unit test UT-A (32 cases, central differences of the real residual function) passes; in-assembler FD check on Model IV, steps 472 to 474: true/assembled K_uu at the Active pellet cell 1.68 to 1.70 -> 1.0000 (relative deviation 0.41 -> 6e-11), over all Active elements 1.2e-2 -> 1.7e-11 (median); Newton at step 473: 24 iterations with a constant factor 0.71 -> 6 iterations (first ratios 0.027, 0.027, 0.082, 0.013); the former stall at 29.4 d is passed (dt grows to 8.6e4 s, 4 to 6 iterations per step), the deck then fails at 50.2 d with a different signature (constant |dx|_p = 198.1 Pa, displacements converged): not diagnosed here.
+Not covered: the residual's p_conf is the previous iterate's, the Jacobian's is the current one (a lag channel no tangent of this kind removes; the FD check does not see it).
+
+### 2026-10-01 (afternoon) - latched saturation gate (written on branch dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01 from C8 37aea6543d, cherry-picked here, see the INTEGRATE entry): latched saturation gate for Model VII (NOT adopted, switchable)
+
+Implement part B.4 of `~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/DESIGN_FIXES.md` as specified by Vinay. His ruling (chat 2026-10-01 ~15:15 CEST, "yes to both, keep full weight and k_rel = 1",
+decision ledger `~/ogs-models/scratch/2026-09-30_decision_ledger/DECISION_LEDGER.md`, last entry): at a latched KKT-active point (phi_M = 0, gas-free) the macro pore pressure p_L keeps the full
+Bishop weight (chi = 1, B.4a) and k_rel = 1 (B.4b), i.e. the latched gate at level `bishop_relperm`; `bishop` stays only a labelled probe. Results obtained with the gate are labelled
+"weight-1 reading (ruled)". New PRJ tag in `<potential_exchange>` (legal only with `micro_ceiling_treatment = kkt`): `micro_ceiling_saturation_gate` = `off` (default, bitwise the C8 code) |
+`bishop_relperm` | `bishop`. New stateful per-integration-point field `micro_saturated_latch` (`MicroSaturatedLatch`; output name `micro_saturated_latch_ip`), saved and restored with the
+other history through the previous-state copy of every accepted step.
+Rule: L_new = (status == Active) AND (L_old OR chi_deck(S_L) == 1), the trigger being the exact comparison with the deck's own Bishop factor (BishopsSaturationCutoff returns exactly 0 or 1;
+no tolerance literal). In an iterate with L_old = true and status Active: chi = chi_deck(S = 1), chi_prev = chi_deck(S = 1), dchi/dS = 0, p_FR follows, and (bishop_relperm) k_rel = k_rel(S = 1) with
+dk_rel/dS = 0 in the p-p entries. The same block runs in the output re-evaluation. NOT changed: S_L, the Tuller retention, storage, exchange, the Biot term T_m, the output saturation, the mass books.
+`assemble()` (Picard) is not gated. Release: a latched point that leaves Active in an iterate falls back to the deck rules (jump of the same kind as the existing active-set switch); the latch is
+cleared at the end of a converged step in which the point is not Active. Open (design B.6 (b), (e)): the release and a possible next carrier, the Biot weight S_L at large suction; not tested by this change.
+Tests: `Tests/ProcessLib/RichardsMechanics/SaturationGate.cpp` (supplement). Record: `~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/IMPLEMENT_B.md`.
+Merge note: the aggregate initialiser of `PotentialExchangeParameters` takes the new member LAST (after `micro_ceiling_trace_elements`); the Model IV tangent branch (part A, commits A1 to A3 on
+`dsm_mass_conservation_v3_kkt_ceiling_2026-09-30`) also adds a member, a parser line and an initialiser entry, and edits `RichardsMechanicsFEM-impl.h` (K_uu block), so the two branches conflict
+textually in `PotentialExchangeParameters.h` and `CreateRichardsMechanicsProcess.cpp` (hand merge: both members, initialiser order) and are expected to merge cleanly elsewhere (not tried).
+
+### 2026-10-01 (evening) - INTEGRATE: part A (Model IV tangent) and part B (latched saturation gate) on one branch, review guards of part B, NOT adopted
+
+Part B (commits B1 to B3 of `dsm_mass_conservation_v3_kkt_vii_gate_2026-10-01`) was cherry-picked onto the part-A tip of `dsm_mass_conservation_v3_kkt_ceiling_2026-09-30`; conflicts only in `PotentialExchangeParameters.h` and `CreateRichardsMechanicsProcess.cpp` (both switches kept, initialiser order `..., micro_ceiling_trace_elements, micro_ceiling_sw_tangent, micro_ceiling_saturation_gate`) and in this file (both entries kept). `RichardsMechanicsFEM-impl.h` merged textually without conflict. The two switches are independent: `micro_ceiling_sw_tangent` changes the K_uu swelling block only, the gate changes chi, chi_prev, dchi/dS, p_FR and (bishop_relperm) k_rel at latched points.
+Guards added after the review of part B (one commit): (1) OGS_FATAL at parse when `micro_ceiling_saturation_gate != off` together with `explicit_hm_coupling_in_unsaturated_zone = true`; (2) OGS_FATAL in `assemble()` (Picard path; the nonlinear solver type is not visible at parse time) when the gate is on; (3) a WARN at parse (the process is created before `<output>` is parsed and cannot see its variable list) that the latch is saved only if `micro_saturated_latch_ip` is written, and a WARN when an input mesh carries integration-point data but no `micro_saturated_latch_ip` (restart without latch; WARN not FATAL because a restart from a gate-off run is a legitimate start); (4) the comment at the gate block now states the evaluation order (the porosity law reads the ungated p_FR; harmless only because beta_SR = 0 is enforced by the KKT OGS_FATAL).
+Data semantics at gated points (ConstitutiveData): at a latched KKT-active point with the gate on, `BishopsData::chi_S_L` (and the previous-state copy) carry chi_deck(S = 1) and `dchi_dS_L` = 0, and with `bishop_relperm` the output `relative_permeability` (PermeabilityData::k_rel) carries k_rel(S = 1). `saturation` (S_L) is the retention-law value, NOT gated, so at such a point the output pair (S_L, relative_permeability) is not the deck's k_rel(S_L). Post-processing that recomputes k_rel(S_L) or chi(S_L) from the stored saturation will differ at exactly these points (compare with the `micro_saturated_latch_ip` field).
+Record: `~/ogs-models/scratch/2026-10-01_kkt_iv_vii_fixes/INTEGRATE.md`.
+
+## 2026-10-02 - branch dsm_mass_conservation_v4_tm_krel_2026-10-02: drop T_m, 1a Kirchhoff element mobility, 1b closed-macro k_rel gate (NOT adopted, switchable)
+
+Ruling implemented (Vinay, 2026-10-02, verbatim): "(go with L + drop T_m) x (1a, 1b separate)". Branch from `dsm_mass_conservation_v3_kkt_ceiling_2026-09-30` at 35fbd4149b. Design: `~/ogs-models/scratch/2026-10-02_kkt_v4_tm_krel/DESIGN_V4.md`; implementation record `IMPLEMENT_V4.md`, tests `TESTS_V4.md` in the same folder.
+Three switches inside `<potential_exchange>`, all defaults = the AB code bitwise, appended LAST to `PotentialExchangeParameters` (initialiser order `..., micro_ceiling_saturation_gate, macro_balance_drops_micro_biot_term, darcy_relative_permeability_mobility, micro_ceiling_closed_macro_gate, darcy_kirchhoff_cells_per_decade`):
+(1) `macro_balance_drops_micro_biot_term` (bool): R_p -= N^T T_m w at every IP, T_m = S_L rho_LR [(phi_m - phi_m,prev) + phi_m m^T B (u - u_prev)]/dt (`droppedMicroBiotRate`, the books' operation order), with its pp (S-, phi_m-, rho_LR-chains) and pu entries (separate matrix `tm_Kpu`, added after the Q9 line at every level); interior dn_l/deps_v from the new sibling `computeImplicitNlDEpsV`. Kpu itself unchanged. Guards: KKT, F3 on, Q2 on, reference n_S, analytic exchange Jacobian, no explicit HM coupling, Newton only.
+(2) `darcy_relative_permeability_mobility` = gauss_point | kirchhoff_element_mean (1a): one mobility per element, the mean of k_rel(S_L(p_c)) over [min, max] of the nodal p_c through a Kirchhoff table (`KirchhoffMobility.h`, built once per medium at creation; `darcy_kirchhoff_cells_per_decade`, default 2048, a numerical choice pending Vinay); exact tangent J_pp += r_u g^T (tie shares split equally); the output `relative_permeability` and the Darcy velocity carry the element mobility. Guards: SaturationTuller + RelativePermeabilityGeneralizedPower, Newton only, not with 1b.
+(3) `micro_ceiling_closed_macro_gate` = off | relperm | bishop_relperm (1b): k_rel = k_rel(S = 1), dk/dS = 0 where the previous step was KKT-Active with phi_M == 0 and the iterate is Active; evaluated outside the Fix B block (acts with Fix B off too); new IP state `micro_closed_macro_gate` (output `micro_closed_macro_gate_ip`, 0/1, also the chi_prev memory of the BUILT-NOT-RUN level bishop_relperm). Guards: KKT, Newton only, not with 1a, not with explicit HM coupling.
+Diagnostics (fd_check only): the KKT-FD line gains `v4_state_flips` and `v4_kirchhoff_mask_flips`; traced elements also print `KKT-FD-MAT` (full analytic and FD matrices) and, with 1a, `KKT-V4-1A` (min/max node sets per assembly). The OPEN note at the Kpu term is annotated as resolved by the ruling (not deleted).
+
+## 2026-10-02 - branch dsm_mass_conservation_v5_P_exact_2026-10-02: probe switch macro_storage_exact_time_levels (NOT adopted, default off)
+
+Probe for the books' product term P = rho_LR Delta S_L Delta phi_M (dashboard card "C2-G2 the last leak term (P)"). Branch from `dsm_mass_conservation_v4_tm_krel_2026-10-02` at ca3c9faf00. Design `~/ogs-models/scratch/2026-10-02_kkt_v5_P_exact/DESIGN_V5.md`; implementation record `IMPLEMENT_V5.md`, tests `TESTS_V5.md` in the same folder.
+One bool inside `<potential_exchange>`, appended LAST to `PotentialExchangeParameters` (after `darcy_kirchhoff_cells_per_decade`), default false = the v4 code bitwise: `macro_storage_exact_time_levels`. When true, the a_S coefficient of the macro storage is phi_M of the previous converged step (`PrevState<TransportPorosityData>` of `prev_states_[ip]`, via `macroStorageCoefficient`), so that with the v4 S_L-new Biot term after the T_m drop the discrete macro accumulation is the exact difference Delta(rho_LR S_L phi_M) plus the Biot strain term. No new tangent line: the phi_M chain of the correction cancels the phi_M chain the v4 a_S tangent omits (DESIGN_V5.md 2.3). The uniqueness of phi_M,prev is conditional on keeping the S_L-new Biot/T_m form (an implementation choice, not a ruling); F3 (S_L,prev in the macro Biot part) and the midpoint pair are open alternatives.
+Guards: requires `macro_balance_drops_micro_biot_term = true` and `macro_storage_uses_macro_porosity = true` (parse); FATAL at every IP evaluation with the switch on if beta_LR != 0 or a0 != 0 (constant liquid density only); Newton only (Picard sibling FATAL). The switch makes the books close; it does not make the solution more accurate (the O(dS dphi_M) time-discretisation error moves into the trajectory).

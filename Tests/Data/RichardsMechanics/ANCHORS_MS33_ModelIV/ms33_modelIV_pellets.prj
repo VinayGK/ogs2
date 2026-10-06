@@ -88,6 +88,41 @@ Official benchmark spec (MSXX §Model IV):
                        properties of MX-80 bentonite", Applied Clay Science 241:106998;
                        median fit sigma_swell [MPa] = 0.003 * exp(5.2883 * EMDD [Mg/m3]).
         dataset row  : MX-80 Fig.1 median, EMDD == rho_d (WG agreement 2026-05-27)
+K-FIX SET (E = 52 MPa), SUBMISSION CANDIDATE, 2026-10-05: Mass-conserving A (2a) + the K-fix + the always-on corrected clamp guard.
+  Branch gen5_masscons_1a_kfix_guard_E52_conformant_2026-10-05, cut from dsm_kfix_guard_production_2026-10-05 (the K-fix and the guard
+  as two production commits on fc14f19fb9). Added in this deck, inside <potential_exchange>, one line:
+    swelling_stress_k_level = true (lower-case k, the spelling the input parser reads): the Pi of the previous level is evaluated at its own
+    K_aug(rho_d,prev), so the change of K with dry density is booked in the swelling-stress step.
+  The clamp guard of the live-K swelling tangent is code, not a deck switch; it is always on. Every other switch line and every material and
+  numerical value of this deck (the elastic constants included) are unchanged from the 2a block below; this is the E = 52 MPa set.
+  Rulings (Vinay Kumar): 2026-10-04 "ok, then i agree to the K-fix" and "run model IV under the K-fix, k-fix is submission";
+  2026-10-05 "Submission: re-run the K-fix suite with the corrected guard. always on."
+  RUN WITH THIS DECK: record run 1a/suite/IV, MacBook Pro, 2026-10-05, OMP 1, bin/ogs md5 ad1d8b16b52fba77874a0166391f109d, libRichardsMechanics md5 7452094c2200330fb63724a238fc01f9
+  (built from 3739b7ec03 + guard_always_on.diff; its source tree equals the tree of the code commit of this branch, git rev-parse checked).
+  The run deck equals this deck with XML comments, test_definition and blank lines removed. 709 accepted / 0 rejected steps, last step ends at t = 1.728e+07 s,
+  wall 177 s. Record CANONICAL_RESULTS_2026-10-05_gen5_masscons_1a_kfix_guard_v0.json, md5 ee36f00a77ffd89df0e1467fb4b1b047.
+  The MASS-CONSERVATION STATUS and the R_L/I value of the 2a block below were measured for 2a; they are NOT re-measured for this
+  configuration here and are not claimed for it.
+MASS-CONSERVING DSM, SUBMISSION CANDIDATE 2a, 2026-10-02 (Vinay 2026-10-02 "do both": candidate 2 is cut twice,
+  2a = variant 1a, 2b = variant 1b, each end to end like candidate 1). Branch gen5_masscons_1a_conformant_2026-10-02,
+  cut from 3101058538 (v5 probe tip); MS33 test tree from gen5_icfix_conformant_2026-09-30 (d64c47cb30).
+  CONFIGURATION (switch lines inside <potential_exchange> below; default of every switch = the shipped code):
+    micro_ceiling_treatment = kkt, micro_ceiling_pu_tangent = kkt_active (carried forward with the F3 ruling, 2026-10-01);
+    micro_mass_strain_term_eulerian = true (F3, RULED 2026-10-01); micro_ceiling_sw_tangent = kkt_active (Model IV
+    tangent, ordered 2026-10-01); micro_ceiling_saturation_gate = bishop_relperm (Fix B, RULED 2026-10-01);
+    macro_storage_uses_macro_porosity = true (Q2, RULED 2026-09-30); macro_balance_drops_micro_biot_term = true
+    (T_m dropped, RULED 2026-10-02 "go with L + drop T_m"); darcy_relative_permeability_mobility = kirchhoff_element_mean (1a: element-mean Kirchhoff k_rel in the Darcy term);
+    macro_storage_exact_time_levels = true (exact P; MAIN-LOOP READING of "do both", open for Vinay's check).
+  K table: K_fix of the IC-FIX V0 block below, unchanged (D3 default). No every-step output, no diagnostic _ip variables.
+  MASS-CONSERVATION STATUS (MEASURED on the v5 probe run V5a_IV, the same switch lines with every-step output,
+  Shilpa's MBP; books_table_v5.json md5 d480471922bf188d904ac04e3e64c25e in ~/ogs-models/scratch/2026-10-02_kkt_v5_compare/):
+    water books under definition L (RULED): R_L/I = -1.595e-03 at t = 200 d; the macro storage product term P is removed
+    by construction, what is left is MS + BTerr - Cl (NOTE_V5.md section 0 items 1 to 3).
+    RUN WITH THIS DECK (header refreshed 2026-10-02, OGS fixes stage; replaces 'Not yet run with this deck'):
+      candidate-2a record run 1a/suite/IV, Shilpa's MBP, 2026-10-02, bin/ogs md5 fd2e4e76e51d490e45c15b3861c7471d; the run deck equals
+      this deck with comments and blank lines removed. 681 accepted / 0 rejected steps to t = 200 d. All 42 record
+      frames are bitwise equal to those of the v5 probe run named above (P3f), so the status above holds for this deck
+      (record BOOKS_2026-10-02_gen5_masscons_1a_v0.json, md5 bea6cab8803d17c8a6b09a47d6badc85).
 IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC to submission"; K_fix accepted,
   "your choices 1: ok"). Branch gen5_icfix_conformant_2026-09-30 = gen5_conformant_2026-09-08 (486235c679) + cherry-pick of
   686fcd6ef8 (RichardsMechanics DSM: the declared initial_micro_water_content is realised in the previous micro porosity).
@@ -346,7 +381,17 @@ IC-FIX V0 RE-FIT 2026-09-30 (Vinay 2026-09-30 ~22:00 "elevate the consistent IC 
                 </medium>
                   <micro_water_content_floor>7.06e-5</micro_water_content_floor> <!-- 1W crystalline-hydration interlayer-water floor; Boek & Sprik 2003 (MD) / Marry et al. 2008 (1W Na-montmorillonite hydration); derivation in task13 TASK13_MCC_BLOCKAGE.md; adopted Vinay 2026-06-17 (commit 9e5459d00b). Caps Pi at the 1W minimum. -->
                   <macro_porosity_floor>0.0</macro_porosity_floor> <!-- INERT for the LE submission suite (restores audited Dixon-exact config: 6/6 green, I=4.9218/14.1602/40.8448 verified 2026-06-23; HISTORICAL sigma0=-1.5e5-era numbers, current Model I values are in the 12.2 provenance block: 4.899970/14.159948/40.600313 MPa, gen 4 record CANONICAL_RESULTS_2026-08-31_cascade.json, unchanged in gen 5). Active 0.08 (Vinay 2026-06-17) broke dd1600/IV/III convergence + pulled dd1800 -8% off Dixon (measured 2026-06-23); 0.08 remains the experimental form-(b)/expulsion floor. Revert per "make submission ready"; countermandable. GEN 5 (Vinay 2026-09-07, "i approve gen 5"): the floor is 0.0 in ALL seven MS33 decks now, INCLUDING the dd900 calibration cell (was 0.08 there through gen 4, audit 2026-09-04 blocker B1); the live table's 900 knot is therefore fit in the same constitutive state this deck consumes it in. -->
-    </potential_exchange>
+    <micro_ceiling_treatment>kkt</micro_ceiling_treatment>
+                <macro_storage_uses_macro_porosity>true</macro_storage_uses_macro_porosity>
+                <micro_mass_strain_term_eulerian>true</micro_mass_strain_term_eulerian>
+                <micro_ceiling_pu_tangent>kkt_active</micro_ceiling_pu_tangent>
+                <micro_ceiling_sw_tangent>kkt_active</micro_ceiling_sw_tangent>
+                <micro_ceiling_saturation_gate>bishop_relperm</micro_ceiling_saturation_gate>
+                <macro_balance_drops_micro_biot_term>true</macro_balance_drops_micro_biot_term>
+                <darcy_relative_permeability_mobility>kirchhoff_element_mean</darcy_relative_permeability_mobility>
+                <macro_storage_exact_time_levels>true</macro_storage_exact_time_levels>
+                <swelling_stress_k_level>true</swelling_stress_k_level>
+            </potential_exchange>
             <constitutive_relation>
                 <type>LinearElasticIsotropic</type>
                 <youngs_modulus>E</youngs_modulus>
