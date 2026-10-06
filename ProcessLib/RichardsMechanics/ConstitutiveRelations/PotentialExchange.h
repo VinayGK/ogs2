@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 #include "BaseLib/Error.h"
 #include "ProcessLib/RichardsMechanics/PotentialExchangeParameters.h"
@@ -252,6 +253,38 @@ inline VanDerWaalsMicroPotentialData computeVanDerWaalsMicroPotential(
     // 0 when clamped (flat in n_l).
     out.d2mu_lR_dnl2 =
         clamped ? 0.0 : 12.0 * out.mu_lR / (n_l_eff * n_l_eff);  // J/kg
+
+    // DIAGNOSTIC, NOT FOR PRODUCTION (2026-10-05, IX_unc1800 diagnosis; worktree
+    // diag_ix_unc1800_2026-10-05_wt, uncommitted): environment switch
+    // OGS_DIAG_FLOOR_POWER = k (> 0). Below the disjoining floor the vdW core is
+    // NOT held flat at its floor value but continued as a weaker power law,
+    //   mu_core(n_l) = mu_core(floor) * (floor/n_l)^k,   n_l < floor,
+    // so that n_l*Pi(n_l) ~ n_l^(1-k) is monotone for k >= 1 (the shipped flat cap
+    // makes n_l*Pi INCREASING below the floor and DECREASING above it, a maximum
+    // at the floor). k = 3 reproduces the uncapped cubic law. Value, n_l-slope,
+    // the rho_lR/nS/rho_SR partials and d2mu/dnl2 of the core are made consistent;
+    // the augmentation term keeps its flat cap. Unset: no change (bitwise).
+    if (clamped)
+    {
+        static double const k_diag_floor_power = []()
+        {
+            char const* const e = std::getenv("OGS_DIAG_FLOOR_POWER");
+            return e != nullptr ? std::atof(e) : 0.0;
+        }();
+        if (k_diag_floor_power > 0.0)
+        {
+            double const scale =
+                std::pow(n_l_floor / n_l, k_diag_floor_power);  // [-] >= 1
+            out.mu_lR *= scale;
+            out.dmu_lR_dnl = -k_diag_floor_power * out.mu_lR / n_l;  // J/kg
+            out.dmu_lR_drho_lR = -out.mu_lR / rho_lR;
+            out.dmu_lR_dnS = 3.0 * out.mu_lR / nS;
+            out.dmu_lR_drho_SR = 3.0 * out.mu_lR / rho_SR;
+            out.d2mu_lR_dnl2 = k_diag_floor_power *
+                               (k_diag_floor_power + 1.0) * out.mu_lR /
+                               (n_l * n_l);  // J/kg
+        }
+    }
 
     // Lumped exponential force augmentation:
     // h = n_l / (nS * rho_SR * Sa)  [mean water film thickness, m]

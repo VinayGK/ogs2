@@ -668,6 +668,28 @@ inline ReducedMicroLiquidDensityData computeActiveMicroLiquidDensity(
 //   dPi/d rho_lR = -( (d rho_pi/d rho_lR) mu + rho_pi dmu/d rho_lR ).
 // A non-finite p_conf drops the p_conf term, as the residual does (NaN sentinel).
 // Free function so that a unit test can call it without the assembler.
+// DIAGNOSTIC, NOT FOR PRODUCTION (2026-10-05, IX_unc1800 diagnosis; worktree
+// diag_ix_unc1800_2026-10-05_wt, uncommitted): environment switch
+// OGS_DIAG_SW_FLAT_NPI (presence switches it on). In the swelling EIGENSTRESS
+// only (the residual and its KKT-active n_l tangent; NOT in the micro local
+// solve or the exchange), below the disjoining floor the product n_l*Pi is held
+// at floor*Pi(floor) (Pi ~ 1/n_l there) instead of the shipped n_l*Pi(floor)
+// (Pi flat, n_l*Pi increasing in n_l). n_l*Pi(n_l) then has no maximum at the
+// floor, the swelling eigenstress s(n_l) is no longer V-shaped there. Unset: no
+// change (bitwise).
+// Mode (integer value of the variable): 1 = whenever n_l < floor; 2 = only when
+// the previous level n_l_prev is also below the floor (the step that enters the
+// exhausted state keeps the shipped law). 0 / unset = off.
+inline int diagSwellingFlatNPi()
+{
+    static int const mode = []()
+    {
+        char const* const e = std::getenv("OGS_DIAG_SW_FLAT_NPI");
+        return e != nullptr ? std::atoi(e) : 0;
+    }();
+    return mode;
+}
+
 struct KktActiveSwellingNlTangent
 {
     double Pi = 0.0;       // [Pa] bare disjoining pressure at (n_l, rho_lR, K)
@@ -699,10 +721,20 @@ inline KktActiveSwellingNlTangent computeKktActiveSwellingNlTangent(
         params.use_micro_liquid_density_for_micro_pressure;
     double const rho_pi = micro_density ? rho_lR : rho_LR;     // [kg/m3]
     double const drho_pi_drho = micro_density ? 1.0 : 0.0;     // [-]
-    double const Pi = -rho_pi * vdw.mu_lR;                     // [Pa]
-    double const dPi_dn = -rho_pi * vdw.dmu_lR_dnl;            // [Pa]
-    double const dPi_drho =
+    double Pi = -rho_pi * vdw.mu_lR;                     // [Pa]
+    double dPi_dn = -rho_pi * vdw.dmu_lR_dnl;            // [Pa]
+    double dPi_drho =
         -(drho_pi_drho * vdw.mu_lR + rho_pi * vdw.dmu_lR_drho_lR);  // Pa m3/kg
+    if (diagSwellingFlatNPi() > 0 && params.micro_water_content_floor > 0.0 &&
+        n_l < params.micro_water_content_floor &&
+        (diagSwellingFlatNPi() == 1 ||
+         n_l_prev < params.micro_water_content_floor))
+    {
+        double const sc = params.micro_water_content_floor / n_l;  // [-] >= 1
+        Pi *= sc;
+        dPi_dn = -Pi / n_l;  // Pi_eff ~ 1/n_l
+        dPi_drho *= sc;
+    }
     // rho_pi = rho_LR (bulk) when the micro density is not used: Pi depends on
     // rho_LR directly through rho_pi, d rho_pi/d rho_LR = 1 - drho_pi_drho.
     double const dPi_drhoLR_direct =
@@ -3512,8 +3544,24 @@ computeReferenceMicroPorositySwellingStressIncrement(
         double const p_L_m_density_curr_film =
             params.use_micro_liquid_density_for_micro_pressure ? rho_lR : rho_LR;
 
-        double const Pi_prev_film = -p_L_m_density_prev_film * mu_lR_prev_film;
-        double const Pi_curr_film = -p_L_m_density_curr_film * mu_lR_curr_film;
+        double Pi_prev_film = -p_L_m_density_prev_film * mu_lR_prev_film;
+        double Pi_curr_film = -p_L_m_density_curr_film * mu_lR_curr_film;
+        if (diagSwellingFlatNPi() > 0 && params.micro_water_content_floor > 0.0)
+        {
+            double const fl = params.micro_water_content_floor;
+            bool const both_levels = diagSwellingFlatNPi() == 2;
+            if (!both_levels || n_l_prev < fl)
+            {
+                if (n_l_prev < fl)
+                {
+                    Pi_prev_film *= fl / n_l_prev;
+                }
+                if (n_l < fl)
+                {
+                    Pi_curr_film *= fl / n_l;
+                }
+            }
+        }
 
         // CORRECTION (Vinay, 2026-06-06): the previous form
         //   delta_sigma_sw = -(1 - phi_M)*(Pi_curr - Pi_prev)
